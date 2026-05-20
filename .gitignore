@@ -5,6 +5,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+Body-Tell/Dataset/
+Body-Tell/artifacts/
 
 # Distribution / packaging
 .Python
