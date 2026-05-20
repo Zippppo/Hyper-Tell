@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>VoxTell 项目解读 · 自然语言如何驱动 3D 医学分割</title>
+<style>
+  :root{
+    --bg:#fafbfc; --ink:#1f2937; --muted:#6b7280;
+    --accent:#2563eb; --accent-soft:#dbeafe;
+    --warn:#b45309; --warn-soft:#fef3c7;
+    --code-bg:#0f172a; --code-ink:#e2e8f0; --code-key:#7dd3fc;
+    --rule:#e5e7eb; --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0;
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.7; font-size:15px;
+  }
+  .wrap{max-width:960px; margin:0 auto; padding:48px 32px 80px}
+  header{
+    border-bottom:1px solid var(--rule); padding-bottom:24px; margin-bottom:32px;
+  }
+  header .eyebrow{
+    display:inline-block; padding:3px 10px; border-radius:999px;
+    background:var(--accent-soft); color:var(--accent);
+    font-size:12px; font-weight:600; letter-spacing:.05em;
+  }
+  h1{font-size:28px; margin:14px 0 6px; letter-spacing:-.01em}
+  header .sub{color:var(--muted); font-size:14px}
+  h2{
+    font-size:20px; margin:40px 0 12px;
+    padding-left:12px; border-left:4px solid var(--accent);
+  }
+  h3{font-size:16px; margin:24px 0 8px; color:#111827}
+  p{margin:8px 0}
+  code{
+    font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    background:#eef2f7; color:#0f172a;
+    padding:1px 6px; border-radius:4px; font-size:13px;
+  }
+  pre{
+    background:var(--code-bg); color:var(--code-ink);
+    padding:14px 18px; border-radius:8px; overflow-x:auto;
+    font-size:13px; line-height:1.55;
+  }
+  pre code{background:transparent; color:inherit; padding:0; font-size:13px}
+  .key{color:var(--code-key)}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:12px 0}
+  .card{
+    background:var(--card); border:1px solid var(--rule);
+    border-radius:10px; padding:14px 16px;
+  }
+  .card h4{margin:0 0 6px; font-size:14px; color:var(--accent)}
+  .card p{margin:0; font-size:13.5px; color:#374151}
+  .pipe{
+    display:flex; align-items:stretch; gap:0;
+    margin:18px 0; flex-wrap:wrap;
+  }
+  .pipe .step{
+    flex:1 1 0; min-width:120px;
+    background:var(--card); border:1px solid var(--rule);
+    border-radius:8px; padding:10px 12px; position:relative;
+  }
+  .pipe .step + .step::before{
+    content:"→"; position:absolute; left:-14px; top:50%;
+    transform:translateY(-50%); color:var(--accent); font-weight:700;
+  }
+  .pipe .step .t{font-size:12px; color:var(--muted); margin-bottom:2px}
+  .pipe .step .n{font-weight:600; font-size:13.5px}
+  table{
+    width:100%; border-collapse:collapse; margin:10px 0; font-size:14px;
+  }
+  th,td{
+    border-bottom:1px solid var(--rule);
+    padding:8px 10px; text-align:left; vertical-align:top;
+  }
+  th{background:#f3f4f6; font-weight:600; font-size:13px}
+  .callout{
+    background:var(--warn-soft); border-left:4px solid var(--warn);
+    padding:10px 14px; border-radius:6px; margin:14px 0;
+    font-size:13.5px; color:#78350f;
+  }
+  .tip{
+    background:var(--accent-soft); border-left:4px solid var(--accent);
+    padding:10px 14px; border-radius:6px; margin:14px 0;
+    font-size:13.5px; color:#1e3a8a;
+  }
+  .tag{
+    display:inline-block; padding:1px 8px; border-radius:4px;
+    background:#eef2f7; color:#374151; font-size:12px; margin-right:4px;
+  }
+  .ascii{
+    background:#0f172a; color:#e2e8f0; padding:16px 20px;
+    border-radius:8px; font-family:"SF Mono",Menlo,Consolas,monospace;
+    font-size:12px; line-height:1.5; overflow-x:auto; white-space:pre;
+  }
+  ul{padding-left:22px} li{margin:4px 0}
+  .filerefs code{font-size:12.5px}
+  footer{
+    margin-top:48px; padding-top:20px; border-top:1px solid var(--rule);
+    color:var(--muted); font-size:12.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">PROJECT WALKTHROUGH</span>
+  <h1>VoxTell：自然语言如何驱动 3D 医学分割</h1>
+  <div class="sub">面向后续改进的源码级解读 · 基于 <code>voxtell/</code> v1.1 · 2026-05-19</div>
+</header>
+
+<h2>1. 一句话回答</h2>
+<p>
+VoxTell 把<strong>体素图像</strong>和<strong>文本提示</strong>分别编码到同一隐空间，
+然后用一个 <strong>Transformer 解码器</strong>让文本作为 <em>query</em> 去“查询”图像 bottleneck 特征（<em>memory</em>），
+得到每条 prompt 一个 <strong>mask&nbsp;embedding</strong>；
+该 embedding 在 U-Net 解码器的 <strong>多层尺度</strong>上以 <code>einsum</code> 与特征图做<strong>逐通道点乘</strong>，
+直接生成对应该 prompt 的分割 logits。文本是「条件」，但条件作用方式是 <em>MaskFormer 风格的动态 1×1×1 卷积核</em>。
+</p>
+
+<h2>2. 顶层数据流</h2>
+
+<div class="pipe">
+  <div class="step"><div class="t">输入</div><div class="n">nii.gz + prompts</div></div>
+  <div class="step"><div class="t">预处理</div><div class="n">RAS / crop / Z-score</div></div>
+  <div class="step"><div class="t">双编码</div><div class="n">3D CNN + Qwen3</div></div>
+  <div class="step"><div class="t">融合</div><div class="n">Transformer Decoder</div></div>
+  <div class="step"><div class="t">解码</div><div class="n">多尺度 einsum 融合</div></div>
+  <div class="step"><div class="t">输出</div><div class="n">(N, X, Y, Z) 二值掩膜</div></div>
+</div>
+
+<p>入口由 <code>voxtell-predict</code> CLI (<span class="filerefs"><code>predict_from_raw_data.py</code></span>)
+调度，核心逻辑在 <code>predictor.py:339&nbsp;predict_single_image()</code>，
+仅四步：<code>preprocess → embed_text_prompts → predict_sliding_window_return_logits → sigmoid&gt;0.5</code>。</p>
+
+<h2>3. 两路编码：图像与文本</h2>
+
+<div class="grid">
+  <div class="card">
+    <h4>① 图像编码（3D ResidualEncoder）</h4>
+    <p>
+    nnU-Net 风格的 6 阶残差卷积主干（来自 <code>dynamic_network_architectures</code>），
+    输入 patch 大小 <code>192³</code>，通道 <code>[32, 64, 128, 256, 320, 320]</code>，
+    每阶下采样 2×。<br>
+    输出 6 个尺度的 skip 特征图，最深的 <strong>stage&nbsp;4 bottleneck</strong>（<code>12³×320</code>）
+    会被作为 Transformer 的 <em>memory</em>。
+    </p>
+  </div>
+  <div class="card">
+    <h4>② 文本编码（冻结的 Qwen3-Embedding-4B）</h4>
+    <p>
+    每条 prompt 都被 <em>指令包裹</em>（<code>text_embedding.py:14</code>）：<br>
+    <code>"Instruct: Given an anatomical term query, retrieve the precise anatomical entity and location it represents\nQuery: {prompt}"</code><br>
+    Tokenize → 过 Qwen3-Embedding-4B → 取最后一个非 padding token 的 hidden state，
+    得到 <code>2560</code> 维向量，每个 prompt 一个。
+    </p>
+  </div>
+</div>
+
+<div class="tip">
+<strong>关键点：</strong>文本编码器是 <em>frozen</em> 的，只在推理时把模型搬到 GPU 算 embedding，算完立刻 <code>to('cpu')</code> 让位给 3D 主干（<code>predictor.py:189-205</code>）。文本对图像的「条件作用」全部由下面那个小 Transformer + 投影头来学习。
+</div>
+
+<h2>4. 融合核心：Prompt Decoder（Transformer 6 层）</h2>
+
+<p>定义在 <code>voxtell_model.py:191-202</code>，基于 DETR 风格的 <code>TransformerDecoder</code>：</p>
+
+<table>
+<tr><th>角色</th><th>张量</th><th>形状（推理时）</th><th>来源</th></tr>
+<tr><td>query (tgt)</td><td>文本 embedding</td><td><code>(N, 1, 2048)</code></td><td>Qwen3 输出 → 2048 投影</td></tr>
+<tr><td>memory</td><td>图像 bottleneck</td><td><code>(12·12·12, 1, 2048)</code></td><td>encoder stage 4 → 2048 投影</td></tr>
+<tr><td>pos&nbsp;embed</td><td>3D 正弦位置编码</td><td><code>(12³, 1, 2048)</code></td><td>注册为 buffer（<code>voxtell_model.py:187</code>）</td></tr>
+</table>
+
+<p>6 层 cross-attention 之后，<strong>每条 prompt 收敛成一个 2048-d 的「mask embedding」</strong>。
+这是文本条件信息的最终载体，它将告诉解码器“你要找的是肝、不是脾”。</p>
+
+<h3>4.1 把一个向量变成多尺度的卷积核</h3>
+
+<p>同一个 2048-d mask embedding 会被 <strong>5 个独立 MLP</strong>（<code>project_to_decoder_channels</code>，<code>voxtell_model.py:171-183</code>）
+投影到解码器 5 个尺度的通道数上：</p>
+
+<div class="ascii">stage 0 (192³)   ← 32  ch
+stage 1 ( 96³)   ← 64  · num_heads(=32)
+stage 2 ( 48³)   ← 128 · 32
+stage 3 ( 24³)   ← 256 · 32
+stage 4 ( 12³)   ← 320 · 32</div>
+
+<p>这相当于把单个 embedding <strong>扩展成 5 个不同分辨率上的「动态滤波器」</strong>。</p>
+
+<h2>5. Image Decoder：MaskFormer 风格融合</h2>
+
+<p>在 <code>VoxTellDecoder.forward()</code>（<code>voxtell_model.py:405-472</code>），
+解码器从底向上逐级 upsample 并 concat skip。在<strong>有 mask embedding 的阶段</strong>，做两件事：</p>
+
+<h3>5.1 中间层：作为 num_heads 个额外通道注入</h3>
+
+<pre><code><span class="key">fusion</span> = einsum('b c h w d, b n c -&gt; b n h w d',
+                feat, mask_embed.view(B, num_heads=32, C//32))
+feat   = torch.cat([feat, fusion], dim=1)   # 把 32 个 head 当 32 个新通道
+</code></pre>
+
+<p>每个 head 是 <em>该 prompt 的一个加权空间响应图</em>，与原始特征拼接后送入下一阶 conv block —— 文本条件就这样“渗透”进每一层解码。</p>
+
+<h3>5.2 最末层：直接生成分割 logits</h3>
+
+<pre><code><span class="key">seg</span> = einsum('b c h w d, b n c -&gt; b n h w d', feat, mask_embed)
+# feat: 高分辨率特征 (B, C, X, Y, Z)
+# mask_embed: 每条 prompt 一个长度为 C 的向量 → 等价于动态 1×1×1 卷积核
+</code></pre>
+
+<p>这就是 MaskFormer/MaskDINO 的经典做法：<strong>把分类 head 换成内积</strong>，
+每条 prompt 用自己专属的向量去和像素特征做点积，正值即前景。</p>
+
+<div class="tip">
+<strong>为什么这种结构能泛化到「未见过的文本」？</strong><br>
+prompt 端走的是冻结的大语言模型嵌入空间——语义近邻自然就近邻；
+图像端只需要学会“把图像特征拉到同一个语义空间”，
+而不是“给每个解剖学类别学一个分类权重”。一切新概念都被表示为同一隐空间里的一个向量。
+</div>
+
+<h2>6. 推理工程：滑窗 + 高斯加权 + 流水线</h2>
+
+<ul>
+  <li><strong>预处理</strong>（<code>predictor.py:110</code>）：RAS 重定向 → 非零裁剪 → Z-score。<em>不</em>做 spacing resample。</li>
+  <li><strong>滑窗</strong>（<code>predictor.py:208</code>）：patch <code>192³</code>，步长 50% 重叠，对小图自动 zero-pad。</li>
+  <li><strong>高斯加权</strong>：每个 patch 输出乘以中心权重高的 3D Gaussian，再除以累计权重，避免拼接边界伪影。</li>
+  <li><strong>生产者-消费者线程</strong>：<code>Thread</code> 加载下一块 patch 与 GPU 推理并行（<code>predictor.py:281-297</code>）。</li>
+  <li><strong>显存友好</strong>：<code>torch.autocast</code> + half-precision logits 累加；
+    每条 prompt 都得到一个完整体积 logit，但 N 通常不大。</li>
+  <li><strong>后处理</strong>：<code>sigmoid &gt; 0.5</code> 得到独立二值掩膜；最后 <code>insert_crop_into_image</code> 还原到原始尺寸。</li>
+</ul>
+
+<h2>7. 关键文件速查</h2>
+
+<table>
+<tr><th>文件</th><th>职责</th></tr>
+<tr><td><code>voxtell/inference/predict_from_raw_data.py</code></td><td>CLI 入口：参数解析、I/O、多 prompt 文件命名/合并</td></tr>
+<tr><td><code>voxtell/inference/predictor.py</code></td><td>预处理 / 文本嵌入 / 滑窗推理 / 后处理</td></tr>
+<tr><td><code>voxtell/model/voxtell_model.py</code></td><td>VoxTellModel + VoxTellDecoder：双投影头、Prompt Decoder、MaskFormer 融合</td></tr>
+<tr><td><code>voxtell/model/transformer.py</code></td><td>DETR 风格 TransformerDecoder/Layer</td></tr>
+<tr><td><code>voxtell/utils/text_embedding.py</code></td><td>Qwen3 指令模板包裹 + last-token pooling</td></tr>
+<tr><td><code>models-weight/voxtell/voxtell_v1.1/plans.json</code></td><td>nnU-Net 配方：patch size、encoder 通道、kernel/stride</td></tr>
+</table>
+
+<h2>8. 想动手改造？关注这些「可调插口」</h2>
+
+<div class="grid">
+  <div class="card">
+    <h4>替换文本编码器</h4>
+    <p>改 <code>VoxTellPredictor.__init__</code> 的 <code>text_encoding_model</code> 与
+       构造时的 <code>text_embedding_dim</code>（当前 2560，对应 Qwen3-4B）。
+       投影头 <code>project_text_embed</code> 自动适配新维度。</p>
+  </div>
+  <div class="card">
+    <h4>条件注入策略</h4>
+    <p>核心在 <code>VoxTellDecoder.forward</code> 的两次 <code>einsum</code>。
+       想试 FiLM、cross-attention、或可学习偏置？这里替换即可，
+       <code>num_heads</code>/<code>num_maskformer_stages</code> 控制注入的宽度和深度。</p>
+  </div>
+  <div class="card">
+    <h4>Prompt 模板</h4>
+    <p><code>wrap_with_instruction()</code> 的 <em>Instruct</em> 串影响 Qwen embedding 的语义聚焦。
+       想做病变/形态/位置等不同维度提示，可在此分流。</p>
+  </div>
+  <div class="card">
+    <h4>选哪一层做 memory</h4>
+    <p><code>decoder_layer</code>（默认 4）决定 Prompt Decoder 看哪层 encoder 特征。
+       浅层（更高分辨率）可能改善小目标但显存暴涨；
+       <code>DECODER_CONFIGS</code> 已枚举 0–5 的形状/通道。</p>
+  </div>
+</div>
+
+<div class="callout">
+<strong>⚠️ 改造前必读：</strong>
+<br>① 输入必须 <strong>RAS 朝向</strong>；否则左右肾、左右肺会全部错乱（README 也强调这一点）。
+<br>② 模型没有显式 spacing 归一化，极端体素间距会导致性能下降。
+<br>③ 训练权重与 <code>plans.json</code> 的 <code>arch_kwargs</code> 强耦合，改动主干结构需重训。
+</div>
+
+<h2>9. 一图概括</h2>
+
+<div class="ascii">
+              ┌────────── prompts (str list) ──────────┐
+              │ "liver", "right kidney", ...           │
+              │             │                          │
+              │   wrap_with_instruction                │
+              │             ▼                          │
+              │   Qwen3-Embedding-4B  (frozen)         │
+              │             ▼   (N, 2560)              │
+              │   MLP → 2048-d  text query             │
+              └─────────────┬──────────────────────────┘
+                            │
+   ┌──── 3D CT/MRI/PET ─────┴───── patch 192³ ─────┐
+   │  RAS / crop / z-score                        │
+   │  ResidualEncoder (6 stages, [32..320])       │
+   │  skips[0..5]                                 │
+   │  bottleneck stage4  (B, 320, 12, 12, 12)     │
+   │  → MLP → 2048-d  +  3D PosEnc                │
+   └───────────────┬──────────────────────────────┘
+                   │
+        ┌──────────▼──────────────┐
+        │ Prompt Decoder           │
+        │ 6× cross-attn (DETR)     │
+        │ text=Q   image=K,V       │
+        └──────────┬──────────────┘
+                   │  mask_embed (B, N, 2048)
+                   │  ── 5 个 MLP 投到各尺度通道 ──┐
+                   ▼                                │
+   U-Net Decoder (bottleneck → 高分辨率)            │
+   每个 mask-former stage:                          │
+        einsum('bchwd, bnc -> bnhwd')  ◄────────────┘
+                   ▼
+        sigmoid &gt; 0.5  →  (N, X, Y, Z) 二值掩膜
+</div>
+
+<footer>
+基于源码生成 · 报告位置：<code>documentation/readme/voxtell_report.html</code> · 与上游 <code>readme.md</code> 互补，专注「机理 + 改造点」而非「安装/使用」。
+</footer>
+
+</div>
+</body>
+</html>

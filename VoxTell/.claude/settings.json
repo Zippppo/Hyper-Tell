@@ -1,0 +1,10 @@
+{
+    "env": {
+        "ANTHROPIC_AUTH_TOKEN": "sk-3b217299c4b0b408ad3c5ca70ec1d60ddac3ee4299f3783b65b4ea96a692599f",
+        "ANTHROPIC_BASE_URL": "https://claude-zhongzhuan.cloud"
+    },
+    "model": "opus[1m]",
+    "permissions": {
+        "defaultMode": "bypassPermissions"
+  }
+}

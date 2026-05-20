@@ -1,0 +1,159 @@
+# ==============================================================================
+# Python
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# ==============================================================================
+# Virtual Environments
+# ==============================================================================
+venv/
+env/
+ENV/
+.venv/
+.python-version
+
+# ==============================================================================
+# IDEs / Editors / Tooling
+# ==============================================================================
+.idea/
+.spyderproject
+.ropeproject
+.ipynb_checkpoints
+.vscode/
+/.claude/
+/.codex/
+.worktrees/
+
+# ==============================================================================
+# Environment Variables
+# ==============================================================================
+.env
+.env.local
+
+# ==============================================================================
+# Logs
+# ==============================================================================
+*.log
+/logs/
+logs/
+
+# ==============================================================================
+# Medical Imaging & Data
+# ==============================================================================
+*.nii
+*.nii.gz
+*.tif
+*.tiff
+*.bmp
+*.dcm
+*.npy
+*.npz
+*.memmap
+niigz_data/
+/Dataset/
+Real_Data/
+
+# ==============================================================================
+# Model Checkpoints
+# ==============================================================================
+*.model
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.weights
+/checkpoints/
+*.pkl
+*.pickle
+
+# ==============================================================================
+# Project-specific outputs
+# ==============================================================================
+/current_plan/
+model_eval_res/
+/docs/
+/docs/visualizations/
+/docs/_build/
+/docs/_static/
+/docs/_templates/
+/eval/pred/
+/eval/results
+/vis_res/
+_VIS/
+/runs/
+/REF/
+/TRASH/
+/configs/
+/slurm/
+/latex/
+
+# ==============================================================================
+# Documents / Archives
+# ==============================================================================
+*.pdf
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.xml
+merged.zip
+
+# ==============================================================================
+# Temporary / OS
+# ==============================================================================
+*.tmp
+*.temp
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
