@@ -50,6 +50,63 @@ def load_config(path: str | Path) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def _flatten_cfg(d: dict[str, Any], parent: str = "") -> dict[str, Any]:
+    """Flatten nested cfg dict to dotted keys for wandb.config UI filtering."""
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        key = f"{parent}.{k}" if parent else k
+        if isinstance(v, dict):
+            out.update(_flatten_cfg(v, key))
+        else:
+            out[key] = v
+    return out
+
+
+def _init_wandb(args: argparse.Namespace, cfg: dict[str, Any]):
+    """Init W&B on rank 0 only. Returns Run or None."""
+    if not args.wandb or not is_main_process():
+        return None
+    try:
+        import wandb
+    except ImportError as e:
+        raise RuntimeError(
+            "--wandb passed but wandb is not installed. "
+            "Run `pip install wandb>=0.18.0`."
+        ) from e
+
+    mode = "offline" if args.wandb_offline else "online"
+    name = args.wandb_run_name or f"phase1-{time.strftime('%Y%m%d-%H%M%S')}"
+    tags = [t for t in (args.wandb_tags or "").split(",") if t]
+    if args.smoke:
+        tags.append("smoke")
+
+    project = args.wandb_project or cfg.get("project", "Body-Tell")
+
+    run = wandb.init(
+        project=project,
+        entity=args.wandb_entity,
+        name=name,
+        mode=mode,
+        config=_flatten_cfg(cfg) | {
+            "cli.lr": args.lr,
+            "cli.batch_size": args.batch_size,
+            "cli.epochs": args.epochs,
+            "cli.amp": args.amp,
+            "cli.smoke": args.smoke,
+            "cli.volume_size": args.volume_size,
+        },
+        tags=tags or None,
+        dir=args.wandb_dir,
+        resume="allow" if args.wandb_resume_id else None,
+        id=args.wandb_resume_id,
+    )
+    wandb.define_metric("epoch")
+    wandb.define_metric("train/*", step_metric="epoch")
+    wandb.define_metric("val/*", step_metric="epoch")
+    wandb.define_metric("best/*", step_metric="epoch")
+    return run
+
+
 def build_model(cfg: dict[str, Any]) -> VoxTellBodyModel:
     mc = cfg["model"]
     config = VoxTellBodyConfig(
@@ -252,6 +309,20 @@ def main() -> None:
     parser.add_argument(
         "--volume-size", type=int, nargs=3, default=None, metavar=("D", "H", "W"),
     )
+    parser.add_argument("--wandb", action="store_true", help="Enable W&B (rank-0 only)")
+    parser.add_argument("--wandb-offline", action="store_true")
+    parser.add_argument(
+        "--wandb-project", type=str, default=None, help="Defaults to cfg['project']",
+    )
+    parser.add_argument("--wandb-entity", type=str, default=None)
+    parser.add_argument("--wandb-run-name", type=str, default=None)
+    parser.add_argument(
+        "--wandb-tags", type=str, default=None, help="Comma-separated tags",
+    )
+    parser.add_argument("--wandb-dir", type=str, default="./wandb")
+    parser.add_argument(
+        "--wandb-resume-id", type=str, default=None, help="Resume crashed run by ID",
+    )
     args = parser.parse_args()
 
     # DDP setup
@@ -272,152 +343,182 @@ def main() -> None:
 
     cfg = load_config(args.config)
 
-    use_amp = args.amp and device.type == "cuda"
-    scaler = GradScaler("cuda") if use_amp else None
-    if use_amp and is_main_process():
-        log.info("Mixed precision (AMP) enabled")
+    wb_run = _init_wandb(args, cfg)
 
-    epochs = args.epochs if args.epochs is not None else (200 if args.smoke else 50)
-    batch_size = args.batch_size
-    volume_size_override = tuple(args.volume_size) if args.volume_size else None
+    try:
+        use_amp = args.amp and device.type == "cuda"
+        scaler = GradScaler("cuda") if use_amp else None
+        if use_amp and is_main_process():
+            log.info("Mixed precision (AMP) enabled")
 
-    if volume_size_override and is_main_process():
-        log.info("Volume size override: %s", volume_size_override)
+        epochs = args.epochs if args.epochs is not None else (200 if args.smoke else 50)
+        batch_size = args.batch_size
+        volume_size_override = tuple(args.volume_size) if args.volume_size else None
 
-    train_dataset = build_dataset(cfg, split="train", volume_size_override=volume_size_override)
-    if is_main_process():
-        log.info("Train dataset: %d samples", len(train_dataset))
+        if volume_size_override and is_main_process():
+            log.info("Volume size override: %s", volume_size_override)
 
-    if args.smoke:
-        n_smoke = min(args.smoke_samples, len(train_dataset))
-        train_dataset = Subset(train_dataset, list(range(n_smoke)))
+        train_dataset = build_dataset(cfg, split="train", volume_size_override=volume_size_override)
         if is_main_process():
-            log.info("Smoke mode: using %d samples for %d epochs", n_smoke, epochs)
+            log.info("Train dataset: %d samples", len(train_dataset))
 
-    train_sampler = DistributedSampler(train_dataset, shuffle=True) if distributed else None
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=(train_sampler is None),
-        sampler=train_sampler,
-        collate_fn=prompt_collate_fn,
-        num_workers=args.num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
+        if args.smoke:
+            n_smoke = min(args.smoke_samples, len(train_dataset))
+            train_dataset = Subset(train_dataset, list(range(n_smoke)))
+            if is_main_process():
+                log.info("Smoke mode: using %d samples for %d epochs", n_smoke, epochs)
 
-    val_dataset = build_dataset(cfg, split="val", volume_size_override=volume_size_override)
-    val_loader = None
-    if len(val_dataset) > 0 and not args.smoke:
-        val_sampler = DistributedSampler(val_dataset, shuffle=False) if distributed else None
-        val_loader = DataLoader(
-            val_dataset,
+        train_sampler = DistributedSampler(train_dataset, shuffle=True) if distributed else None
+        train_loader = DataLoader(
+            train_dataset,
             batch_size=batch_size,
-            shuffle=False,
-            sampler=val_sampler,
+            shuffle=(train_sampler is None),
+            sampler=train_sampler,
             collate_fn=prompt_collate_fn,
             num_workers=args.num_workers,
             pin_memory=(device.type == "cuda"),
         )
+
+        val_dataset = build_dataset(cfg, split="val", volume_size_override=volume_size_override)
+        val_loader = None
+        if len(val_dataset) > 0 and not args.smoke:
+            val_sampler = DistributedSampler(val_dataset, shuffle=False) if distributed else None
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                sampler=val_sampler,
+                collate_fn=prompt_collate_fn,
+                num_workers=args.num_workers,
+                pin_memory=(device.type == "cuda"),
+            )
+            if is_main_process():
+                log.info("Val dataset: %d samples", len(val_dataset))
+
+        model = build_model(cfg).to(device)
+        if distributed:
+            model = DDP(model, device_ids=[local_rank])
+
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         if is_main_process():
-            log.info("Val dataset: %d samples", len(val_dataset))
+            log.info("Model parameters: %s (%.2fM)", f"{n_params:,}", n_params / 1e6)
 
-    model = build_model(cfg).to(device)
-    if distributed:
-        model = DDP(model, device_ids=[local_rank])
+        if wb_run is not None:
+            wb_run.config.update(
+                {
+                    "n_params": n_params,
+                    "world_size": int(os.environ.get("WORLD_SIZE", 1)),
+                    "use_amp_effective": use_amp,
+                },
+                allow_val_change=True,
+            )
 
-    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    if is_main_process():
-        log.info("Model parameters: %s (%.2fM)", f"{n_params:,}", n_params / 1e6)
+        criterion = build_loss(cfg)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
 
-    criterion = build_loss(cfg)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
+        ckpt_dir = Path(args.checkpoint_dir)
+        if is_main_process():
+            ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    ckpt_dir = Path(args.checkpoint_dir)
-    if is_main_process():
-        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        best_dice = 0.0
+        history: list[dict[str, float]] = []
 
-    best_dice = 0.0
-    history: list[dict[str, float]] = []
+        t0 = time.time()
+        for epoch in range(1, epochs + 1):
+            if train_sampler is not None:
+                train_sampler.set_epoch(epoch)
 
-    t0 = time.time()
-    for epoch in range(1, epochs + 1):
-        if train_sampler is not None:
-            train_sampler.set_epoch(epoch)
+            train_metrics = train_one_epoch(
+                model, train_loader, criterion, optimizer, device, epoch,
+                scaler=scaler, use_amp=use_amp,
+            )
+            history.append(train_metrics)
 
-        train_metrics = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, epoch,
-            scaler=scaler, use_amp=use_amp,
-        )
-        history.append(train_metrics)
+            if wb_run is not None:
+                payload = {f"train/{k}": v for k, v in train_metrics.items()}
+                payload["epoch"] = epoch
+                payload["lr"] = optimizer.param_groups[0]["lr"]
+                wb_run.log(payload)
 
-        if val_loader is not None:
-            val_metrics = evaluate(model, val_loader, criterion, device, use_amp=use_amp)
-            if is_main_process() and val_metrics["foreground_mean_dice"] > best_dice:
-                best_dice = val_metrics["foreground_mean_dice"]
+            if val_loader is not None:
+                val_metrics = evaluate(model, val_loader, criterion, device, use_amp=use_amp)
+                if wb_run is not None:
+                    val_payload = {f"val/{k}": v for k, v in val_metrics.items()}
+                    val_payload["epoch"] = epoch
+                    wb_run.log(val_payload)
+                if is_main_process() and val_metrics["foreground_mean_dice"] > best_dice:
+                    best_dice = val_metrics["foreground_mean_dice"]
+                    state_dict = model.module.state_dict() if distributed else model.state_dict()
+                    torch.save(
+                        {
+                            "epoch": epoch,
+                            "model_state_dict": state_dict,
+                            "optimizer_state_dict": optimizer.state_dict(),
+                            "metrics": val_metrics,
+                            "config": cfg,
+                        },
+                        ckpt_dir / "best.pt",
+                    )
+                    log.info("  Saved best checkpoint (dice=%.4f)", best_dice)
+                    if wb_run is not None:
+                        wb_run.summary["best/foreground_mean_dice"] = best_dice
+                        wb_run.summary["best/epoch"] = epoch
+                        wb_run.summary["best/val_loss"] = val_metrics["loss"]
+                        wb_run.summary["best/negative_fp_rate"] = val_metrics["negative_fp_rate"]
+
+            if is_main_process() and args.smoke and epoch % 50 == 0:
                 state_dict = model.module.state_dict() if distributed else model.state_dict()
                 torch.save(
                     {
                         "epoch": epoch,
                         "model_state_dict": state_dict,
                         "optimizer_state_dict": optimizer.state_dict(),
-                        "metrics": val_metrics,
+                        "train_metrics": train_metrics,
                         "config": cfg,
                     },
-                    ckpt_dir / "best.pt",
+                    ckpt_dir / f"smoke_epoch{epoch:03d}.pt",
                 )
-                log.info("  Saved best checkpoint (dice=%.4f)", best_dice)
 
-        if is_main_process() and args.smoke and epoch % 50 == 0:
+        elapsed = time.time() - t0
+        if is_main_process():
+            log.info("Training complete in %.1fs (%d epochs)", elapsed, epochs)
+
+            if args.smoke:
+                first_loss = history[0]["loss"]
+                last_loss = history[-1]["loss"]
+                last_dice = history[-1]["foreground_mean_dice"]
+                log.info(
+                    "Smoke result: loss %.4f -> %.4f (%.1f%% reduction), final fg_dice=%.4f",
+                    first_loss,
+                    last_loss,
+                    100 * (1 - last_loss / first_loss),
+                    last_dice,
+                )
+                if last_loss >= first_loss:
+                    log.warning("SMOKE FAILED: loss did not decrease!")
+                elif last_dice < 0.1:
+                    log.warning("SMOKE WARNING: Dice still very low after overfit attempt")
+                else:
+                    log.info("SMOKE PASSED: model shows learning signal")
+
             state_dict = model.module.state_dict() if distributed else model.state_dict()
             torch.save(
                 {
-                    "epoch": epoch,
+                    "epoch": epochs,
                     "model_state_dict": state_dict,
                     "optimizer_state_dict": optimizer.state_dict(),
-                    "train_metrics": train_metrics,
+                    "train_metrics": history[-1],
                     "config": cfg,
+                    "history": history,
                 },
-                ckpt_dir / f"smoke_epoch{epoch:03d}.pt",
+                ckpt_dir / "last.pt",
             )
-
-    elapsed = time.time() - t0
-    if is_main_process():
-        log.info("Training complete in %.1fs (%d epochs)", elapsed, epochs)
-
-        if args.smoke:
-            first_loss = history[0]["loss"]
-            last_loss = history[-1]["loss"]
-            last_dice = history[-1]["foreground_mean_dice"]
-            log.info(
-                "Smoke result: loss %.4f -> %.4f (%.1f%% reduction), final fg_dice=%.4f",
-                first_loss,
-                last_loss,
-                100 * (1 - last_loss / first_loss),
-                last_dice,
-            )
-            if last_loss >= first_loss:
-                log.warning("SMOKE FAILED: loss did not decrease!")
-            elif last_dice < 0.1:
-                log.warning("SMOKE WARNING: Dice still very low after overfit attempt")
-            else:
-                log.info("SMOKE PASSED: model shows learning signal")
-
-        state_dict = model.module.state_dict() if distributed else model.state_dict()
-        torch.save(
-            {
-                "epoch": epochs,
-                "model_state_dict": state_dict,
-                "optimizer_state_dict": optimizer.state_dict(),
-                "train_metrics": history[-1],
-                "config": cfg,
-                "history": history,
-            },
-            ckpt_dir / "last.pt",
-        )
-        log.info("Saved final checkpoint to %s/last.pt", ckpt_dir)
-
-    if distributed:
-        dist.destroy_process_group()
+            log.info("Saved final checkpoint to %s/last.pt", ckpt_dir)
+    finally:
+        if wb_run is not None:
+            wb_run.finish()
+        if distributed:
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":

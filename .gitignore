@@ -130,6 +130,7 @@ model_eval_res/
 /vis_res/
 _VIS/
 /runs/
+/wandb/
 /REF/
 /TRASH/
 /configs/
