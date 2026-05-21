@@ -26,6 +26,7 @@ from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Subset
 from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm
 
 from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
 from body_tell.losses.prompt_losses import PromptSegmentationLoss
@@ -111,7 +112,11 @@ def train_one_epoch(
     total_neg_fp = 0.0
     n_batches = 0
 
-    for batch in loader:
+    for batch in tqdm(
+        loader,
+        desc=f"epoch {epoch}",
+        disable=not is_main_process(),
+    ):
         occupancy = batch["occupancy"].to(device)
         text_embeddings = batch["text_embeddings"].to(device)
         target_masks = batch["target_masks"].to(device)
@@ -183,7 +188,11 @@ def evaluate(
     total_neg_fp = 0.0
     n_batches = 0
 
-    for batch in loader:
+    for batch in tqdm(
+        loader,
+        desc="val",
+        disable=not is_main_process(),
+    ):
         occupancy = batch["occupancy"].to(device)
         text_embeddings = batch["text_embeddings"].to(device)
         target_masks = batch["target_masks"].to(device)
@@ -341,7 +350,7 @@ def main() -> None:
         )
         history.append(train_metrics)
 
-        if val_loader is not None and epoch % 5 == 0:
+        if val_loader is not None:
             val_metrics = evaluate(model, val_loader, criterion, device, use_amp=use_amp)
             if is_main_process() and val_metrics["foreground_mean_dice"] > best_dice:
                 best_dice = val_metrics["foreground_mean_dice"]
