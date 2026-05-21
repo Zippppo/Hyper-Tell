@@ -116,12 +116,15 @@ def train_one_epoch(
         text_embeddings = batch["text_embeddings"].to(device)
         target_masks = batch["target_masks"].to(device)
         target_empty = batch["target_empty"].to(device)
+        prompt_valid = batch.get("prompt_valid")
+        if prompt_valid is not None:
+            prompt_valid = prompt_valid.to(device)
 
         optimizer.zero_grad()
 
         with autocast("cuda", enabled=use_amp):
             logits = model(occupancy, text_embeddings)
-            result = criterion(logits, target_masks)
+            result = criterion(logits, target_masks, prompt_valid=prompt_valid)
 
         if scaler is not None:
             scaler.scale(result["loss"]).backward()
@@ -133,7 +136,10 @@ def train_one_epoch(
 
         with torch.no_grad():
             metrics = compute_prompt_metrics(
-                logits.float(), target_masks, target_empty=target_empty
+                logits.float(),
+                target_masks,
+                target_empty=target_empty,
+                prompt_valid=prompt_valid,
             )
 
         total_loss += result["loss"].item()
@@ -182,13 +188,19 @@ def evaluate(
         text_embeddings = batch["text_embeddings"].to(device)
         target_masks = batch["target_masks"].to(device)
         target_empty = batch["target_empty"].to(device)
+        prompt_valid = batch.get("prompt_valid")
+        if prompt_valid is not None:
+            prompt_valid = prompt_valid.to(device)
 
         with autocast("cuda", enabled=use_amp):
             logits = model(occupancy, text_embeddings)
-            result = criterion(logits, target_masks)
+            result = criterion(logits, target_masks, prompt_valid=prompt_valid)
 
         metrics = compute_prompt_metrics(
-            logits.float(), target_masks, target_empty=target_empty
+            logits.float(),
+            target_masks,
+            target_empty=target_empty,
+            prompt_valid=prompt_valid,
         )
 
         total_loss += result["loss"].item()

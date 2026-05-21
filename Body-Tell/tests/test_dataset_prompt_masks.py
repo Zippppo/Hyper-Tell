@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from body_tell.data.dataset import HyperBodyPromptDataset
+from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
 from body_tell.data.vocabulary import EMBEDDING_DIM, file_sha256, flatten_prompt_records
 
 
@@ -184,3 +184,41 @@ def test_prompt_dataset_pads_to_requested_volume_size(tmp_path: Path) -> None:
     assert sample["target_masks"].shape == (1, 6, 7, 8)
     assert sample["target_masks"].sum().item() in {6, 12}
 
+
+def test_prompt_collate_pads_mixed_prompt_counts() -> None:
+    spatial_shape = (2, 3, 4)
+    base = {
+        "occupancy": torch.ones(1, *spatial_shape),
+        "voxel_labels": torch.zeros(spatial_shape, dtype=torch.long),
+        "case_path": "case.npz",
+    }
+    sample_two = {
+        **base,
+        "case_id": "CASE_TWO",
+        "text_embeddings": torch.ones(2, 5),
+        "prompt_ids": torch.tensor([11, 12]),
+        "prompt_texts": ["liver", "spleen"],
+        "target_class_ids": [[1], [2]],
+        "target_empty": torch.tensor([False, False]),
+        "target_masks": torch.ones(2, *spatial_shape),
+    }
+    sample_three = {
+        **base,
+        "case_id": "CASE_THREE",
+        "text_embeddings": torch.full((3, 5), 2.0),
+        "prompt_ids": torch.tensor([21, 22, 23]),
+        "prompt_texts": ["liver", "spleen", "pancreas"],
+        "target_class_ids": [[1], [2], [3]],
+        "target_empty": torch.tensor([False, False, True]),
+        "target_masks": torch.full((3, *spatial_shape), 2.0),
+    }
+
+    batch = prompt_collate_fn([sample_two, sample_three])
+
+    assert batch["text_embeddings"].shape == (2, 3, 5)
+    assert batch["prompt_ids"].tolist() == [[11, 12, -1], [21, 22, 23]]
+    assert batch["target_empty"].tolist() == [[False, False, True], [False, False, True]]
+    assert batch["target_masks"].shape == (2, 3, *spatial_shape)
+    assert batch["prompt_valid"].tolist() == [[True, True, False], [True, True, True]]
+    assert torch.equal(batch["text_embeddings"][0, 2], torch.zeros(5))
+    assert batch["target_masks"][0, 2].sum().item() == 0

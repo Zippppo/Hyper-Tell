@@ -12,6 +12,7 @@ def compute_prompt_metrics(
     logits: Tensor,
     targets: Tensor,
     target_empty: Tensor | None = None,
+    prompt_valid: Tensor | None = None,
     threshold: float = 0.5,
     eps: float = 1e-6,
 ) -> Dict[str, float]:
@@ -28,8 +29,17 @@ def compute_prompt_metrics(
         target_empty = flat_targets.sum(dim=-1) == 0
     else:
         target_empty = target_empty.to(device=logits.device, dtype=torch.bool)
+    if prompt_valid is None:
+        prompt_valid = torch.ones_like(target_empty, dtype=torch.bool)
+    else:
+        expected_shape = tuple(target_empty.shape)
+        if tuple(prompt_valid.shape) != expected_shape:
+            raise ValueError(
+                f"prompt_valid shape {tuple(prompt_valid.shape)} != expected {expected_shape}"
+            )
+        prompt_valid = prompt_valid.to(device=logits.device, dtype=torch.bool)
 
-    positive = ~target_empty & (flat_targets.sum(dim=-1) > 0)
+    positive = prompt_valid & ~target_empty & (flat_targets.sum(dim=-1) > 0)
     if positive.any():
         pred_pos = flat_predictions[positive]
         target_pos = flat_targets[positive]
@@ -39,8 +49,9 @@ def compute_prompt_metrics(
     else:
         dice = float("nan")
 
-    if target_empty.any():
-        negative_fp_rate = flat_predictions[target_empty].mean().item()
+    negative = prompt_valid & target_empty
+    if negative.any():
+        negative_fp_rate = flat_predictions[negative].mean().item()
     else:
         negative_fp_rate = 0.0
 
@@ -51,4 +62,3 @@ def compute_prompt_metrics(
 
 
 __all__ = ["compute_prompt_metrics"]
-

@@ -82,7 +82,7 @@ class VoxTellBodyModel(nn.Module):
 
         self.fused_stage_count = min(
             self.config.num_maskformer_stages,
-            len(self.config.encoder_channels),
+            len(self.config.encoder_channels) - 1,
         )
         self.mask_projections = nn.ModuleList()
         for stage_index, channels in enumerate(self.config.encoder_channels[: self.fused_stage_count]):
@@ -203,7 +203,10 @@ class _VoxTellBodyDecoder(nn.Module):
 
             uses_intermediate_fusion = self._uses_fusion(target_stage) and target_stage > 0
             if uses_intermediate_fusion:
-                seg_layers.append(nn.Conv3d(target_channels + self.num_heads, 1, kernel_size=1))
+                if self.deep_supervision:
+                    seg_layers.append(nn.Conv3d(target_channels + self.num_heads, 1, kernel_size=1))
+                else:
+                    seg_layers.append(nn.Identity())
                 current_channels = target_channels + self.num_heads
             else:
                 seg_layers.append(nn.Identity())

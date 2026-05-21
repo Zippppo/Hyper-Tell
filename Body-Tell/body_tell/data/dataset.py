@@ -206,19 +206,32 @@ def fit_array_to_shape(
 
 
 def prompt_collate_fn(batch: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
-    """Collate fixed-prompt-count samples while preserving logging fields."""
+    """Collate samples, padding variable prompt counts within each batch."""
 
-    tensor_keys = {
-        "occupancy",
-        "voxel_labels",
-        "text_embeddings",
-        "prompt_ids",
-        "target_empty",
-        "target_masks",
-    }
     collated: Dict[str, Any] = {}
-    for key in tensor_keys:
+    for key in ("occupancy", "voxel_labels"):
         collated[key] = torch.stack([item[key] for item in batch], dim=0)
+
+    prompt_lengths = [int(item["prompt_ids"].shape[0]) for item in batch]
+    max_prompts = max(prompt_lengths)
+    prompt_valid = torch.zeros(len(batch), max_prompts, dtype=torch.bool)
+    for batch_index, num_prompts in enumerate(prompt_lengths):
+        prompt_valid[batch_index, :num_prompts] = True
+
+    def pad_prompt_tensor(key: str, pad_value: int | float | bool) -> torch.Tensor:
+        first = batch[0][key]
+        output = first.new_full((len(batch), max_prompts, *first.shape[1:]), pad_value)
+        for batch_index, item in enumerate(batch):
+            tensor = item[key]
+            num_prompts = int(tensor.shape[0])
+            output[batch_index, :num_prompts] = tensor
+        return output
+
+    collated["text_embeddings"] = pad_prompt_tensor("text_embeddings", 0.0)
+    collated["prompt_ids"] = pad_prompt_tensor("prompt_ids", -1)
+    collated["target_empty"] = pad_prompt_tensor("target_empty", True)
+    collated["target_masks"] = pad_prompt_tensor("target_masks", 0.0)
+    collated["prompt_valid"] = prompt_valid
     for key in ("case_id", "case_path", "prompt_texts", "target_class_ids"):
         collated[key] = [item[key] for item in batch]
     return collated
@@ -230,4 +243,3 @@ __all__ = [
     "prompt_collate_fn",
     "voxelize_sensor_points",
 ]
-
