@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 潜在 Bug 记录 · 2026-05-21</title>
+  <style>
+    body { margin: 0; background: #f7f9fc; color: #172033; font: 14px/1.62 Inter, system-ui, sans-serif; }
+    main { width: min(980px, calc(100% - 40px)); margin: 0 auto; padding: 36px 0 56px; }
+    h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.2; }
+    h2 { margin: 0 0 10px; font-size: 20px; }
+    section { background: #fff; border: 1px solid #d8e1ea; border-radius: 8px; padding: 18px 20px; margin: 14px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #e0e7ef; padding: 8px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef4f8; }
+    code { background: #edf4fb; border: 1px solid #c9d7e6; border-radius: 5px; padding: 1px 5px; }
+    pre { overflow: auto; background: #101827; color: #e5eef8; border-radius: 8px; padding: 12px 14px; }
+    ul { margin: 8px 0 0 20px; padding: 0; }
+    li { margin: 5px 0; }
+    .meta { color: #5f6d7e; margin: 0; }
+    .tag { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 650; }
+    .bad { background: #fff0f0; color: #b91c1c; }
+    .warn { background: #fff4df; color: #b45309; }
+    .info { background: #eaf1ff; color: #1d4ed8; }
+    .callout { border-left: 4px solid #b91c1c; background: #fff0f0; padding: 12px 14px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Body-Tell 潜在 Bug 记录</h1>
+  <p class="meta">日期 2026-05-21 · 状态 <span class="tag bad">潜在重大逻辑 Bug</span> · 当前仅记录风险, 暂不修改训练逻辑</p>
+
+  <section>
+    <h2>问题 1: <code>inside_body_empty</code> 进入词表</h2>
+    <div class="callout">
+      <strong>需要重点复查:</strong>
+      <code>Body-Tell/configs/label_vocab.json</code> 中保留了
+      <code>id=0</code> / <code>source_name=inside_body_empty</code> /
+      <code>canonical=inside body empty space</code>。
+      该项虽然被标记为不作为正样本训练、不计入 foreground eval, 但它仍拥有 prompts,
+      因此可能进入 prompt records、embedding cache 或后续推理候选集合。
+    </div>
+  </section>
+
+  <section>
+    <h2>问题 1 当前配置片段</h2>
+    <pre>{
+  "id": 0,
+  "source_name": "inside_body_empty",
+  "canonical": "inside body empty space",
+  "prompts": [
+    "inside body empty space",
+    "empty unlabeled body interior",
+    "non-organ space inside the body"
+  ],
+  "train_as_positive": false,
+  "eval_as_foreground": false,
+  "notes": "Background/empty interior label; excluded from foreground training and foreground mean Dice."
+}</pre>
+  </section>
+
+  <section>
+    <h2>问题 1 为什么可疑</h2>
+    <table>
+      <thead>
+        <tr><th>风险点</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>语义边界不清</td>
+          <td><code>inside_body_empty</code> 更像体内未标注/非器官空间, 不一定等价于普通背景, 也不一定适合作为可查询 anatomical prompt。</td>
+        </tr>
+        <tr>
+          <td>词表污染</td>
+          <td>即使 <code>train_as_positive=false</code>, 只要 prompts 被 flatten 或缓存 embedding, 后续开放 prompt 推理和候选类别枚举就可能误用它。</td>
+        </tr>
+        <tr>
+          <td>训练路径隐患</td>
+          <td>需要确认 sampler、target mask 构造、collate、loss、metric 全链路都严格遵守 ignore 语义, 没有把 <code>class_id=0</code> 当作普通 negative 或 foreground。</td>
+        </tr>
+        <tr>
+          <td>评估路径隐患</td>
+          <td>需要确认 foreground mean Dice、canonical prompt eval、negative false-positive rate 和任何 inference analysis 都不会把该类计入目标结构。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>问题 2: Label alternatives 扩展策略不符合预期</h2>
+    <div class="callout">
+      <strong>需要重点复查:</strong>
+      正确的 label vocabulary 扩展思路应该同时覆盖
+      <code>single-label alternatives</code>、<code>combined-label alternatives</code>,
+      并满足每个 concept 至少 5 个经过验证的 variants。当前
+      <code>label_vocab.json</code> 更像是为每个基础类写了少量 prompts, 再手工加入少量 aggregate,
+      与这个扩展契约不一致。
+    </div>
+    <table>
+      <thead>
+        <tr><th>期望契约</th><th>例子</th><th>当前风险</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>single-label alternatives</code></td>
+          <td>每个基础 label 应生成多种医学表达。例如 kidney 可以扩展为 <code>renal parenchyma</code>、<code>renal organ</code>、<code>kidney tissue</code> 等。</td>
+          <td>当前很多基础 label 只有 3 个 prompts, 且更像模板化同义词, 不足以覆盖临床/解剖表达的真实变体。</td>
+        </tr>
+        <tr>
+          <td><code>combined-label alternatives</code></td>
+          <td>生成临床上有意义的组合标签。例如 <code>left rib 1</code> 到 <code>left rib 12</code> 可以组合成 <code>left rib cage</code>; <code>left kidney</code> 和 <code>right kidney</code> 可以组合成 <code>kidneys</code> 或 <code>bilateral kidneys</code>。</td>
+          <td>当前 aggregate concepts 数量和覆盖范围有限, 可能遗漏许多临床上自然查询的组合概念。</td>
+        </tr>
+        <tr>
+          <td>至少 5 个 validated variants per concept</td>
+          <td>附录 C 要求每个 concept 至少生成 5 个经过验证的变体。</td>
+          <td>当前基础类通常 3 个 prompts、rib 类约 4 个 prompts、aggregate 通常 3 个 prompts, 没有达到至少 5 个 validated variants 的要求。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>问题 2 为什么可疑</h2>
+    <table>
+      <thead>
+        <tr><th>风险点</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Prompt coverage 不足</td>
+          <td>如果每个 concept 的语言变体不足, 模型可能只学到少量模板表达, 对真实医学查询、临床缩写或组织学表达泛化较弱。</td>
+        </tr>
+        <tr>
+          <td>组合概念不完整</td>
+          <td>只覆盖少量 aggregate 会让模型缺少自然组合查询能力, 例如 rib cage、bilateral organs、organ systems 或解剖区域级查询。</td>
+        </tr>
+        <tr>
+          <td>Validated variants 缺失</td>
+          <td>当前 prompts 看起来没有显式记录人工或规则验证状态, 无法证明每个 concept 已满足“至少 5 个经过验证的变体”。</td>
+        </tr>
+        <tr>
+          <td>训练目标与文档契约漂移</td>
+          <td>如果附录 C 是设计契约, 当前词表会导致训练数据、embedding cache、评估 prompt set 都建立在不完整的 label expansion 上。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>后续审计清单</h2>
+    <ul>
+      <li><span class="tag warn">Label semantics</span> 回到 <code>Body-Tell/Dataset/dataset_info.json</code> 和原始 <code>voxel_labels</code>, 确认 label 0 的真实含义。</li>
+      <li><span class="tag warn">Vocabulary contract</span> 判断非 foreground / ignore 类是否应该完全移出 prompt records 和 embedding cache, 还是仅作为 metadata 保留。</li>
+      <li><span class="tag warn">Sampler</span> 检查 positive/negative prompt 采样是否可能选择 <code>class_id=0</code>。</li>
+      <li><span class="tag warn">Mask target</span> 检查 target mask 构造是否可能为 <code>inside_body_empty</code> 生成监督 mask。</li>
+      <li><span class="tag warn">Evaluation</span> 检查所有评估入口是否只用 <code>eval_as_foreground=true</code> 的类别。</li>
+      <li><span class="tag warn">Single-label variants</span> 为每个基础 label 审计医学表达覆盖, 例如 kidney/renal parenchyma/renal organ/kidney tissue 等是否完整且 validated。</li>
+      <li><span class="tag warn">Combined-label variants</span> 系统性审计临床有意义的组合标签, 例如 left rib cage、kidneys、bilateral kidneys 等是否进入 concepts。</li>
+      <li><span class="tag warn">Variant count</span> 检查每个 concept 是否满足至少 5 个 validated variants; 不满足时需要扩展词表并重建 embedding cache。</li>
+      <li><span class="tag info">Decision</span> 如果确认是逻辑 bug, 后续应明确修复策略: 删除 prompts、重建 embedding cache、更新测试并补充 regression test。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>当前建议</h2>
+    <p>
+      在完成审计前, 暂时把 <code>inside_body_empty</code> 和 label alternatives 扩展不足都视为高优先级潜在 bug。
+      不应默认把 <code>inside_body_empty</code> 作为合法 anatomical query、foreground 类或可解释的模型输出目标;
+      也不应默认当前 <code>label_vocab.json</code> 已经满足附录 C 的 variant 覆盖要求。
+    </p>
+  </section>
+</main>
+</body>
+</html>
