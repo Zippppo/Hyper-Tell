@@ -1,0 +1,26 @@
+project: Body-Tell
+phase: 1
+model:
+  name: VoxTellBodyModel
+  input_channels: 1
+  encoder_channels: [32, 64, 128, 256, 320]
+  text_embedding_dim: 2560
+  query_dim: 2048
+  text_projection_hidden_dim: 2048
+  transformer_num_heads: 8
+  transformer_layers: 6
+  transformer_feedforward_dim: 2048
+  decoder_layer: -1
+  num_maskformer_stages: 5
+  num_heads: 32
+  deep_supervision: false
+data:
+  root: Body-Tell
+  volume_size: [144, 129, 256]
+  num_positive: 2
+  num_negative: 1
+  min_voxels: 1
+loss:
+  bce_weight: 0.5
+  dice_weight: 0.5
+

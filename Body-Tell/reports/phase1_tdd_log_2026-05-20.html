@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell Phase 1 TDD Log · 2026-05-20</title>
+  <style>
+    body { margin: 0; background: #f7f9fc; color: #172033; font: 14px/1.62 Inter, system-ui, sans-serif; }
+    main { width: min(1120px, calc(100% - 40px)); margin: 0 auto; padding: 36px 0 56px; }
+    h1 { margin: 0 0 6px; font-size: 32px; }
+    h2 { margin: 0 0 10px; font-size: 20px; }
+    section { background: #fff; border: 1px solid #d8e1ea; border-radius: 10px; padding: 18px 20px; margin: 14px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #e0e7ef; padding: 8px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef4f8; }
+    code { background: #edf4fb; border: 1px solid #c9d7e6; border-radius: 5px; padding: 1px 5px; }
+    pre { overflow: auto; background: #0d1728; color: #d8e6f5; border-radius: 8px; padding: 12px 14px; }
+    .meta { color: #5f6d7e; }
+    .tag { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 650; }
+    .red { background: #fdeaea; color: #9b2f2f; }
+    .green { background: #e6f4ed; color: #176b47; }
+    .blue { background: #e3f3f5; color: #0f6b7a; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Body-Tell Phase 1 TDD Log</h1>
+  <p class="meta">日期 2026-05-20 · 目标: 按 Phase 1 计划逐步建立 VoxTell-style prompt segmentation 闭环</p>
+
+  <section>
+    <h2>记录原则</h2>
+    <ul>
+      <li>每个小阶段先写测试,确认失败,再实现,再记录验证结果。</li>
+      <li>Phase 1 新代码限定在 <code>Body-Tell/</code> 内,避免依赖 Hyper-Tell 根目录训练代码。</li>
+      <li>日志持续追加,记录测试命令、结果、设计取舍和后续风险。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>阶段记录</h2>
+    <table>
+      <thead>
+        <tr><th>时间</th><th>状态</th><th>范围</th><th>记录</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>2026-05-20</td>
+          <td><span class="tag red">RED</span></td>
+          <td>Dataset / Model / Loss 测试契约</td>
+          <td>
+            新增测试文件:
+            <code>tests/test_dataset_prompt_masks.py</code>,
+            <code>tests/test_model_shapes.py</code>,
+            <code>tests/test_prompt_loss_backward.py</code>。
+            预期当前失败,因为 Phase 1 的 dataset、VoxTell-body model、prompt loss/metrics 尚未实现。
+            实际命令 <code>pytest Body-Tell/tests -q</code> 返回 3 个 collection error:
+            <code>body_tell.data.dataset</code>, <code>body_tell.models</code>,
+            <code>body_tell.losses</code> 尚不存在。
+          </td>
+        </tr>
+        <tr>
+          <td>2026-05-20</td>
+          <td><span class="tag green">GREEN</span></td>
+          <td>Phase 1 最小闭环实现</td>
+          <td>
+            新增 <code>body_tell/data/dataset.py</code>、
+            <code>body_tell/models/transformer.py</code>、
+            <code>body_tell/models/voxtell_body_model.py</code>、
+            <code>body_tell/losses/prompt_losses.py</code>、
+            <code>body_tell/metrics/prompt_metrics.py</code>。
+            命令 <code>pytest Body-Tell/tests -q</code> 通过:
+            <code>6 passed in 18.78s</code>。补充配置防护后复跑:
+            <code>6 passed in 15.97s</code>。
+          </td>
+        </tr>
+        <tr>
+          <td>2026-05-20</td>
+          <td><span class="tag blue">NOTE</span></td>
+          <td>Volume size</td>
+          <td>
+            Phase 1 计划文档正文提到 <code>(144,128,268)</code>,但当前 Phase 0
+            <code>class_presence.json</code> 的
+            <code>shape_summary.recommended_volume_size</code> 是
+            <code>[144,129,256]</code>。本阶段配置
+            <code>configs/phase1_voxtell_body.yaml</code> 暂按 Phase 0 统计产物设置,
+            后续 full training 前需要最终确认是否采用 padding 到计划尺寸或统计尺寸。
+          </td>
+        </tr>
+        <tr>
+          <td>2026-05-20</td>
+          <td><span class="tag green">SMOKE</span></td>
+          <td>真实数据单样本 Dataset</td>
+          <td>
+            使用 <code>HyperBodyPromptDataset(root='Body-Tell', split='train',
+            volume_size=(144,129,256), num_positive=2, num_negative=1)</code>
+            读取 <code>BDMAP_00004005</code> 成功。结果:
+            <code>occupancy=(1,144,129,256)</code>,
+            <code>text_embeddings=(3,2560)</code>,
+            <code>target_masks=(3,144,129,256)</code>,
+            mask voxel sums <code>[57,222,0]</code>,
+            <code>target_empty=[False,False,True]</code>。
+          </td>
+        </tr>
+            <td>2026-05-21</td>
+          <td><span class="tag red">RED</span></td>
+          <td>Training loop 集成测试</td>
+          <td>
+            新增 <code>tests/test_train_loop.py</code>:
+            <code>test_mini_overfit_loss_decreases</code> 和
+            <code>test_mini_overfit_dice_improves</code>。
+            验证 dataset→model→loss→optimizer 闭环在 synthetic 数据上 loss 下降、Dice 上升。
+          </td>
+        </tr>
+        <tr>
+          <td>2026-05-21</td>
+          <td><span class="tag green">GREEN</span></td>
+          <td>Training loop 测试通过 + train.py 实现</td>
+          <td>
+            <code>pytest Body-Tell/tests -q</code>: <code>8 passed in 39.21s</code>。
+            实现 <code>Body-Tell/train.py</code>: config 驱动训练循环,
+            支持 <code>--smoke</code>、<code>--amp</code>、<code>--volume-size</code> 覆盖、
+            DDP (<code>torchrun</code>) 多卡训练。
+          </td>
+        </tr>
+        <tr>
+          <td>2026-05-21</td>
+          <td><span class="tag red">BUG</span></td>
+          <td>Positional encoding NaN</td>
+          <td>
+            全量模型 (query_dim=2048) forward 输出全 NaN。
+            根因: <code>sinusoidal_position_encoding_3d</code> 使用 <code>2^i * pi</code> 频率,
+            当 dim=2048 时需要 342 个频率,<code>2^342</code> 溢出 float32。
+            修复: 改用标准 transformer 频率调度
+            <code>exp(-i * log(T) / num_freq)</code>,T=10000。
+            修复后 logits min/max = [-4.73, 3.28],无 NaN/Inf。
+          </td>
+        </tr>
+        <tr>
+          <td>2026-05-21</td>
+          <td><span class="tag green">SMOKE</span></td>
+          <td>真实数据 4 样本 Smoke Train</td>
+          <td>
+            命令: <code>python Body-Tell/train.py --smoke --smoke-samples 4 --epochs 100
+            --lr 5e-4 --amp --volume-size 72 64 128</code>。
+            结果: loss <code>0.6807 → 0.4943</code> (27.4% reduction),
+            fg_dice <code>0.0000 → 0.0352</code>,
+            neg_fp <code>0.0208 → 0.0009</code>。
+            模型有学习信号: BCE 快速下降 (0.36→0.02),Dice 开始改善。
+            4090 (9GB free) 无法跑全量分辨率 (144,129,256),需 A100。
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>完成度对照 (vs Phase 1 实施计划)</h2>
+    <table>
+      <thead>
+        <tr><th>计划 Section 8 步骤</th><th>状态</th><th>交付物</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1. Copy baseline</td>
+          <td><span class="tag green">DONE</span></td>
+          <td><code>body_tell/models/voxtell_body_model.py</code>, <code>transformer.py</code></td>
+        </tr>
+        <tr>
+          <td>2. Input adaptation</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>输入通道=1, binary occupancy; 无 NIfTI/spacing 依赖</td>
+        </tr>
+        <tr>
+          <td>3. Shape adaptation</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>encoder channels [32,64,128,256,320], 5-stage decoder, positional encoding 适配 (144,129,256)</td>
+        </tr>
+        <tr>
+          <td>4. Dataset adaptation</td>
+          <td><span class="tag green">DONE</span></td>
+          <td><code>body_tell/data/dataset.py</code> — HyperBodyPromptDataset, 2pos+1neg prompt sampling, class_presence.json 集成</td>
+        </tr>
+        <tr>
+          <td>5. Vocab &amp; cache validation</td>
+          <td><span class="tag green">DONE</span></td>
+          <td><code>body_tell/data/vocabulary.py</code> — vocab_hash/model_name/embedding_dim 校验; <code>scripts/build_prompt_embedding_cache.py</code></td>
+        </tr>
+        <tr>
+          <td>6. Loss adaptation</td>
+          <td><span class="tag green">DONE</span></td>
+          <td><code>body_tell/losses/prompt_losses.py</code> — BCE + BinaryDice, deep supervision 多尺度 target downsample</td>
+        </tr>
+        <tr>
+          <td style="background:#fff4df; font-weight:bold;">7. Smoke train</td>
+          <td><span class="tag green">DONE</span></td>
+          <td><code>train.py</code> 实现 (DDP + AMP); 4 样本 smoke 确认 loss 下降 27%, Dice 0→0.035</td>
+        </tr>
+        <tr>
+          <td>8. Full train</td>
+          <td><span class="tag red">TODO</span></td>
+          <td>需要: Slurm A100 全量训练, val split 评估, <code>scripts/evaluate_70_prompts.py</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:18px;">Section 11 完成标准</h2>
+    <table>
+      <thead>
+        <tr><th>标准</th><th>状态</th><th>备注</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Body-Tell/ 可独立运行</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>不 import Hyper-Tell 根目录代码</td>
+        </tr>
+        <tr>
+          <td>VoxTell 主体组件已复制改造</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>prompt decoder, transformer, dynamic mask fusion, text embedding</td>
+        </tr>
+        <tr>
+          <td>真实数据 batch forward/backward 输出 (B,N,D,H,W)</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>Smoke train 在真实数据上完成 100 epochs forward/backward, 输出 (1,3,72,64,128)</td>
+        </tr>
+        <tr>
+          <td>2-4 样本 mini-overfit Dice 上升</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>Dice 0→0.035, loss 下降 27%; 全量分辨率需 A100 进一步验证</td>
+        </tr>
+        <tr>
+          <td>70 prompts 评估输出 HTML/CSV</td>
+          <td><span class="tag red">TODO</span></td>
+          <td>依赖 evaluate_70_prompts.py</td>
+        </tr>
+        <tr>
+          <td>A/B/C/D 对照实验报告</td>
+          <td><span class="tag red">TODO</span></td>
+          <td>依赖 full train 完成</td>
+        </tr>
+        <tr>
+          <td>不 import models.hyperbolic</td>
+          <td><span class="tag green">DONE</span></td>
+          <td>无 hyperbolic 依赖</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="border: 2px solid #9a5b00; background: #fff9ed;">
+    <h2 style="color:#9a5b00;">▶ 下一步: 从这里继续</h2>
+    <p>当前位于 <strong>训练计划第 8 步 (Full train)</strong> 的起点。Smoke train 已通过,训练管道就绪。</p>
+    <ol>
+      <li><strong>Slurm 全量训练</strong> — <code>sbatch slurm/body-tell-phase1.sh</code>, 2×A100 80G, 原始分辨率 (144,129,256), 50 epochs。</li>
+      <li><strong>实现 <code>Body-Tell/scripts/evaluate_70_prompts.py</code></strong> — 对 val split 逐 prompt 评估, 输出 per-classgative fp rate。</li>
+      <li><strong>实现 <code>Body-Tell/infer.py</code></strong> — 单样本推理脚本。</li>
+      <li><strong>对照实验 A/B/C/D</strong> — 全量训练完成后对比。</li>
+    </ol>
+    <p>缺失文件清单:</p>
+    <ul>
+      <li><code>Body-Tell/infer.py</code></li>
+      <li><code>Body-Tell/scripts/evaluate_70_prompts.py</code></li>
+    </ul>
+    <p>已就绪:</p>
+    <ul>
+      <li><code>Body-Tell/train.py</code> — DDP + AMP + volume-size override</li>
+      <li><code>slurm/body-tell-phase1.sh</code> — Slurm 提交脚本</li>
+    </ul>
+  </section>
+
+</main>
+</body>
+</html>
