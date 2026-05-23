@@ -8,6 +8,7 @@ __pycache__/
 Body-Tell/Dataset/
 Body-Tell/artifacts/
 run_train.sh
+Body-Tell/outputs/
 
 # Distribution / packaging
 .Python

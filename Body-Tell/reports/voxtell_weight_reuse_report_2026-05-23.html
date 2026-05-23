@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 复用 VoxTell 权重审计报告 · 2026-05-23</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --text: #172033;
+      --muted: #5d6b7c;
+      --line: #d9e2ec;
+      --panel: #ffffff;
+      --soft: #eef4f8;
+      --blue: #1d4ed8;
+      --green: #176b47;
+      --amber: #9a5b13;
+      --red: #a12d2d;
+      --purple: #6045a8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.62 Inter, "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 36px 0 60px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    p { margin: 8px 0; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin: 14px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid #e3ebf2;
+      padding: 8px 9px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--soft);
+      font-weight: 700;
+    }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      background: #edf4fb;
+      border: 1px solid #c9d7e6;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+    pre {
+      overflow: auto;
+      background: #f6f8fa;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 13px 14px;
+      line-height: 1.45;
+      font-size: 12px;
+    }
+    ul, ol { margin: 8px 0 0 20px; padding: 0; }
+    li { margin: 5px 0; }
+    .meta { color: var(--muted); margin: 0 0 16px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      background: var(--soft);
+      border: 1px solid #d6e2ec;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 86px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 23px;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .ok { background: #e6f4ed; color: var(--green); }
+    .warn { background: #fff3dc; color: var(--amber); }
+    .bad { background: #ffe8e8; color: var(--red); }
+    .info { background: #e9f2ff; color: var(--blue); }
+    .reuse { background: #eee9ff; color: var(--purple); }
+    .callout {
+      border-left: 4px solid var(--blue);
+      background: #eef5ff;
+      padding: 12px 14px;
+      border-radius: 6px;
+    }
+    .callout.warnbox {
+      border-left-color: var(--amber);
+      background: #fff8e8;
+    }
+    .callout.goodbox {
+      border-left-color: var(--green);
+      background: #eefaf4;
+    }
+    .small { color: var(--muted); font-size: 13px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    @media (max-width: 900px) {
+      main { width: min(100% - 24px, 1180px); padding-top: 24px; }
+      .grid { grid-template-columns: 1fr 1fr; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Body-Tell 复用 VoxTell 权重审计报告</h1>
+  <p class="meta">日期 2026-05-23 · 范围: <code>Body-Tell/</code> 当前 Phase 1 模型、<code>VoxTell/</code> 原始代码、VoxTell v1.1 官方 checkpoint、当前 Body-Tell 训练日志</p>
+
+  <section>
+    <h2>结论摘要</h2>
+    <div class="callout goodbox">
+      <p><strong>VoxTell v1.1 的 prompt/text decoder 权重可以复用到 Body-Tell 当前模型。</strong> 通过模块名映射后, <code>project_visual_embed</code>、<code>project_text_embed</code>、<code>mask_projections</code> 和 <code>transformer_decoder</code> 都能 100% 按 shape 对齐加载。</p>
+      <p>按当前 Body-Tell 架构统计, 可从 VoxTell 权重初始化 <strong>312,379,424 / 328,980,832</strong> 个参数, 约占 <strong>95.0%</strong>。不能直接加载的是 Body-Tell 自己的轻量 encoder/decoder, 约 <strong>16.6M</strong> 参数。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>权重来源</h2>
+    <table>
+      <thead>
+        <tr><th>文件</th><th class="num">大小</th><th>判断</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>VoxTell/models-weight/voxtell/voxtell_v1.1/fold_0/checkpoint_final.pth</code></td>
+          <td class="num">1.77GB</td>
+          <td><span class="tag ok">可用</span> VoxTell v1.1 官方 checkpoint, 包含 <code>network_weights</code>。</td>
+        </tr>
+        <tr>
+          <td><code>checkpoints/best.pth</code></td>
+          <td class="num">82.8MB</td>
+          <td><span class="tag bad">不适用</span> key 前缀为 <code>unet</code>、<code>hyp_head</code>、<code>label_emb</code>, 属于旧 HyperBody/UNet 权重, 不是 VoxTell prompt decoder 权重。</td>
+        </tr>
+        <tr>
+          <td><code>hyperbody-best.pth</code></td>
+          <td class="num">82.8MB</td>
+          <td><span class="tag bad">不适用</span> 与 <code>checkpoints/best.pth</code> 结构一致, 不是本次要复用的 VoxTell 权重。</td>
+        </tr>
+        <tr>
+          <td><code>Body-Tell/checkpoints/phase1_bz2/best.pt</code></td>
+          <td class="num">3.95GB</td>
+          <td><span class="tag info">当前基线</span> Body-Tell Phase 1 已训练 checkpoint, epoch 27, val foreground Dice <code>0.3257</code>。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>当前基线</h2>
+    <p>参考 <code>wandb/wandb/run-20260521_212706-dvzwut5o/files/output.log</code> 和 <code>Body-Tell/checkpoints/phase1_bz2/best.pt</code>:</p>
+    <div class="grid">
+      <div class="metric"><span>Body-Tell 参数量</span><strong>328.98M</strong></div>
+      <div class="metric"><span>当前 best epoch</span><strong>27</strong></div>
+      <div class="metric"><span>Best val fg Dice</span><strong>0.3257</strong></div>
+      <div class="metric"><span>Best val loss</span><strong>0.3396</strong></div>
+    </div>
+    <p>日志显示训练可以正常下降: epoch 5 val foreground Dice 为 <code>0.2571</code>, epoch 27 到达当前最佳 <code>0.3257</code>。因此建议把 VoxTell 权重复用作为 warm-start A/B 实验, 而不是替换掉当前已经可训练的 Body-Tell 路线。</p>
+  </section>
+
+  <section>
+    <h2>模型结构对齐</h2>
+    <table>
+      <thead>
+        <tr><th>项目</th><th>VoxTell v1.1</th><th>Body-Tell 当前配置</th><th>结论</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Text encoder</td>
+          <td><code>Qwen/Qwen3-Embedding-4B</code></td>
+          <td><code>Qwen/Qwen3-Embedding-4B</code></td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Instruction</td>
+          <td><code>Given an anatomical term query, retrieve the precise anatomical entity and location it represents</code></td>
+          <td>同一条 instruction</td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Text embedding dim</td>
+          <td><code>2560</code></td>
+          <td><code>2560</code></td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Query dim</td>
+          <td><code>2048</code></td>
+          <td><code>2048</code></td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Transformer layers</td>
+          <td><code>6</code></td>
+          <td><code>6</code></td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Transformer heads</td>
+          <td><code>8</code></td>
+          <td><code>8</code></td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Mask heads</td>
+          <td><code>32</code></td>
+          <td><code>32</code></td>
+          <td><span class="tag ok">一致</span></td>
+        </tr>
+        <tr>
+          <td>Image backbone</td>
+          <td>nnU-Net style <code>ResidualEncoder</code>, 6 stages, CT/MRI/PET patch input</td>
+          <td>轻量 <code>_BodyEncoder</code>, 5 stages, occupancy grid input</td>
+          <td><span class="tag warn">不同</span> 不建议直接加载 image encoder/decoder。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>State Dict 审计结果</h2>
+    <div class="grid">
+      <div class="metric"><span>VoxTell tensors</span><strong>1095</strong></div>
+      <div class="metric"><span>VoxTell params/buffers</span><strong>724.69M</strong></div>
+      <div class="metric"><span>Body-Tell tensors</span><strong>196</strong></div>
+      <div class="metric"><span>Body-Tell params/buffers</span><strong>328.98M</strong></div>
+    </div>
+
+    <h3>直接同名加载</h3>
+    <table>
+      <thead>
+        <tr><th>匹配方式</th><th class="num">tensor 数</th><th class="num">参数数</th><th>覆盖模块</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>同名且 shape 一致</td>
+          <td class="num">114</td>
+          <td class="num">261,300,224</td>
+          <td><code>transformer_decoder</code>, <code>project_text_embed</code></td>
+        </tr>
+        <tr>
+          <td>同名但 shape 不一致</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+          <td><span class="tag ok">无 shape 冲突</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>推荐名称映射后加载</h3>
+    <table>
+      <thead>
+        <tr><th>VoxTell key 前缀</th><th>Body-Tell key 前缀</th><th class="num">覆盖率</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>project_bottleneck_embed.</code></td>
+          <td><code>project_visual_embed.</code></td>
+          <td class="num">100%</td>
+          <td>两者都是 visual memory projection, 当前 selected channel 都是 <code>320</code>, shape 完全一致。</td>
+        </tr>
+        <tr>
+          <td><code>project_text_embed.</code></td>
+          <td><code>project_text_embed.</code></td>
+          <td class="num">100%</td>
+          <td>同名同 shape, 可直接加载。</td>
+        </tr>
+        <tr>
+          <td><code>project_to_decoder_channels.</code></td>
+          <td><code>mask_projections.</code></td>
+          <td class="num">100%</td>
+          <td>VoxTell 的 decoder-channel projections 对应 Body-Tell 的 dynamic mask projections。Body-Tell 当前实际有 4 个 projection stage。</td>
+        </tr>
+        <tr>
+          <td><code>transformer_decoder.</code></td>
+          <td><code>transformer_decoder.</code></td>
+          <td class="num">100%</td>
+          <td>参数名和 shape 完全一致。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table>
+      <thead>
+        <tr><th>Body-Tell 模块</th><th class="num">可由 VoxTell 初始化</th><th class="num">模块总参数</th><th class="num">覆盖率</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>project_visual_embed</code></td><td class="num">4,853,760</td><td class="num">4,853,760</td><td class="num">100.000%</td></tr>
+        <tr><td><code>project_text_embed</code></td><td class="num">9,441,280</td><td class="num">9,441,280</td><td class="num">100.000%</td></tr>
+        <tr><td><code>mask_projections</code></td><td class="num">46,225,440</td><td class="num">46,225,440</td><td class="num">100.000%</td></tr>
+        <tr><td><code>transformer_decoder</code></td><td class="num">251,858,944</td><td class="num">251,858,944</td><td class="num">100.000%</td></tr>
+        <tr><td><code>encoder</code></td><td class="num">0</td><td class="num">8,492,000</td><td class="num">0.000%</td></tr>
+        <tr><td><code>decoder</code></td><td class="num">0</td><td class="num">8,109,408</td><td class="num">0.000%</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>推荐加载策略</h2>
+    <div class="callout">
+      <p>建议新增一个显式 warm-start 入口, 例如 <code>--init-from-voxtell VoxTell/models-weight/voxtell/voxtell_v1.1</code>, 只加载 prompt decoder 相关权重, 不加载 image encoder/decoder。</p>
+    </div>
+    <pre><code>prefix_maps = {
+    "project_bottleneck_embed.": "project_visual_embed.",
+    "project_text_embed.": "project_text_embed.",
+    "project_to_decoder_channels.": "mask_projections.",
+    "transformer_decoder.": "transformer_decoder.",
+}</code></pre>
+    <p>加载时应该记录:</p>
+    <ul>
+      <li>成功加载的 tensor 数和参数数。</li>
+      <li>跳过的 VoxTell key 列表或 prefix 统计。</li>
+      <li>Body-Tell 中仍保持随机初始化的 key 列表或 prefix 统计。</li>
+      <li>若出现同名 shape mismatch, 应直接报错, 不要静默跳过。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>主要风险</h2>
+    <table>
+      <thead>
+        <tr><th>风险</th><th>证据</th><th>影响</th><th>建议</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Transformer forward 语义不完全一致</td>
+          <td>VoxTell 原始 <code>forward_pre</code> 只做 cross-attention + FFN; Body-Tell 当前 <code>forward_pre</code> 加了 self-attention。</td>
+          <td>虽然参数 shape 可以加载, 但权重语义不完全等价。直接加载全部 transformer 权重可能引入不稳定 warm-start。</td>
+          <td>若目标是最大化复用 VoxTell 权重, 建议把 pretrained 实验分支的 transformer 语义对齐 VoxTell 原始实现。</td>
+        </tr>
+        <tr>
+          <td>Transformer activation 不一致</td>
+          <td>VoxTell 构造 <code>TransformerDecoderLayer(..., normalize_before=True)</code> 时使用默认 activation <code>relu</code>; Body-Tell 当前显式使用 <code>gelu</code>。</td>
+          <td>FFN 权重 shape 相同, 但非线性不同会改变已训练表示。</td>
+          <td>pretrained A/B 实验中建议使用 <code>relu</code> 以贴近 VoxTell 权重训练环境。</td>
+        </tr>
+        <tr>
+          <td>Visual domain 不同</td>
+          <td>VoxTell 输入为医学影像 intensity patch; Body-Tell 输入为 occupancy grid。</td>
+          <td>image encoder/decoder 权重跨域复用收益不确定, 且当前结构不对齐。</td>
+          <td>第一阶段只复用 prompt decoder; 不加载 VoxTell encoder/decoder。</td>
+        </tr>
+        <tr>
+          <td>Body-Tell 实际 fusion stage 数和配置名有漂移</td>
+          <td>配置写 <code>num_maskformer_stages: 5</code>, 但当前 5 个 encoder channels 只能产生 4 个 upsampling/fusion stages。</td>
+          <td>容易误判复用范围。VoxTell 的 5 个 projection 中只有前 4 个映射到 Body-Tell 当前模型。</td>
+          <td>后续可把字段改名为 <code>num_fusion_stages</code>, 或在超出上限时显式 warning。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>除权重外值得复用的 VoxTell 内容</h2>
+    <table>
+      <thead>
+        <tr><th>内容</th><th>是否已经复用</th><th>建议</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Qwen prompt embedding 方式</td>
+          <td><span class="tag ok">基本已复用</span> Body-Tell 使用相同 text encoder、instruction、last-token pooling 和 2560 维 embedding。</td>
+          <td>保留当前实现。后续只需要确保 prompt cache metadata 严格记录 model name、instruction、vocab hash。</td>
+        </tr>
+        <tr>
+          <td>Prompt decoder + multi-stage mask projection</td>
+          <td><span class="tag reuse">应优先复用</span> 当前 shape 已对齐。</td>
+          <td>作为 warm-start 初始化方案落地, 并做 A/B 实验。</td>
+        </tr>
+        <tr>
+          <td>Sliding-window inference、pad/crop、Gaussian aggregation</td>
+          <td><span class="tag warn">尚未复用</span></td>
+          <td>有价值, 但优先级低于权重 warm-start。Body-Tell 输入是 occupancy grid, 不能直接照搬医学影像 normalization。</td>
+        </tr>
+        <tr>
+          <td>原始 nnU-Net ResidualEncoder/Decoder</td>
+          <td><span class="tag bad">不建议直接复用</span></td>
+          <td>当前 Body-Tell 已经能训练, 且数据域不同。除非计划做更大的架构回归实验, 否则不要作为第一优先级。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>推荐实验计划</h2>
+    <ol>
+      <li>新增 <code>--init-from-voxtell</code> 参数和一个独立的 partial loader, 只加载 prompt decoder 映射权重。</li>
+      <li>新增一个 pretrained 配置, 明确记录 <code>transformer_activation: relu</code> 和 <code>voxtell_forward_compat: true</code>。</li>
+      <li>保持当前 <code>slurm/body-tell-phase1.sh</code> 的 batch size、lr、loss、data split 不变, 只比较初始化差异。</li>
+      <li>跑两组 A/B:
+        <ul>
+          <li>Baseline: 当前随机初始化 Body-Tell, 当前 best val foreground Dice <code>0.3257</code>。</li>
+          <li>Warm-start: 加载 VoxTell prompt decoder 权重, encoder/decoder 随机初始化。</li>
+        </ul>
+      </li>
+      <li>对比 early convergence、best val foreground Dice、negative fp rate 和 per-class Dice。若 warm-start early convergence 明显更快但最终 Dice 无提升, 再考虑冻结/分层学习率。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>最终判断</h2>
+    <div class="callout warnbox">
+      <p><strong>可以复用, 但要按 prompt decoder warm-start 复用, 不要整网强行加载。</strong></p>
+      <p>从参数覆盖率看, VoxTell v1.1 对 Body-Tell 当前模型非常有价值: 约 95% 参数可以初始化, 且这些参数正是文本条件分割任务最关键的 prompt decoder 部分。从工程风险看, 第一版实现需要同时解决 transformer forward 语义差异, 否则 shape 匹配并不等于行为等价。</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 参数量审计报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d9e0e8;
+      --panel: #f7f9fb;
+      --accent: #176b87;
+      --accent2: #9b3d2e;
+      --good: #26734d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.55;
+    }
+    header {
+      padding: 36px 44px 26px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f7fbfd 0%, #ffffff 100%);
+    }
+    main { padding: 28px 44px 48px; max-width: 1320px; }
+    h1 { margin: 0 0 10px; font-size: 30px; letter-spacing: 0; }
+    h2 { margin: 32px 0 12px; font-size: 21px; }
+    h3 { margin: 20px 0 10px; font-size: 16px; }
+    p { margin: 8px 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+      background: #eef3f7;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    .meta { color: var(--muted); }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .cards > div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: var(--panel);
+    }
+    .cards span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .cards strong {
+      display: block;
+      font-size: 22px;
+      color: var(--accent);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 24px;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    th {
+      text-align: left;
+      background: #f1f5f8;
+      color: #24313d;
+      position: sticky;
+      top: 0;
+    }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .note {
+      color: var(--muted);
+      border-left: 4px solid var(--line);
+      padding-left: 12px;
+    }
+    .warn { color: var(--accent2); font-weight: 650; }
+    .ok { color: var(--good); font-weight: 650; }
+    .grid2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }
+    pre {
+      overflow: auto;
+      background: #f6f8fa;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      max-height: 420px;
+    }
+    @media (max-width: 900px) {
+      header, main { padding-left: 20px; padding-right: 20px; }
+      .grid2 { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Body-Tell 参数量审计报告</h1>
+    <p class="meta">生成时间：2026-05-23T12:00:52；入口配置：<code>Body-Tell/configs/phase1_voxtell_body.yaml</code></p>
+  </header>
+  <main>
+    <section>
+      <h2>结论</h2>
+      <div class="cards">
+        <div><span>总参数</span><strong>328,980,832</strong></div>
+        <div><span>可训练参数</span><strong>328,980,832</strong></div>
+        <div><span>冻结参数</span><strong>0</strong></div>
+        <div><span>训练日志参数量</span><strong>328,980,832</strong></div>
+        <div><span>日志交叉校验</span><strong class="ok">match</strong></div>
+        <div><span>FP32 参数内存</span><strong>1.23 GiB</strong></div>
+      </div>
+      <p>本次以 <code>Body-Tell/train.py::build_model()</code> 和 <code>phase1_voxtell_body.yaml</code> 实例化模型后统计，因此覆盖训练时真实使用的 Body-Tell 架构。当前模型没有冻结层，<strong>328.98M 参数全部参与 AdamW 优化</strong>。</p>
+      <p class="note">参数量本身已经足以支持强记忆能力；结合日志里训练 Dice 持续上升、验证 Dice 基本平台化，过拟合判断是合理的。但参数量不是唯一原因，还需要同时看数据划分、prompt 分布、标签稀疏度和验证集类别覆盖。</p>
+    </section>
+
+    <section>
+      <h2>训练配置摘要</h2>
+      <div class="cards">
+        <div><span>模型</span><strong>VoxTellBodyModel</strong></div>
+        <div><span>encoder_channels</span><strong>[32, 64, 128, 256, 320]</strong></div>
+        <div><span>query_dim</span><strong>2048</strong></div>
+        <div><span>text_embedding_dim</span><strong>2560</strong></div>
+        <div><span>Transformer layers</span><strong>6</strong></div>
+        <div><span>mask heads</span><strong>32</strong></div>
+        <div><span>requested mask stages</span><strong>5</strong></div>
+        <div><span>effective fused stages</span><strong>4</strong></div>
+        <div><span>selected encoder stage</span><strong>4</strong></div>
+        <div><span>mask projection modules</span><strong>4</strong></div>
+      </div>
+      <p class="note">注意：配置请求 <code>num_maskformer_stages=5</code>，但代码使用 <code>min(num_maskformer_stages, len(encoder_channels)-1)</code>，所以本次运行时实际 fused stage 数是 <code>4</code>，对应 <code>4</code> 个 mask projection 模块。</p>
+    </section>
+
+    <section>
+      <h2>顶层模块参数分布</h2>
+      <table>
+        <thead><tr><th>模块</th><th class="num">参数</th><th class="num">简写</th><th class="num">占比</th><th class="num">可训练</th></tr></thead>
+        <tbody><tr><td><code>transformer_decoder</code></td><td class="num">251,858,944</td><td class="num">251.859M</td><td class="num">76.56%</td><td class="num">251,858,944</td></tr>
+<tr><td><code>mask_projections</code></td><td class="num">46,225,440</td><td class="num">46.225M</td><td class="num">14.05%</td><td class="num">46,225,440</td></tr>
+<tr><td><code>project_text_embed</code></td><td class="num">9,441,280</td><td class="num">9.441M</td><td class="num">2.87%</td><td class="num">9,441,280</td></tr>
+<tr><td><code>encoder</code></td><td class="num">8,492,000</td><td class="num">8.492M</td><td class="num">2.58%</td><td class="num">8,492,000</td></tr>
+<tr><td><code>decoder</code></td><td class="num">8,109,408</td><td class="num">8.109M</td><td class="num">2.47%</td><td class="num">8,109,408</td></tr>
+<tr><td><code>project_visual_embed</code></td><td class="num">4,853,760</td><td class="num">4.854M</td><td class="num">1.48%</td><td class="num">4,853,760</td></tr></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>子模块拆分</h2>
+      <table>
+        <thead><tr><th>模块</th><th class="num">参数</th><th class="num">简写</th><th class="num">占比</th><th class="num">可训练</th></tr></thead>
+        <tbody><tr><td><code>encoder</code></td><td class="num">8,492,000</td><td class="num">8.492M</td><td class="num">2.58%</td><td class="num">8,492,000</td></tr>
+<tr><td><code>encoder.stages.0</code></td><td class="num">28,640</td><td class="num">28.640K</td><td class="num">0.01%</td><td class="num">28,640</td></tr>
+<tr><td><code>encoder.stages.1</code></td><td class="num">166,144</td><td class="num">166.144K</td><td class="num">0.05%</td><td class="num">166,144</td></tr>
+<tr><td><code>encoder.stages.2</code></td><td class="num">664,064</td><td class="num">664.064K</td><td class="num">0.20%</td><td class="num">664,064</td></tr>
+<tr><td><code>encoder.stages.3</code></td><td class="num">2,655,232</td><td class="num">2.655M</td><td class="num">0.81%</td><td class="num">2,655,232</td></tr>
+<tr><td><code>encoder.stages.4</code></td><td class="num">4,977,920</td><td class="num">4.978M</td><td class="num">1.51%</td><td class="num">4,977,920</td></tr>
+<tr><td><code>project_visual_embed</code></td><td class="num">4,853,760</td><td class="num">4.854M</td><td class="num">1.48%</td><td class="num">4,853,760</td></tr>
+<tr><td><code>project_text_embed</code></td><td class="num">9,441,280</td><td class="num">9.441M</td><td class="num">2.87%</td><td class="num">9,441,280</td></tr>
+<tr><td><code>transformer_decoder</code></td><td class="num">251,858,944</td><td class="num">251.859M</td><td class="num">76.56%</td><td class="num">251,858,944</td></tr>
+<tr><td><code>transformer_decoder.layers.0</code></td><td class="num">41,975,808</td><td class="num">41.976M</td><td class="num">12.76%</td><td class="num">41,975,808</td></tr>
+<tr><td><code>transformer_decoder.layers.1</code></td><td class="num">41,975,808</td><td class="num">41.976M</td><td class="num">12.76%</td><td class="num">41,975,808</td></tr>
+<tr><td><code>transformer_decoder.layers.2</code></td><td class="num">41,975,808</td><td class="num">41.976M</td><td class="num">12.76%</td><td class="num">41,975,808</td></tr>
+<tr><td><code>transformer_decoder.layers.3</code></td><td class="num">41,975,808</td><td class="num">41.976M</td><td class="num">12.76%</td><td class="num">41,975,808</td></tr>
+<tr><td><code>transformer_decoder.layers.4</code></td><td class="num">41,975,808</td><td class="num">41.976M</td><td class="num">12.76%</td><td class="num">41,975,808</td></tr>
+<tr><td><code>transformer_decoder.layers.5</code></td><td class="num">41,975,808</td><td class="num">41.976M</td><td class="num">12.76%</td><td class="num">41,975,808</td></tr>
+<tr><td><code>transformer_decoder.norm</code></td><td class="num">4,096</td><td class="num">4.096K</td><td class="num">0.00%</td><td class="num">4,096</td></tr>
+<tr><td><code>mask_projections</code></td><td class="num">46,225,440</td><td class="num">46.225M</td><td class="num">14.05%</td><td class="num">46,225,440</td></tr>
+<tr><td><code>mask_projections.0</code></td><td class="num">4,261,920</td><td class="num">4.262M</td><td class="num">1.30%</td><td class="num">4,261,920</td></tr>
+<tr><td><code>mask_projections.1</code></td><td class="num">8,392,704</td><td class="num">8.393M</td><td class="num">2.55%</td><td class="num">8,392,704</td></tr>
+<tr><td><code>mask_projections.2</code></td><td class="num">12,589,056</td><td class="num">12.589M</td><td class="num">3.83%</td><td class="num">12,589,056</td></tr>
+<tr><td><code>mask_projections.3</code></td><td class="num">20,981,760</td><td class="num">20.982M</td><td class="num">6.38%</td><td class="num">20,981,760</td></tr>
+<tr><td><code>decoder</code></td><td class="num">8,109,408</td><td class="num">8.109M</td><td class="num">2.47%</td><td class="num">8,109,408</td></tr>
+<tr><td><code>decoder.upconvs</code></td><td class="num">1,057,248</td><td class="num">1.057M</td><td class="num">0.32%</td><td class="num">1,057,248</td></tr>
+<tr><td><code>decoder.blocks</code></td><td class="num">7,052,160</td><td class="num">7.052M</td><td class="num">2.14%</td><td class="num">7,052,160</td></tr>
+<tr><td><code>decoder.seg_layers</code></td><td class="num">0</td><td class="num">0</td><td class="num">0.00%</td><td class="num">0</td></tr></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>最大参数张量 Top 30</h2>
+      <table>
+        <thead><tr><th>参数名</th><th>shape</th><th class="num">参数</th><th class="num">占比</th><th>dtype</th><th>trainable</th></tr></thead>
+        <tbody><tr><td><code>mask_projections.3.2.weight</code></td><td><code>(8192, 2048)</code></td><td class="num">16,777,216</td><td class="num">5.10%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.0.self_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.0.multihead_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.1.self_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.1.multihead_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.2.self_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.2.multihead_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.3.self_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.3.multihead_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.4.self_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.4.multihead_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.5.self_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.5.multihead_attn.in_proj_weight</code></td><td><code>(6144, 2048)</code></td><td class="num">12,582,912</td><td class="num">3.82%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>mask_projections.2.2.weight</code></td><td><code>(4096, 2048)</code></td><td class="num">8,388,608</td><td class="num">2.55%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>project_text_embed.0.weight</code></td><td><code>(2048, 2560)</code></td><td class="num">5,242,880</td><td class="num">1.59%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>project_visual_embed.2.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>project_text_embed.2.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.0.self_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.0.multihead_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.0.linear1.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.0.linear2.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.1.self_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.1.multihead_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.1.linear1.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.1.linear2.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.2.self_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.2.multihead_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.2.linear1.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.2.linear2.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr>
+<tr><td><code>transformer_decoder.layers.3.self_attn.out_proj.weight</code></td><td><code>(2048, 2048)</code></td><td class="num">4,194,304</td><td class="num">1.27%</td><td>float32</td><td>yes</td></tr></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>内存量级</h2>
+      <div class="cards">
+        <div><span>FP32 参数</span><strong>1.23 GiB/rank</strong></div>
+        <div><span>参数 + 梯度 + AdamW 状态</span><strong>4.90 GiB/rank</strong></div>
+        <div><span>2 卡 DDP 参数副本</span><strong>2.45 GiB</strong></div>
+      </div>
+      <p class="note">这里不包含 activation、CUDA workspace、DataLoader pinned memory 或 checkpoint 缓存。3D 体素输入的 activation 通常会比参数优化状态更敏感。</p>
+    </section>
+
+    
+        <section>
+          <h2>训练日志交叉信息</h2>
+          <div class="cards">
+            <div><span>训练样本</span><strong>9779</strong></div>
+            <div><span>验证样本</span><strong>500</strong></div>
+            <div><span>最后 epoch train fg_dice</span><strong>0.5002</strong></div>
+            <div><span>最后 epoch val fg_dice</span><strong>0.3163</strong></div>
+            <div><span>最后 gap</span><strong>0.1839</strong></div>
+            <div><span>最佳 val fg_dice</span><strong>0.3257 @ epoch 27</strong></div>
+          </div>
+          <p class="note">该部分只用于解释参数量与过拟合风险的关系；参数量统计本身来自模型实例化后的 <code>named_parameters()</code>。</p>
+        </section>
+        
+
+    <section>
+      <h2>审计方法</h2>
+      <ol>
+        <li>加载 YAML 配置：<code>Body-Tell/configs/phase1_voxtell_body.yaml</code>。</li>
+        <li>动态 import <code>Body-Tell/train.py</code>，调用同一个 <code>build_model(cfg)</code>。</li>
+        <li>使用 PyTorch <code>model.named_parameters()</code> 统计每个张量的 <code>numel()</code>。</li>
+        <li>读取训练日志 <code>wandb/wandb/run-20260521_212706-dvzwut5o/files/output.log</code> 中的 <code>Model parameters</code> 作为交叉校验。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>原始 JSON 摘要</h2>
+      <pre>{
+  &quot;generated_at&quot;: &quot;2026-05-23T12:00:52&quot;,
+  &quot;paths&quot;: {
+    &quot;repo_root&quot;: &quot;/home/comp/csrkzhu/code/Hyper-Tell&quot;,
+    &quot;body_tell_root&quot;: &quot;/home/comp/csrkzhu/code/Hyper-Tell/Body-Tell&quot;,
+    &quot;config&quot;: &quot;Body-Tell/configs/phase1_voxtell_body.yaml&quot;,
+    &quot;log&quot;: &quot;wandb/wandb/run-20260521_212706-dvzwut5o/files/output.log&quot;,
+    &quot;output&quot;: &quot;Body-Tell/reports/body_tell_parameter_audit.html&quot;
+  },
+  &quot;config&quot;: {
+    &quot;project&quot;: &quot;Body-Tell&quot;,
+    &quot;phase&quot;: 1,
+    &quot;model&quot;: {
+      &quot;name&quot;: &quot;VoxTellBodyModel&quot;,
+      &quot;input_channels&quot;: 1,
+      &quot;encoder_channels&quot;: [
+        32,
+        64,
+        128,
+        256,
+        320
+      ],
+      &quot;text_embedding_dim&quot;: 2560,
+      &quot;query_dim&quot;: 2048,
+      &quot;text_projection_hidden_dim&quot;: 2048,
+      &quot;transformer_num_heads&quot;: 8,
+      &quot;transformer_layers&quot;: 6,
+      &quot;transformer_feedforward_dim&quot;: 2048,
+      &quot;decoder_layer&quot;: -1,
+      &quot;num_maskformer_stages&quot;: 5,
+      &quot;num_heads&quot;: 32,
+      &quot;deep_supervision&quot;: false
+    },
+    &quot;data&quot;: {
+      &quot;root&quot;: &quot;Body-Tell&quot;,
+      &quot;volume_size&quot;: [
+        144,
+        129,
+        256
+      ],
+      &quot;num_positive&quot;: 2,
+      &quot;num_negative&quot;: 1,
+      &quot;min_voxels&quot;: 1
+    },
+    &quot;loss&quot;: {
+      &quot;bce_weight&quot;: 0.5,
+      &quot;dice_weight&quot;: 0.5
+    }
+  },
+  &quot;model_config_dataclass&quot;: {
+    &quot;input_channels&quot;: 1,
+    &quot;encoder_channels&quot;: [
+      32,
+      64,
+      128,
+      256,
+      320
+    ],
+    &quot;text_embedding_dim&quot;: 2560,
+    &quot;query_dim&quot;: 2048,
+    &quot;text_projection_hidden_dim&quot;: 2048,
+    &quot;transformer_num_heads&quot;: 8,
+    &quot;transformer_layers&quot;: 6,
+    &quot;transformer_feedforward_dim&quot;: 2048,
+    &quot;transformer_dropout&quot;: 0.1,
+    &quot;decoder_layer&quot;: -1,
+    &quot;num_maskformer_stages&quot;: 5,
+    &quot;num_heads&quot;: 32,
+    &quot;deep_supervision&quot;: false
+  },
+  &quot;runtime_model&quot;: {
+    &quot;selected_stage&quot;: 4,
+    &quot;selected_stage_channels&quot;: 320,
+    &quot;fused_stage_count&quot;: 4,
+    &quot;mask_projection_count&quot;: 4,
+    &quot;deep_supervision&quot;: false
+  },
+  &quot;totals&quot;: {
+    &quot;parameters&quot;: 328980832,
+    &quot;trainable_parameters&quot;: 328980832,
+    &quot;frozen_parameters&quot;: 0,
+    &quot;buffers&quot;: 0,
+    &quot;parameter_tensors&quot;: 196
+  },
+  &quot;cross_checks&quot;: {
+    &quot;logged_train_parameter_count&quot;: 328980832,
+    &quot;matches_training_log&quot;: true
+  },
+  &quot;memory&quot;: {
+    &quot;fp32_parameters_gib&quot;: 1.2255491018295288,
+    &quot;adamw_training_state_gib&quot;: 4.902196407318115,
+    &quot;ddp_two_rank_fp32_parameters_gib&quot;: 2.4510982036590576
+  },
+  &quot;dataset&quot;: {
+    &quot;train_samples&quot;: 9779,
+    &quot;val_samples&quot;: 500
+  },
+  &quot;tables&quot;: {
+    &quot;top_level&quot;: [
+      {
+        &quot;name&quot;: &quot;transformer_decoder&quot;,
+        &quot;total&quot;: 251858944,
+        &quot;trainable&quot;: 251858944
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections&quot;,
+        &quot;total&quot;: 46225440,
+        &quot;trainable&quot;: 46225440
+      },
+      {
+        &quot;name&quot;: &quot;project_text_embed&quot;,
+        &quot;total&quot;: 9441280,
+        &quot;trainable&quot;: 9441280
+      },
+      {
+        &quot;name&quot;: &quot;encoder&quot;,
+        &quot;total&quot;: 8492000,
+        &quot;trainable&quot;: 8492000
+      },
+      {
+        &quot;name&quot;: &quot;decoder&quot;,
+        &quot;total&quot;: 8109408,
+        &quot;trainable&quot;: 8109408
+      },
+      {
+        &quot;name&quot;: &quot;project_visual_embed&quot;,
+        &quot;total&quot;: 4853760,
+        &quot;trainable&quot;: 4853760
+      }
+    ],
+    &quot;direct_children&quot;: [
+      {
+        &quot;name&quot;: &quot;encoder&quot;,
+        &quot;total&quot;: 8492000,
+        &quot;trainable&quot;: 8492000
+      },
+      {
+        &quot;name&quot;: &quot;project_visual_embed&quot;,
+        &quot;total&quot;: 4853760,
+        &quot;trainable&quot;: 4853760
+      },
+      {
+        &quot;name&quot;: &quot;project_text_embed&quot;,
+        &quot;total&quot;: 9441280,
+        &quot;trainable&quot;: 9441280
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder&quot;,
+        &quot;total&quot;: 251858944,
+        &quot;trainable&quot;: 251858944
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections&quot;,
+        &quot;total&quot;: 46225440,
+        &quot;trainable&quot;: 46225440
+      },
+      {
+        &quot;name&quot;: &quot;decoder&quot;,
+        &quot;total&quot;: 8109408,
+        &quot;trainable&quot;: 8109408
+      }
+    ],
+    &quot;subtrees&quot;: [
+      {
+        &quot;name&quot;: &quot;encoder&quot;,
+        &quot;total&quot;: 8492000,
+        &quot;trainable&quot;: 8492000
+      },
+      {
+        &quot;name&quot;: &quot;encoder.stages.0&quot;,
+        &quot;total&quot;: 28640,
+        &quot;trainable&quot;: 28640
+      },
+      {
+        &quot;name&quot;: &quot;encoder.stages.1&quot;,
+        &quot;total&quot;: 166144,
+        &quot;trainable&quot;: 166144
+      },
+      {
+        &quot;name&quot;: &quot;encoder.stages.2&quot;,
+        &quot;total&quot;: 664064,
+        &quot;trainable&quot;: 664064
+      },
+      {
+        &quot;name&quot;: &quot;encoder.stages.3&quot;,
+        &quot;total&quot;: 2655232,
+        &quot;trainable&quot;: 2655232
+      },
+      {
+        &quot;name&quot;: &quot;encoder.stages.4&quot;,
+        &quot;total&quot;: 4977920,
+        &quot;trainable&quot;: 4977920
+      },
+      {
+        &quot;name&quot;: &quot;project_visual_embed&quot;,
+        &quot;total&quot;: 4853760,
+        &quot;trainable&quot;: 4853760
+      },
+      {
+        &quot;name&quot;: &quot;project_text_embed&quot;,
+        &quot;total&quot;: 9441280,
+        &quot;trainable&quot;: 9441280
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder&quot;,
+        &quot;total&quot;: 251858944,
+        &quot;trainable&quot;: 251858944
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0&quot;,
+        &quot;total&quot;: 41975808,
+        &quot;trainable&quot;: 41975808
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1&quot;,
+        &quot;total&quot;: 41975808,
+        &quot;trainable&quot;: 41975808
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2&quot;,
+        &quot;total&quot;: 41975808,
+        &quot;trainable&quot;: 41975808
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.3&quot;,
+        &quot;total&quot;: 41975808,
+        &quot;trainable&quot;: 41975808
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.4&quot;,
+        &quot;total&quot;: 41975808,
+        &quot;trainable&quot;: 41975808
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.5&quot;,
+        &quot;total&quot;: 41975808,
+        &quot;trainable&quot;: 41975808
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.norm&quot;,
+        &quot;total&quot;: 4096,
+        &quot;trainable&quot;: 4096
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections&quot;,
+        &quot;total&quot;: 46225440,
+        &quot;trainable&quot;: 46225440
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections.0&quot;,
+        &quot;total&quot;: 4261920,
+        &quot;trainable&quot;: 4261920
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections.1&quot;,
+        &quot;total&quot;: 8392704,
+        &quot;trainable&quot;: 8392704
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections.2&quot;,
+        &quot;total&quot;: 12589056,
+        &quot;trainable&quot;: 12589056
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections.3&quot;,
+        &quot;total&quot;: 20981760,
+        &quot;trainable&quot;: 20981760
+      },
+      {
+        &quot;name&quot;: &quot;decoder&quot;,
+        &quot;total&quot;: 8109408,
+        &quot;trainable&quot;: 8109408
+      },
+      {
+        &quot;name&quot;: &quot;decoder.upconvs&quot;,
+        &quot;total&quot;: 1057248,
+        &quot;trainable&quot;: 1057248
+      },
+      {
+        &quot;name&quot;: &quot;decoder.blocks&quot;,
+        &quot;total&quot;: 7052160,
+        &quot;trainable&quot;: 7052160
+      },
+      {
+        &quot;name&quot;: &quot;decoder.seg_layers&quot;,
+        &quot;total&quot;: 0,
+        &quot;trainable&quot;: 0
+      }
+    ],
+    &quot;largest_tensors&quot;: [
+      {
+        &quot;name&quot;: &quot;mask_projections.3.2.weight&quot;,
+        &quot;shape&quot;: [
+          8192,
+          2048
+        ],
+        &quot;numel&quot;: 16777216,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0.self_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0.multihead_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1.self_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1.multihead_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2.self_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2.multihead_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.3.self_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.3.multihead_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.4.self_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.4.multihead_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.5.self_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.5.multihead_attn.in_proj_weight&quot;,
+        &quot;shape&quot;: [
+          6144,
+          2048
+        ],
+        &quot;numel&quot;: 12582912,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;mask_projections.2.2.weight&quot;,
+        &quot;shape&quot;: [
+          4096,
+          2048
+        ],
+        &quot;numel&quot;: 8388608,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;project_text_embed.0.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2560
+        ],
+        &quot;numel&quot;: 5242880,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;project_visual_embed.2.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;project_text_embed.2.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0.self_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0.multihead_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0.linear1.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.0.linear2.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1.self_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1.multihead_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1.linear1.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.1.linear2.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2.self_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2.multihead_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2.linear1.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.2.linear2.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      },
+      {
+        &quot;name&quot;: &quot;transformer_decoder.layers.3.self_attn.out_proj.weight&quot;,
+        &quot;shape&quot;: [
+          2048,
+          2048
+        ],
+        &quot;numel&quot;: 4194304,
+        &quot;requires_grad&quot;: true,
+        &quot;dtype&quot;: &quot;float32&quot;
+      }
+    ]
+  },
+  &quot;training_metrics&quot;: {
+    &quot;train&quot;: [
+      {
+        &quot;epoch&quot;: 1,
+        &quot;loss&quot;: 0.4829,
+        &quot;dice_loss&quot;: 0.9581,
+        &quot;fg_dice&quot;: 0.0418,
+        &quot;neg_fp&quot;: 0.0012
+      },
+      {
+        &quot;epoch&quot;: 2,
+        &quot;loss&quot;: 0.4305,
+        &quot;dice_loss&quot;: 0.8549,
+        &quot;fg_dice&quot;: 0.1468,
+        &quot;neg_fp&quot;: 0.0004
+      },
+      {
+        &quot;epoch&quot;: 3,
+        &quot;loss&quot;: 0.4037,
+        &quot;dice_loss&quot;: 0.8023,
+        &quot;fg_dice&quot;: 0.1991,
+        &quot;neg_fp&quot;: 0.0003
+      },
+      {
+        &quot;epoch&quot;: 4,
+        &quot;loss&quot;: 0.3897,
+        &quot;dice_loss&quot;: 0.7747,
+        &quot;fg_dice&quot;: 0.2265,
+        &quot;neg_fp&quot;: 0.0002
+      },
+      {
+        &quot;epoch&quot;: 5,
+        &quot;loss&quot;: 0.3774,
+        &quot;dice_loss&quot;: 0.7504,
+        &quot;fg_dice&quot;: 0.2507,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 6,
+        &quot;loss&quot;: 0.372,
+        &quot;dice_loss&quot;: 0.7399,
+        &quot;fg_dice&quot;: 0.2612,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 7,
+        &quot;loss&quot;: 0.3646,
+        &quot;dice_loss&quot;: 0.7253,
+        &quot;fg_dice&quot;: 0.2757,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 8,
+        &quot;loss&quot;: 0.3585,
+        &quot;dice_loss&quot;: 0.7131,
+        &quot;fg_dice&quot;: 0.2879,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 9,
+        &quot;loss&quot;: 0.3512,
+        &quot;dice_loss&quot;: 0.6986,
+        &quot;fg_dice&quot;: 0.3024,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 10,
+        &quot;loss&quot;: 0.3459,
+        &quot;dice_loss&quot;: 0.6882,
+        &quot;fg_dice&quot;: 0.3128,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 11,
+        &quot;loss&quot;: 0.3405,
+        &quot;dice_loss&quot;: 0.6774,
+        &quot;fg_dice&quot;: 0.3235,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 12,
+        &quot;loss&quot;: 0.3354,
+        &quot;dice_loss&quot;: 0.6673,
+        &quot;fg_dice&quot;: 0.3336,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 13,
+        &quot;loss&quot;: 0.3318,
+        &quot;dice_loss&quot;: 0.6602,
+        &quot;fg_dice&quot;: 0.3407,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 14,
+        &quot;loss&quot;: 0.3257,
+        &quot;dice_loss&quot;: 0.6482,
+        &quot;fg_dice&quot;: 0.3527,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 15,
+        &quot;loss&quot;: 0.3195,
+        &quot;dice_loss&quot;: 0.6357,
+        &quot;fg_dice&quot;: 0.3651,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 16,
+        &quot;loss&quot;: 0.3171,
+        &quot;dice_loss&quot;: 0.6309,
+        &quot;fg_dice&quot;: 0.3699,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 17,
+        &quot;loss&quot;: 0.31,
+        &quot;dice_loss&quot;: 0.6169,
+        &quot;fg_dice&quot;: 0.384,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 18,
+        &quot;loss&quot;: 0.3034,
+        &quot;dice_loss&quot;: 0.6036,
+        &quot;fg_dice&quot;: 0.3973,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 19,
+        &quot;loss&quot;: 0.2992,
+        &quot;dice_loss&quot;: 0.5953,
+        &quot;fg_dice&quot;: 0.4055,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 20,
+        &quot;loss&quot;: 0.295,
+        &quot;dice_loss&quot;: 0.587,
+        &quot;fg_dice&quot;: 0.4138,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 21,
+        &quot;loss&quot;: 0.2897,
+        &quot;dice_loss&quot;: 0.5763,
+        &quot;fg_dice&quot;: 0.4246,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 22,
+        &quot;loss&quot;: 0.2835,
+        &quot;dice_loss&quot;: 0.564,
+        &quot;fg_dice&quot;: 0.4368,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 23,
+        &quot;loss&quot;: 0.2794,
+        &quot;dice_loss&quot;: 0.5559,
+        &quot;fg_dice&quot;: 0.445,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 24,
+        &quot;loss&quot;: 0.2763,
+        &quot;dice_loss&quot;: 0.5498,
+        &quot;fg_dice&quot;: 0.451,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 25,
+        &quot;loss&quot;: 0.2723,
+        &quot;dice_loss&quot;: 0.5419,
+        &quot;fg_dice&quot;: 0.459,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 26,
+        &quot;loss&quot;: 0.2683,
+        &quot;dice_loss&quot;: 0.5338,
+        &quot;fg_dice&quot;: 0.467,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 27,
+        &quot;loss&quot;: 0.2615,
+        &quot;dice_loss&quot;: 0.5202,
+        &quot;fg_dice&quot;: 0.4805,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 28,
+        &quot;loss&quot;: 0.257,
+        &quot;dice_loss&quot;: 0.5114,
+        &quot;fg_dice&quot;: 0.4894,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 29,
+        &quot;loss&quot;: 0.2559,
+        &quot;dice_loss&quot;: 0.5091,
+        &quot;fg_dice&quot;: 0.4917,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 30,
+        &quot;loss&quot;: 0.2516,
+        &quot;dice_loss&quot;: 0.5006,
+        &quot;fg_dice&quot;: 0.5002,
+        &quot;neg_fp&quot;: 0.0
+      }
+    ],
+    &quot;val&quot;: [
+      {
+        &quot;epoch&quot;: 1,
+        &quot;loss&quot;: 0.4569,
+        &quot;fg_dice&quot;: 0.097,
+        &quot;neg_fp&quot;: 0.001
+      },
+      {
+        &quot;epoch&quot;: 2,
+        &quot;loss&quot;: 0.4063,
+        &quot;fg_dice&quot;: 0.1944,
+        &quot;neg_fp&quot;: 0.0003
+      },
+      {
+        &quot;epoch&quot;: 3,
+        &quot;loss&quot;: 0.3923,
+        &quot;fg_dice&quot;: 0.222,
+        &quot;neg_fp&quot;: 0.0003
+      },
+      {
+        &quot;epoch&quot;: 4,
+        &quot;loss&quot;: 0.3906,
+        &quot;fg_dice&quot;: 0.2247,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 5,
+        &quot;loss&quot;: 0.3741,
+        &quot;fg_dice&quot;: 0.2571,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 6,
+        &quot;loss&quot;: 0.3643,
+        &quot;fg_dice&quot;: 0.2766,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 7,
+        &quot;loss&quot;: 0.3645,
+        &quot;fg_dice&quot;: 0.2763,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 8,
+        &quot;loss&quot;: 0.359,
+        &quot;fg_dice&quot;: 0.2869,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 9,
+        &quot;loss&quot;: 0.3556,
+        &quot;fg_dice&quot;: 0.2938,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 10,
+        &quot;loss&quot;: 0.3539,
+        &quot;fg_dice&quot;: 0.2969,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 11,
+        &quot;loss&quot;: 0.3528,
+        &quot;fg_dice&quot;: 0.2996,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 12,
+        &quot;loss&quot;: 0.3511,
+        &quot;fg_dice&quot;: 0.3026,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 13,
+        &quot;loss&quot;: 0.3482,
+        &quot;fg_dice&quot;: 0.3082,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 14,
+        &quot;loss&quot;: 0.3473,
+        &quot;fg_dice&quot;: 0.3098,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 15,
+        &quot;loss&quot;: 0.3489,
+        &quot;fg_dice&quot;: 0.3066,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 16,
+        &quot;loss&quot;: 0.3447,
+        &quot;fg_dice&quot;: 0.3153,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 17,
+        &quot;loss&quot;: 0.3459,
+        &quot;fg_dice&quot;: 0.3126,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 18,
+        &quot;loss&quot;: 0.3429,
+        &quot;fg_dice&quot;: 0.3187,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 19,
+        &quot;loss&quot;: 0.3436,
+        &quot;fg_dice&quot;: 0.3175,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 20,
+        &quot;loss&quot;: 0.3438,
+        &quot;fg_dice&quot;: 0.3182,
+        &quot;neg_fp&quot;: 0.0007
+      },
+      {
+        &quot;epoch&quot;: 21,
+        &quot;loss&quot;: 0.3424,
+        &quot;fg_dice&quot;: 0.3199,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 22,
+        &quot;loss&quot;: 0.3421,
+        &quot;fg_dice&quot;: 0.3203,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 23,
+        &quot;loss&quot;: 0.3406,
+        &quot;fg_dice&quot;: 0.3238,
+        &quot;neg_fp&quot;: 0.0001
+      },
+      {
+        &quot;epoch&quot;: 24,
+        &quot;loss&quot;: 0.3429,
+        &quot;fg_dice&quot;: 0.3187,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 25,
+        &quot;loss&quot;: 0.3439,
+        &quot;fg_dice&quot;: 0.3166,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 26,
+        &quot;loss&quot;: 0.3412,
+        &quot;fg_dice&quot;: 0.3222,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 27,
+        &quot;loss&quot;: 0.3396,
+        &quot;fg_dice&quot;: 0.3257,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 28,
+        &quot;loss&quot;: 0.3422,
+        &quot;fg_dice&quot;: 0.321,
+        &quot;neg_fp&quot;: 0.0002
+      },
+      {
+        &quot;epoch&quot;: 29,
+        &quot;loss&quot;: 0.3434,
+        &quot;fg_dice&quot;: 0.318,
+        &quot;neg_fp&quot;: 0.0
+      },
+      {
+        &quot;epoch&quot;: 30,
+        &quot;loss&quot;: 0.3441,
+        &quot;fg_dice&quot;: 0.3163,
+        &quot;neg_fp&quot;: 0.0
+      }
+    ]
+  }
+}</pre>
+    </section>
+  </main>
+</body>
+</html>

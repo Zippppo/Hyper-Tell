@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 实现冗余审查 · 2026-05-23</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --text: #172033;
+      --muted: #5d6b7c;
+      --line: #d9e2ec;
+      --panel: #ffffff;
+      --soft: #eef4f8;
+      --blue: #1d4ed8;
+      --green: #176b47;
+      --amber: #9a5b13;
+      --red: #a12d2d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.62 Inter, "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 36px 0 60px; }
+    h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.2; letter-spacing: 0; }
+    h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.25; letter-spacing: 0; }
+    h3 { margin: 18px 0 8px; font-size: 16px; letter-spacing: 0; }
+    p { margin: 8px 0; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin: 14px 0;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px solid #e3ebf2; padding: 8px 9px; text-align: left; vertical-align: top; }
+    th { background: var(--soft); font-weight: 700; }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      background: #edf4fb;
+      border: 1px solid #c9d7e6;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+    ul { margin: 8px 0 0 20px; padding: 0; }
+    li { margin: 5px 0; }
+    .meta { color: var(--muted); margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric { background: var(--soft); border: 1px solid #d6e2ec; border-radius: 8px; padding: 12px; min-height: 84px; }
+    .metric strong { display: block; margin-top: 4px; font-size: 24px; line-height: 1.1; }
+    .tag { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .p0 { background: #ffe8e8; color: var(--red); }
+    .p1 { background: #fff3dc; color: var(--amber); }
+    .p2 { background: #e9f2ff; color: var(--blue); }
+    .keep { background: #e6f4ed; color: var(--green); }
+    .callout { border-left: 4px solid var(--blue); background: #eef5ff; padding: 12px 14px; border-radius: 6px; }
+    .warn { border-left-color: var(--amber); background: #fff8e8; }
+    .small { color: var(--muted); font-size: 13px; }
+    @media (max-width: 900px) {
+      main { width: min(100% - 24px, 1180px); padding-top: 24px; }
+      .grid { grid-template-columns: 1fr 1fr; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Body-Tell 实现冗余审查</h1>
+  <p class="meta">日期 2026-05-23 · 范围: 静态阅读 <code>Body-Tell/</code> 与 <code>VoxTell/</code> 源码, 参考 W&amp;B 训练日志 · 本报告未修改训练实现代码</p>
+
+  <section>
+    <h2>结论摘要</h2>
+    <div class="callout">
+      <p><strong>Body-Tell 的核心模型并没有明显失控。</strong> 仅看 Python 源码, <code>Body-Tell/body_tell</code> 是 11 个文件、约 1423 行; <code>VoxTell/voxtell</code> 是 9 个文件、约 1580 行。当前复杂度主要来自训练新数据集所需的 dataset、prompt vocabulary、artifact validation、loss/metric、train loop 和一次性脚本, 而不是模型 forward 本身。</p>
+      <p><strong>最值得优化的冗余不是大重写, 而是收窄边界。</strong> 优先处理 dataset 运行时重复工作、训练脚本职责过宽、配置字段重复映射、未使用的深监督/transformer 分支和 prompt embedding 工具重复。这样可以保持当前训练行为, 同时更接近 VoxTell 的简洁形态。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>当前训练状态</h2>
+    <p>参考日志 <code>wandb/wandb/run-20260521_212706-dvzwut5o/files/output.log</code>:</p>
+    <div class="grid">
+      <div class="metric">Train samples<strong>9779</strong></div>
+      <div class="metric">Val samples<strong>500</strong></div>
+      <div class="metric">Parameters<strong>328.98M</strong></div>
+      <div class="metric">Best val fg Dice<strong>0.3257</strong></div>
+    </div>
+    <p>训练 loss 从 epoch 1 的 <code>0.4829</code> 降到 epoch 30 的 <code>0.2516</code>; val foreground Dice 在 epoch 27 达到当前最佳 <code>0.3257</code>。所以本报告以“在不破坏可训练路径的前提下精简实现”为目标。</p>
+  </section>
+
+  <section>
+    <h2>复杂度来源</h2>
+    <table>
+      <thead>
+        <tr><th>范围</th><th>规模</th><th>判断</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>VoxTell/voxtell</code></td>
+          <td>9 个 Python 文件, 约 1580 行</td>
+          <td>主要覆盖模型、推理、text embedding helper。没有训练 loop 和数据集构建链路。</td>
+        </tr>
+        <tr>
+          <td><code>Body-Tell/body_tell</code></td>
+          <td>11 个 Python 文件, 约 1423 行</td>
+          <td>核心包体量与 VoxTell 接近。新增模块多数是迁移到 voxel dataset 后的必要职责。</td>
+        </tr>
+        <tr>
+          <td><code>Body-Tell/train.py</code></td>
+          <td>525 行</td>
+          <td>集中了 CLI、DDP、AMP、W&amp;B、checkpoint、smoke、train/eval loop。这里是最明显的结构性膨胀点。</td>
+        </tr>
+        <tr>
+          <td><code>Body-Tell/scripts</code></td>
+          <td>5 个脚本, 约 1121 行</td>
+          <td>Phase 0 artifact 生成和审计逻辑较多, 但很多是一次性/离线逻辑, 不应污染运行时路径。</td>
+        </tr>
+        <tr>
+          <td>Artifact</td>
+          <td><code>class_presence.json</code> 约 26MB; <code>prompt_embeddings.pt</code> 约 2.7MB; 264 prompt records</td>
+          <td>预计算 artifact 本身合理, 但 runtime loader 和 repo hygiene 还有精简空间。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>优先级建议</h2>
+    <table>
+      <thead>
+        <tr><th>优先级</th><th>位置</th><th>观察</th><th>为什么冗余</th><th>建议</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag p0">P0</span></td>
+          <td><code>body_tell/data/dataset.py:74-85</code>, <code>body_tell/data/vocabulary.py:248-288</code></td>
+          <td>Dataset 初始化先调用 <code>validate_prompt_embedding_cache</code>, 该函数内部 <code>torch.load</code> 一次 cache; 随后 dataset 又 <code>torch.load</code> 同一个 <code>prompt_embeddings.pt</code>。</td>
+          <td>这是纯运行时重复 I/O 和反序列化, 对行为没有贡献。随着 cache 变大或多 worker/多进程初始化, 成本会放大。</td>
+          <td>合并为一个 <code>load_prompt_embedding_cache(...)</code>, 返回 cache、errors、warnings。严格校验仍保留, 但只加载一次。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p0">P0</span></td>
+          <td><code>body_tell/data/vocabulary.py:291-340</code>, <code>body_tell/data/dataset.py:110-118</code></td>
+          <td><code>sample_prompts_for_case</code> 每次取样都会调用 <code>prompt_records_by_class</code>, 后者每次重新 flatten vocabulary。</td>
+          <td>训练集 9779 samples, 每个 epoch 都重复构造同一份 prompt 分组。这个逻辑应该是 dataset 初始化期的常量。</td>
+          <td>在 <code>HyperBodyPromptDataset.__init__</code> 里预计算 <code>self.prompt_records_by_class</code>; sampler 接收已分组 records 或成为 dataset 私有方法。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p0">P0</span></td>
+          <td><code>body_tell/models/voxtell_body_model.py:83-89</code>, <code>configs/phase1_voxtell_body.yaml:14</code></td>
+          <td>配置写 <code>num_maskformer_stages: 5</code>, 但模型用 <code>min(num_maskformer_stages, len(encoder_channels)-1)</code> 静默截断。当前 5 个 encoder stages 实际最多只有 4 个 upsampling/fusion stages。</td>
+          <td>这是从 VoxTell 迁移时的命名漂移。VoxTell 原始模型有 6 个 decoder configs 和 5 个 decoder stages; Body-Tell 当前 channels 列表只有 5 层。</td>
+          <td>把字段改成更准确的 <code>num_fusion_stages</code>, 或在请求值超过上限时显式报错/告警。避免配置看起来是 VoxTell 的 5-stage, 实际运行是 4-stage。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>train.py:65-107</code>, <code>train.py:154-292</code>, <code>train.py:295-525</code></td>
+          <td>一个文件同时负责 W&amp;B 初始化、DDP setup、dataset/model/loss factory、train/eval loop、checkpoint 和 smoke 判断。</td>
+          <td>VoxTell 的入口非常薄, 业务逻辑在 package 内。当前训练入口不利于复用和测试, 也让主要训练逻辑被 CLI 细节包围。</td>
+          <td>拆为 <code>body_tell/training/loop.py</code> 和 <code>body_tell/training/checkpoint.py</code>; <code>train.py</code> 只保留 argparse、config load 和调用 orchestration。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>models/voxtell_body_model.py:16-30</code>, <code>train.py:110-126</code>, <code>configs/phase1_voxtell_body.yaml:3-16</code></td>
+          <td>同一组 model config 字段在 dataclass、YAML 和 <code>build_model</code> 手工映射里重复出现。</td>
+          <td>添加/重命名字段时需要同步三处, 容易漏掉默认值或新参数。</td>
+          <td>用 <code>VoxTellBodyConfig(**cfg["model"])</code> 或 <code>VoxTellBodyConfig.from_dict</code> 统一入口, 保留 unknown-key 校验。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>models/voxtell_body_model.py:150-151</code>, <code>losses/prompt_losses.py:70-111</code>, <code>configs/phase1_voxtell_body.yaml:16</code></td>
+          <td>当前正式配置 <code>deep_supervision: false</code>, 但模型、loss、测试都维护了一套 deep supervision 分支。</td>
+          <td>如果 Phase 1 不训练深监督, 这部分是未使用维护面; 如果目标是贴近 VoxTell, 那么它又应该成为正式配置和 loss weights 的一等路径。</td>
+          <td>做一次明确决策: 要么移除当前未用分支以简化, 要么启用并配置 <code>deep_supervision_weights</code>, 让测试覆盖正式训练路径。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>models/transformer.py</code>, <code>VoxTell/voxtell/model/transformer.py</code></td>
+          <td>Body-Tell 维护了 VoxTell transformer 的本地 fork。它已经简化到 223 行, 但仍保留 post-norm、<code>return_intermediate</code> 等当前配置未使用分支。</td>
+          <td>本地 fork 容易和 VoxTell 行为漂移。当前正式模型始终 <code>normalize_before=True</code>, 未用分支增加测试和理解成本。</td>
+          <td>如果继续本地维护, 只保留当前架构使用的 pre-norm decoder。若未来要复用 VoxTell 权重或保持论文实现一致, 则改成共享/拷贝锁定版本并加差异说明。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>VoxTell/voxtell/utils/text_embedding.py:3-19</code>, <code>scripts/build_prompt_embedding_cache.py:25-40</code></td>
+          <td><code>last_token_pool</code> 和 <code>wrap_with_instruction</code> 在 VoxTell 与 Body-Tell embedding cache 脚本里重复实现。</td>
+          <td>这是低风险但明确的重复。instruction 字符串已在 <code>vocabulary.py</code> 中集中, helper 还没有集中。</td>
+          <td>新增一个很小的 <code>body_tell/text_embedding.py</code> 或 <code>body_tell/data/text_embedding.py</code>, 与 VoxTell 的 19 行 helper 对齐, 脚本只调用它。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>body_tell/data/vocabulary.py</code></td>
+          <td>同一个模块混合 JSON I/O、hash、vocab validation、embedding cache validation、prompt flattening、sampling、target mask 构造。</td>
+          <td>运行时 dataset 只需要 prompt records、sampling 和 target mask; build-time 校验和 artifact hash 不应该长期耦合在训练数据读取路径里。</td>
+          <td>拆成 <code>data/vocabulary.py</code> 只放数据结构和 prompt flatten; <code>data/prompt_sampling.py</code> 放采样; <code>artifacts/validation.py</code> 放离线校验。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p1">P1</span></td>
+          <td><code>scripts/build_label_vocab.py:42-261</code></td>
+          <td>70 类 prompt 和 10 个 aggregate 大量写在 Python 源码里。</td>
+          <td>这让 prompt 内容审查、版本 diff、人工 validation 与代码 review 混在一起。已有 <code>reports/potentail_bug.html</code> 也指出 variants 覆盖和 <code>inside_body_empty</code> 语义风险。</td>
+          <td>把 prompts/aggregates 移到数据文件, 例如 <code>configs/label_vocab_source.yaml</code>, 脚本只做生成、校验和 hash。这样更接近 VoxTell 的“代码只表达逻辑”。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p2">P2</span></td>
+          <td><code>body_tell/data/dataset.py:97-108</code></td>
+          <td>每次 <code>__getitem__</code> 都从 <code>sensor_pc</code> 重新 voxelize occupancy, 再按 volume size crop/pad。</td>
+          <td>这是可接受的第一版实现, 但长训练中 CPU 重复工作明显。VoxTell 推理路径通过预处理和 sliding window 把运行时职责分层。</td>
+          <td>如果 profiling 显示 dataloader 成为瓶颈, 预生成 occupancy 或支持 NPZ 内已有 occupancy 字段。不要在没有瓶颈证据时优先重做。</td>
+        </tr>
+        <tr>
+          <td><span class="tag p2">P2</span></td>
+          <td><code>.gitignore:8-10</code>, tracked artifacts</td>
+          <td><code>Body-Tell/Dataset/</code> 和 <code>Body-Tell/artifacts/</code> 被 .gitignore 忽略, 但已有部分 metadata/artifacts 被 git 跟踪, 例如 <code>class_presence.json</code>。</td>
+          <td>这会让“哪些是源码, 哪些是可再生产物”不够清楚。26MB 的 <code>class_presence.json</code> 作为源码 review 对象也会制造噪音。</td>
+          <td>明确策略: 要么保留小型 manifest 并记录生成命令, 要么将大 artifact 移到外部存储。当前不要直接删除, 因为训练依赖它。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>建议的目标形态</h2>
+    <p>以 VoxTell 的代码形态为目标时, Body-Tell 可以收敛成四层边界, 而不是把训练、artifact 和模型细节揉在一起。</p>
+    <table>
+      <thead>
+        <tr><th>层级</th><th>保留职责</th><th>不应承担的职责</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Model</td>
+          <td><code>VoxTellBodyModel</code>, transformer decoder, mask fusion decoder, dynamic 3D position encoding。</td>
+          <td>artifact 校验、dataset prompt sampling、训练日志。</td>
+        </tr>
+        <tr>
+          <td>Data runtime</td>
+          <td>读取 NPZ, volume fit, prompt sampling, target mask, collate。</td>
+          <td>重新扫描全数据集、重建 embedding cache、生成 vocabulary。</td>
+        </tr>
+        <tr>
+          <td>Training runtime</td>
+          <td><code>train_one_epoch</code>, <code>evaluate</code>, checkpoint save/load, metric aggregation。</td>
+          <td>argparse 细节、W&amp;B 参数解析、artifact 生成。</td>
+        </tr>
+        <tr>
+          <td>Offline tools</td>
+          <td>vocab source -> label_vocab, class presence scan, embedding cache build, HTML audit。</td>
+          <td>被 dataset 每个 sample 间接调用的逻辑。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>不建议现在动的部分</h2>
+    <ul>
+      <li><span class="tag keep">保留</span> <code>sinusoidal_position_encoding_3d</code> 的动态实现。Body-Tell 数据 shape 不是 VoxTell 的固定 <code>DECODER_CONFIGS</code>, 动态 position encoding 是必要适配, 不是冗余。</li>
+      <li><span class="tag keep">保留</span> <code>prompt_valid</code>、negative prompt 和 <code>target_empty</code> 逻辑。它们是 variable prompt count 和 2 positive + 1 negative 训练策略需要的边界。</li>
+      <li><span class="tag keep">保留</span> <code>class_presence.json</code> 作为运行时索引的概念, 但优化加载和归档策略。否则每次训练前扫描全量 voxel labels 会更慢。</li>
+      <li><span class="tag keep">保留</span> 现有 tests 作为重构护栏。精简实现前, 这些 shape/loss/dataset/mini-overfit 测试比代码风格更重要。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>P0 项架构评审</h2>
+    <div class="callout">
+      <p><strong>评审结论 (2026-05-23):</strong> 三个 P0 项均值得清理, 但风险等级和实施策略不同。</p>
+    </div>
+    <table>
+      <thead>
+        <tr><th>项目</th><th>训练安全性</th><th>收益</th><th>实施策略</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>P0-1: 重复加载 prompt_embeddings.pt</strong></td>
+          <td><span class="tag keep">零风险</span></td>
+          <td>单进程节省一次 2.7MB I/O; 多 worker 场景收益倍增; 代码更清晰</td>
+          <td>立即可做。新增 <code>load_and_validate_prompt_cache</code> 统一入口, validation 和使用共享同一份数据。</td>
+        </tr>
+        <tr>
+          <td><strong>P0-2: 每次采样重新 flatten vocabulary</strong></td>
+          <td><span class="tag keep">零风险</span></td>
+          <td>消除 9779×30=293,370 次重复计算; 语义更清晰 (常量数据应在初始化时构造)</td>
+          <td>立即可做。在 <code>HyperBodyPromptDataset.__init__</code> 预计算 <code>self._prompt_records_by_class</code>, 训练时直接查询。</td>
+        </tr>
+        <tr>
+          <td><strong>P0-3: num_maskformer_stages 语义混淆</strong></td>
+          <td><span class="tag p1">低风险</span> (需验证 checkpoint 兼容性)</td>
+          <td>消除配置与实际行为不一致; 避免未来迁移 VoxTell 权重时的困惑</td>
+          <td>分两步: (1) 先加 warning 让隐藏截断可见; (2) 确认 checkpoint 加载无影响后, 改配置字段为 <code>num_fusion_stages: 4</code>。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>P0-1 和 P0-2 实施示例</h3>
+    <p><strong>P0-1: 统一 cache 加载</strong></p>
+    <pre><code># body_tell/data/vocabulary.py 新增
+def load_and_validate_prompt_cache(cache_path, vocab):
+    cache = torch.load(cache_path)
+    errors, warnings = validate_cache(cache, vocab)
+    return cache, errors, warnings
+
+# body_tell/data/dataset.py
+class HyperBodyPromptDataset:
+    def __init__(self, ...):
+        cache, errors, warnings = load_and_validate_prompt_cache(...)
+        if errors:
+            raise ValueError(...)
+        self.prompt_cache = cache  # 直接使用已加载的</code></pre>
+
+    <p><strong>P0-2: 预计算 prompt 分组</strong></p>
+    <pre><code>class HyperBodyPromptDataset:
+    def __init__(self, ...):
+        self._prompt_records_by_class = self._build_prompt_index()
+
+    def _build_prompt_index(self):
+        # 原 prompt_records_by_class 逻辑
+        return {class_id: [...prompts...] for ...}
+
+    def __getitem__(self, idx):
+        prompts = sample_prompts_for_case(
+            ..., prompt_index=self._prompt_records_by_class
+        )</code></pre>
+
+    <p><strong>P0-3: 显式化截断行为 (第一步)</strong></p>
+    <pre><code># body_tell/models/voxtell_body_model.py
+requested_stages = config.num_maskformer_stages
+actual_stages = min(requested_stages, len(encoder_channels) - 1)
+if requested_stages != actual_stages:
+    logger.warning(
+        f"Requested {requested_stages} maskformer stages, "
+        f"but only {actual_stages} available. Using {actual_stages}."
+    )
+self.num_stages = actual_stages</code></pre>
+  </section>
+
+  <section>
+    <h2>低风险重构顺序</h2>
+    <div class="callout warn">
+      <p><strong>实施原则:</strong> 先做零行为变化的优化, 再碰可能影响模型行为的结构分支。每步都要验证训练正常。</p>
+    </div>
+    <ol>
+      <li>
+        <strong>Phase 1: P0-1 和 P0-2 (可合并为一个 PR, 零风险)</strong>
+        <ul>
+          <li>统一 embedding cache 加载入口</li>
+          <li>Dataset 初始化时预计算 prompt records by class</li>
+          <li>验证: 跑 2-3 个 epoch, 确认第一个 epoch 的 loss 值与历史一致</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Phase 2: P0-3 第一步 (低风险)</strong>
+        <ul>
+          <li>在模型初始化时加 warning, 让 <code>num_maskformer_stages</code> 截断行为可见</li>
+          <li>验证: checkpoint 保存和恢复正常, warning 符合预期</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Phase 3: P0-3 第二步 (需确认 checkpoint 兼容性)</strong>
+        <ul>
+          <li>将配置字段改为 <code>num_fusion_stages: 4</code></li>
+          <li>如果 checkpoint 保存了 config 并做严格校验, 需要兼容旧字段名或重新训练</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Phase 4: P1 项 - 拆训练入口</strong>
+        <ul>
+          <li>把 <code>train_one_epoch</code>、<code>evaluate</code>、checkpoint helpers 放进 package</li>
+          <li>让 <code>train.py</code> 变成薄 CLI</li>
+          <li><code>build_model</code> 改成 dataclass factory</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Phase 5: P1 项 - 处理架构开关</strong>
+        <ul>
+          <li>明确 <code>deep_supervision</code> 的正式语义: 要么删未用分支, 要么启用并配置 loss weights</li>
+          <li>决策 transformer 本地 fork 策略: 只保留 pre-norm 分支, 或改成共享/锁定版本</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Phase 6: P1 项 - 离线 artifact 清理</strong>
+        <ul>
+          <li>将 prompt source 数据化 (移到 <code>configs/label_vocab_source.yaml</code>)</li>
+          <li>将 vocabulary validation 从 runtime sampler 拆出</li>
+          <li>同步解决 <code>potentail_bug.html</code> 中记录的 label 语义和 variants 覆盖问题</li>
+        </ul>
+      </li>
+    </ol>
+
+    <h3>验证清单 (每个 Phase 完成后)</h3>
+    <ul>
+      <li>训练启动正常, dataset 初始化无报错</li>
+      <li>第一个 epoch 的 loss 值与历史可比 (Phase 1-3 必须一致)</li>
+      <li>Checkpoint 保存和恢复正常</li>
+      <li>如果有 validation, val metrics 与历史可比</li>
+      <li>W&amp;B 日志完整, 无异常 warning</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>最终判断</h2>
+    <p>如果最终目标是 VoxTell 那种简单优雅的代码, Body-Tell 不需要把所有训练适配都压缩到一个模型文件里。更合理的目标是: <strong>模型像 VoxTell 一样直接, dataset 像普通 PyTorch Dataset 一样薄, train.py 像 CLI wrapper 一样薄, 所有一次性 artifact 逻辑留在 scripts 或 reports。</strong></p>
+    <p>当前最值得先做的优化是 P0 三项: cache 单次加载、prompt 分组预计算、明确 <code>num_maskformer_stages</code> 的实际语义。这三项不需要改变算法, 但会显著减少隐藏冗余和迁移语义漂移。</p>
+  </section>
+</main>
+</body>
+</html>
