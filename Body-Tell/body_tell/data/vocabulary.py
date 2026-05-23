@@ -250,13 +250,34 @@ def validate_prompt_embedding_cache(
     vocab_path: str | Path,
     strict: bool = False,
 ) -> Dict[str, List[str]]:
+    validation = load_and_validate_prompt_cache(cache_path, vocab_path, strict=strict)
+    return {"errors": validation["errors"], "warnings": validation["warnings"]}
+
+
+def load_and_validate_prompt_cache(
+    cache_path: str | Path,
+    vocab_path: str | Path,
+    strict: bool = False,
+) -> Dict[str, Any]:
+    import torch
+
+    cache = torch.load(cache_path, map_location="cpu", weights_only=False)
+    vocab = load_label_vocab(vocab_path)
+    validation = validate_prompt_embedding_cache_data(cache, vocab, vocab_path, strict=strict)
+    return {"cache": cache, "errors": validation["errors"], "warnings": validation["warnings"]}
+
+
+def validate_prompt_embedding_cache_data(
+    cache: Mapping[str, Any],
+    vocab: Mapping[str, Any],
+    vocab_path: str | Path,
+    strict: bool = False,
+) -> Dict[str, List[str]]:
     errors: List[str] = []
     warnings: List[str] = []
 
     import torch
 
-    cache = torch.load(cache_path, map_location="cpu", weights_only=False)
-    vocab = load_label_vocab(vocab_path)
     records = flatten_prompt_records(vocab)
     expected_hash = file_sha256(vocab_path)
     embeddings = cache.get("embeddings")
@@ -302,6 +323,7 @@ def sample_prompts_for_case(
     num_negative: int = 1,
     min_voxels: int = 1,
     rng: Optional[random.Random] = None,
+    prompt_index: Optional[Mapping[int, Sequence[Mapping[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Sample prompt records for a case.
 
@@ -319,7 +341,7 @@ def sample_prompts_for_case(
         if class_id in trainable and count >= min_voxels
     }
     absent = trainable - present
-    grouped = prompt_records_by_class(vocab)
+    grouped = prompt_index if prompt_index is not None else prompt_records_by_class(vocab)
 
     sampled: List[Dict[str, Any]] = []
     positive_classes = _sample_without_replacement(sorted(present), num_positive, rng)
@@ -383,12 +405,13 @@ __all__ = [
     "foreground_eval_class_ids",
     "load_class_presence",
     "load_label_vocab",
+    "load_and_validate_prompt_cache",
     "prompt_records_by_class",
     "read_json",
     "sample_prompts_for_case",
     "train_class_ids",
     "validate_label_vocab",
     "validate_prompt_embedding_cache",
+    "validate_prompt_embedding_cache_data",
     "write_json",
 ]
-

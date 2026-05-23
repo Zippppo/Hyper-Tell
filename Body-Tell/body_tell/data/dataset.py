@@ -13,10 +13,11 @@ from torch.utils.data import Dataset
 from .vocabulary import (
     build_target_mask,
     load_class_presence,
+    load_and_validate_prompt_cache,
     load_label_vocab,
+    prompt_records_by_class,
     read_json,
     sample_prompts_for_case,
-    validate_prompt_embedding_cache,
 )
 
 
@@ -71,18 +72,15 @@ class HyperBodyPromptDataset(Dataset):
         if not self.case_files:
             raise ValueError(f"Split {split!r} contains no cases")
 
-        validation = validate_prompt_embedding_cache(
+        validation = load_and_validate_prompt_cache(
             self.embedding_cache_path,
             self.vocab_path,
             strict=strict_embedding_cache,
         )
         self.embedding_warnings = validation["warnings"]
-        self.embedding_cache = torch.load(
-            self.embedding_cache_path,
-            map_location="cpu",
-            weights_only=False,
-        )
+        self.embedding_cache = validation["cache"]
         self.prompt_embeddings = self.embedding_cache["embeddings"].float().contiguous()
+        self._prompt_records_by_class = prompt_records_by_class(self.vocab)
 
     def __len__(self) -> int:
         return len(self.case_files)
@@ -115,6 +113,7 @@ class HyperBodyPromptDataset(Dataset):
             num_negative=self.num_negative,
             min_voxels=self.min_voxels,
             rng=rng,
+            prompt_index=self._prompt_records_by_class,
         )
         if not prompt_records:
             raise ValueError(f"No prompts could be sampled for {case_id}")

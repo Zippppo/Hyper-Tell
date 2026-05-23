@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 
 import numpy as np
 import torch
 
+import body_tell.data.vocabulary as vocabulary_module
 from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
-from body_tell.data.vocabulary import EMBEDDING_DIM, file_sha256, flatten_prompt_records
+from body_tell.data.vocabulary import (
+    EMBEDDING_DIM,
+    file_sha256,
+    flatten_prompt_records,
+    prompt_records_by_class,
+    sample_prompts_for_case,
+)
 
 
 def _write_json(path: Path, data: object) -> None:
@@ -164,6 +172,85 @@ def test_prompt_dataset_builds_binary_masks_and_negative_prompt(tmp_path: Path) 
     assert sample["target_masks"][1].sum().item() == 6
     assert sample["target_masks"][2].sum().item() == 0
     assert sample["occupancy"].sum().item() == 3
+
+
+def test_prompt_dataset_loads_embedding_cache_once(tmp_path: Path, monkeypatch) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    cache_path = root / "artifacts" / "text_embeddings" / "prompt_embeddings.pt"
+    original_load = torch.load
+    load_paths: list[Path] = []
+
+    def counting_load(*args, **kwargs):
+        path = Path(args[0])
+        if path == cache_path:
+            load_paths.append(path)
+        return original_load(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "load", counting_load)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+    )
+
+    assert dataset.prompt_embeddings.shape == (4, EMBEDDING_DIM)
+    assert load_paths == [cache_path]
+
+
+def test_precomputed_prompt_index_preserves_sampling_order(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    vocab = json.loads((root / "configs" / "label_vocab.json").read_text(encoding="utf-8"))
+    presence = json.loads(
+        (root / "artifacts" / "data_stats" / "class_presence.json").read_text(encoding="utf-8")
+    )
+    case_record = presence["cases"]["CASE_0001"]
+
+    expected = sample_prompts_for_case(
+        case_record,
+        vocab,
+        num_positive=2,
+        num_negative=1,
+        min_voxels=1,
+        rng=random.Random(3),
+    )
+    actual = sample_prompts_for_case(
+        case_record,
+        vocab,
+        num_positive=2,
+        num_negative=1,
+        min_voxels=1,
+        rng=random.Random(3),
+        prompt_index=prompt_records_by_class(vocab),
+    )
+
+    assert actual == expected
+
+
+def test_prompt_dataset_reuses_precomputed_prompt_index(tmp_path: Path, monkeypatch) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+    )
+
+    def fail_if_flattened(*args, **kwargs):
+        raise AssertionError("prompt records should be precomputed during dataset init")
+
+    monkeypatch.setattr(vocabulary_module, "flatten_prompt_records", fail_if_flattened)
+
+    sample = dataset[0]
+
+    assert sample["prompt_ids"].tolist() == [1, 2, 3]
+    assert sample["target_empty"].tolist() == [False, False, True]
 
 
 def test_prompt_dataset_pads_to_requested_volume_size(tmp_path: Path) -> None:

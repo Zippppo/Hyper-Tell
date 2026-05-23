@@ -3,10 +3,15 @@
 Interactive visualization for Body-Tell predictions using Plotly.
 Generates an HTML file with 3D volume rendering and 2D slice views.
 
+Usage:
 python Body-Tell/visualize_predictions.py \
 --input Body-Tell/outputs/inference_demo/BDMAP_00000001/BDMAP_00000001_predictions.npz \
 --original Body-Tell/Dataset/voxel_data/BDMAP_00000001.npz \
---opacity 0.4 
+--opacity 0.4 \
+--downsample-3d 3 \
+--max-slices 40
+
+Note: Higher downsample-3d and lower max-slices reduce file size significantly.
 """
 
 import argparse
@@ -26,6 +31,7 @@ def load_predictions(npz_path):
         'prompt_ids': data['prompt_ids'],
         'threshold': float(data['threshold']),
         'voxel_size': data['grid_voxel_size'],
+        'grid_world_min': data.get('grid_world_min', np.array([0., 0., 0.])),
     }
 
 
@@ -37,23 +43,32 @@ def load_original_data(original_npz_path):
     return {
         'sensor_pc': data['sensor_pc'],
         'voxel_labels': data['voxel_labels'],
+        'grid_world_min': data['grid_world_min'],
     }
 
 
-def create_3d_visualization(pred_masks, prompt_texts, voxel_size, original_data=None, opacity=0.3):
-    """Create 3D isosurface visualization for each organ with optional body surface."""
+def create_3d_visualization(pred_masks, prompt_texts, voxel_size, grid_world_min, original_data=None, opacity=0.3, downsample_factor=2):
+    """Create 3D isosurface visualization for each organ with optional body surface.
+
+    Args:
+        downsample_factor: Factor to downsample 3D data (2 = 8x fewer points, 3 = 27x fewer)
+    """
     # Color palette for different organs (bright colors)
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
 
     fig = go.Figure()
 
     # Add body surface point cloud if available (light gray, semi-transparent)
+    # Downsample point cloud to reduce file size
     if original_data is not None and 'sensor_pc' in original_data:
         sensor_pc = original_data['sensor_pc']
+        # Downsample to every Nth point
+        pc_downsample = max(1, len(sensor_pc) // 20000)  # Keep ~20k points max
+        sensor_pc_sampled = sensor_pc[::pc_downsample]
         fig.add_trace(go.Scatter3d(
-            x=sensor_pc[:, 0],
-            y=sensor_pc[:, 1],
-            z=sensor_pc[:, 2],
+            x=sensor_pc_sampled[:, 0],
+            y=sensor_pc_sampled[:, 1],
+            z=sensor_pc_sampled[:, 2],
             mode='markers',
             marker=dict(
                 size=1,
@@ -64,50 +79,33 @@ def create_3d_visualization(pred_masks, prompt_texts, voxel_size, original_data=
             hoverinfo='skip',
         ))
 
-    # Add ground truth labels if available (very light, transparent)
-    if original_data is not None and 'voxel_labels' in original_data:
-        voxel_labels = original_data['voxel_labels']
-        # Convert voxel indices to real-world coordinates
-        X, Y, Z = np.mgrid[0:voxel_labels.shape[0], 0:voxel_labels.shape[1], 0:voxel_labels.shape[2]]
-        X = X * voxel_size[0]
-        Y = Y * voxel_size[1]
-        Z = Z * voxel_size[2]
-
-        # Create a binary mask for all labeled voxels
-        all_labels_mask = (voxel_labels > 0).astype(np.uint8)
-
-        if all_labels_mask.sum() > 0:
-            fig.add_trace(go.Isosurface(
-                x=X.flatten(),
-                y=Y.flatten(),
-                z=Z.flatten(),
-                value=all_labels_mask.flatten(),
-                isomin=0.5,
-                isomax=1.0,
-                opacity=0.08,
-                surface_count=1,
-                colorscale=[[0, '#D3D3D3'], [1, '#D3D3D3']],
-                showscale=False,
-                name='Ground Truth (all organs)',
-                caps=dict(x_show=False, y_show=False, z_show=False),
-            ))
+    # Skip ground truth 3D visualization to save space
+    # (Ground truth is still shown in 2D slice viewers)
 
     # Add predicted organ masks (bright, more opaque)
     for i, (mask, organ_name) in enumerate(zip(pred_masks, prompt_texts)):
         if mask.sum() == 0:
             continue
 
-        # Convert voxel indices to real-world coordinates
-        X, Y, Z = np.mgrid[0:mask.shape[0], 0:mask.shape[1], 0:mask.shape[2]]
-        X = X * voxel_size[0]
-        Y = Y * voxel_size[1]
-        Z = Z * voxel_size[2]
+        # Downsample the mask to reduce data size
+        if downsample_factor > 1:
+            mask_downsampled = mask[::downsample_factor, ::downsample_factor, ::downsample_factor]
+            voxel_size_downsampled = voxel_size * downsample_factor
+        else:
+            mask_downsampled = mask
+            voxel_size_downsampled = voxel_size
+
+        # Convert voxel indices to real-world coordinates with proper origin offset
+        X, Y, Z = np.mgrid[0:mask_downsampled.shape[0], 0:mask_downsampled.shape[1], 0:mask_downsampled.shape[2]]
+        X = X * voxel_size_downsampled[0] + grid_world_min[0]
+        Y = Y * voxel_size_downsampled[1] + grid_world_min[1]
+        Z = Z * voxel_size_downsampled[2] + grid_world_min[2]
 
         fig.add_trace(go.Isosurface(
             x=X.flatten(),
             y=Y.flatten(),
             z=Z.flatten(),
-            value=mask.flatten(),
+            value=mask_downsampled.flatten(),
             isomin=0.5,
             isomax=1.0,
             opacity=opacity,
@@ -119,7 +117,7 @@ def create_3d_visualization(pred_masks, prompt_texts, voxel_size, original_data=
         ))
 
     fig.update_layout(
-        title='3D Organ Segmentation (Predictions in Color, Ground Truth in Gray)',
+        title='3D Organ Segmentation (Predictions in Color)',
         scene=dict(
             xaxis_title='X (mm)',
             yaxis_title='Y (mm)',
@@ -142,8 +140,12 @@ def create_3d_visualization(pred_masks, prompt_texts, voxel_size, original_data=
     return fig
 
 
-def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None, axis='axial', organ_idx=0):
-    """Create an interactive slice viewer for a single organ with slider for a specific axis."""
+def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None, axis='axial', organ_idx=0, max_slices=50):
+    """Create an interactive slice viewer for a single organ with slider for a specific axis.
+
+    Args:
+        max_slices: Maximum number of slices to include (reduces file size)
+    """
     # Get the specific organ mask
     organ_mask = pred_masks[organ_idx]
     organ_name = prompt_texts[organ_idx]
@@ -168,9 +170,13 @@ def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None
         axis_labels = ('X (Axial)', 'Y (Coronal)')
         title_prefix = 'Coronal'
 
-    # Create frames for each slice
+    # Downsample slices if too many
+    slice_step = max(1, num_slices // max_slices)
+    slice_indices = list(range(0, num_slices, slice_step))
+
+    # Create frames for selected slices only
     frames = []
-    for i in range(num_slices):
+    for i in slice_indices:
         if axis == 'axial':
             organ_slice = organ_mask[i, :, :]
             gt_slice = voxel_labels[i, :, :] if voxel_labels is not None else None
@@ -208,16 +214,17 @@ def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None
         ))
 
     # Create initial figure with middle slice
-    mid_idx = num_slices // 2
+    mid_idx = len(slice_indices) // 2
+    initial_slice_idx = slice_indices[mid_idx]
     if axis == 'axial':
-        initial_organ = organ_mask[mid_idx, :, :]
-        initial_gt = voxel_labels[mid_idx, :, :] if voxel_labels is not None else None
+        initial_organ = organ_mask[initial_slice_idx, :, :]
+        initial_gt = voxel_labels[initial_slice_idx, :, :] if voxel_labels is not None else None
     elif axis == 'sagittal':
-        initial_organ = organ_mask[:, mid_idx, :]
-        initial_gt = voxel_labels[:, mid_idx, :] if voxel_labels is not None else None
+        initial_organ = organ_mask[:, initial_slice_idx, :]
+        initial_gt = voxel_labels[:, initial_slice_idx, :] if voxel_labels is not None else None
     else:
-        initial_organ = organ_mask[:, :, mid_idx]
-        initial_gt = voxel_labels[:, :, mid_idx] if voxel_labels is not None else None
+        initial_organ = organ_mask[:, :, initial_slice_idx]
+        initial_gt = voxel_labels[:, :, initial_slice_idx] if voxel_labels is not None else None
 
     h, w = initial_organ.shape
     initial_rgb = np.zeros((h, w, 3), dtype=np.uint8)
@@ -263,7 +270,7 @@ def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None
                 transition=dict(duration=0)
             )],
             method="animate",
-            label=str(k)
+            label=str(slice_indices[k])
         ) for k, f in enumerate(frames)]
     )]
 
@@ -280,15 +287,16 @@ def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None
 
 
 
-def create_combined_html(pred_data, original_data, output_path):
+def create_combined_html(pred_data, original_data, output_path, opacity=0.3, downsample_3d=2, max_slices=50):
     """Create a comprehensive HTML report with all visualizations."""
     pred_masks = pred_data['pred_masks']
     pred_combined = pred_data['pred_combined']
     prompt_texts = pred_data['prompt_texts']
     voxel_size = pred_data['voxel_size']
+    grid_world_min = pred_data['grid_world_min']
 
     # Create 3D visualization
-    fig_3d = create_3d_visualization(pred_masks, prompt_texts, voxel_size, original_data)
+    fig_3d = create_3d_visualization(pred_masks, prompt_texts, voxel_size, grid_world_min, original_data, opacity, downsample_3d)
 
     # Create interactive slice viewers for each organ and each axis
     slice_viewers_html = []
@@ -296,13 +304,13 @@ def create_combined_html(pred_data, original_data, output_path):
         slice_viewers_html.append(f'<h3>{organ_name}</h3>')
         slice_viewers_html.append('<div class="organ-slices">')
 
-        fig_axial = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='axial', organ_idx=organ_idx)
+        fig_axial = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='axial', organ_idx=organ_idx, max_slices=max_slices)
         slice_viewers_html.append(fig_axial.to_html(full_html=False, include_plotlyjs='cdn'))
 
-        fig_sagittal = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='sagittal', organ_idx=organ_idx)
+        fig_sagittal = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='sagittal', organ_idx=organ_idx, max_slices=max_slices)
         slice_viewers_html.append(fig_sagittal.to_html(full_html=False, include_plotlyjs='cdn'))
 
-        fig_coronal = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='coronal', organ_idx=organ_idx)
+        fig_coronal = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='coronal', organ_idx=organ_idx, max_slices=max_slices)
         slice_viewers_html.append(fig_coronal.to_html(full_html=False, include_plotlyjs='cdn'))
 
         slice_viewers_html.append('</div>')
@@ -332,12 +340,12 @@ def create_combined_html(pred_data, original_data, output_path):
         '</div>',
         '<div class="viz-container">',
         '<h2>3D Volume Rendering</h2>',
-        '<p>Interactive 3D view - use mouse to rotate, zoom, and pan. Body surface and organs are now aligned in real-world coordinates.</p>',
+        f'<p>Interactive 3D view - use mouse to rotate, zoom, and pan. Downsampled by {downsample_3d}x for performance.</p>',
         fig_3d.to_html(full_html=False, include_plotlyjs='cdn'),
         '</div>',
         '<div class="viz-container">',
         '<h2>Interactive Slice Viewers</h2>',
-        '<p>Use the sliders to navigate through each plane. Each organ is shown separately with target organ in color and others in gray.</p>',
+        f'<p>Use the sliders to navigate through each plane (showing up to {max_slices} slices per axis). Each organ is shown separately with target organ in color and others in gray.</p>',
     ]
 
     html_parts.extend(slice_viewers_html)
@@ -361,8 +369,12 @@ def main():
                         help='Path to original voxel data npz file (for ground truth overlay)')
     parser.add_argument('--output', type=str, default=None,
                         help='Output HTML path (default: same dir as input)')
-    parser.add_argument('--opacity', type=float, default=0.3,
+    parser.add_argument('--opacity', type=float, default=0.4,
                         help='3D visualization opacity (0-1)')
+    parser.add_argument('--downsample-3d', type=int, default=3,
+                        help='Downsample factor for 3D view (2=8x smaller, 3=27x smaller, default=3)')
+    parser.add_argument('--max-slices', type=int, default=40,
+                        help='Maximum slices per axis in slice viewer (default=40)')
 
     args = parser.parse_args()
 
@@ -403,7 +415,7 @@ def main():
 
     # Create visualization
     print("Creating visualizations...")
-    create_combined_html(pred_data, original_data, output_path)
+    create_combined_html(pred_data, original_data, output_path, args.opacity, args.downsample_3d, args.max_slices)
 
     print(f"\n[DONE] Open the file in your browser:")
     print(f"   file://{output_path.absolute()}")
