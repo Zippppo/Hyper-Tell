@@ -9,6 +9,7 @@ Body-Tell/Dataset/
 Body-Tell/artifacts/
 run_train.sh
 Body-Tell/outputs/
+S2I-Dataset-70cls/
 
 # Distribution / packaging
 .Python

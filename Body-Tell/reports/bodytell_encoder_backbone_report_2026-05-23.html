@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell Encoder Backbone 对比报告</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5d6876;
+      --line: #d9e1ea;
+      --panel: #f7f9fb;
+      --accent: #176b87;
+      --warn: #9b3d2e;
+      --good: #26734d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #fff;
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 34px 42px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fbfd;
+    }
+    main { max-width: 1280px; padding: 28px 42px 48px; }
+    h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: 0; }
+    h2 { margin: 30px 0 12px; font-size: 22px; letter-spacing: 0; }
+    h3 { margin: 22px 0 8px; font-size: 17px; letter-spacing: 0; }
+    p { margin: 8px 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #eef3f7;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .meta { color: var(--muted); }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .cards > div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px 16px;
+    }
+    .cards span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .cards strong {
+      display: block;
+      color: var(--accent);
+      font-size: 22px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 24px;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    th {
+      text-align: left;
+      background: #f1f5f8;
+      color: #24313d;
+    }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .note {
+      border-left: 4px solid var(--line);
+      padding-left: 12px;
+      color: var(--muted);
+    }
+    .warn { color: var(--warn); font-weight: 650; }
+    .good { color: var(--good); font-weight: 650; }
+    .grid2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }
+    ul, ol { padding-left: 22px; }
+    li { margin: 5px 0; }
+    @media (max-width: 900px) {
+      header, main { padding-left: 20px; padding-right: 20px; }
+      .grid2 { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Body-Tell Encoder Backbone 对比报告</h1>
+    <p class="meta">生成日期：2026-05-23；范围：Body-Tell 当前实现 vs VoxTell v1.1 plans / model code。</p>
+  </header>
+  <main>
+    <section>
+      <h2>核心结论</h2>
+      <div class="cards">
+        <div><span>Body-Tell 总参数</span><strong>328.98M</strong></div>
+        <div><span>VoxTell 总参数</span><strong>440.03M</strong></div>
+        <div><span>Body-Tell encoder</span><strong>8.49M</strong></div>
+        <div><span>VoxTell encoder</span><strong>90.30M</strong></div>
+        <div><span>encoder 参数倍率</span><strong>10.63x</strong></div>
+        <div><span>全模型参数倍率</span><strong>1.34x</strong></div>
+      </div>
+      <p><strong>Body-Tell 的 encoder 确实是轻量版</strong>：它不是 nnU-Net 风格的 <code>ResidualEncoder</code>，而是 5 个普通 3D 卷积块组成的 <code>_BodyEncoder</code>。与 VoxTell 的 6-stage residual backbone 相比，encoder 参数少约 <strong>81.80M</strong>，单看 encoder 是非常明显的差别。</p>
+      <p>但从全模型看，差距没有 10 倍那么夸张，因为两边都保留了同量级的文本投影和 6 层 transformer decoder。Body-Tell 当前最大的参数来源仍然是 <code>transformer_decoder</code>，约 <strong>251.86M</strong>。</p>
+      <p><strong>如果当前训练表现为模型难以学到稳定的空间/器官结构，encoder 成为瓶颈是一个高优先级假设。</strong>Body-Tell 的 decoder 和 prompt 模块很重，但 visual backbone 只有浅层非残差 CNN；这会让文本侧容量远大于视觉侧容量，模型可能缺少足够强的 occupancy-to-anatomy 表征。</p>
+      <p class="note">代码中没有找到直接解释“为什么选轻量 encoder”的注释或设计文档。因此本报告把“为什么”分为两层：一是代码事实；二是基于输入模态、显存/计算和迁移阶段的工程推断。</p>
+    </section>
+
+    <section>
+      <h2>证据来源</h2>
+      <table>
+        <thead><tr><th>证据</th><th>位置</th><th>要点</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Body-Tell 配置</td>
+            <td><code>Body-Tell/configs/phase1_voxtell_body.yaml:3-16</code></td>
+            <td><code>encoder_channels=[32,64,128,256,320]</code>，<code>decoder_layer=-1</code>，<code>num_maskformer_stages=5</code>，<code>num_heads=32</code>。</td>
+          </tr>
+          <tr>
+            <td>Body-Tell encoder 实现</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:155-171</code></td>
+            <td><code>_BodyEncoder</code> 逐 stage 堆叠 <code>_ConvBlock</code>，第 0 层 stride=1，其余 stride=2。</td>
+          </tr>
+          <tr>
+            <td>Body-Tell 卷积块</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:253-271</code></td>
+            <td>每个 <code>_ConvBlock</code> 是两层 <code>Conv3d + GroupNorm + GELU</code>，没有 residual skip。</td>
+          </tr>
+          <tr>
+            <td>Body-Tell 输入</td>
+            <td><code>Body-Tell/body_tell/data/dataset.py:97-140</code></td>
+            <td>从 <code>sensor_pc</code> 体素化为 binary occupancy，再作为 <code>(1,D,H,W)</code> 输入。</td>
+          </tr>
+          <tr>
+            <td>VoxTell plans</td>
+            <td><code>VoxTell/models-weight/voxtell/voxtell_v1.1/plans.json:9-120</code></td>
+            <td>patch size <code>192^3</code>，6 stages，通道 <code>[32,64,128,256,320,320]</code>，残差块数 <code>[1,3,4,6,6,6]</code>。</td>
+          </tr>
+          <tr>
+            <td>VoxTell encoder 实例化</td>
+            <td><code>VoxTell/voxtell/model/voxtell_model.py:131-137</code></td>
+            <td>使用 <code>dynamic_network_architectures</code> 的 <code>ResidualEncoder</code>，<code>return_skips=True</code>，<code>disable_default_stem=False</code>。</td>
+          </tr>
+          <tr>
+            <td>VoxTell 推理入口</td>
+            <td><code>VoxTell/voxtell/inference/predictor.py:72-93</code></td>
+            <td>从 <code>plans.json</code> 读取 architecture kwargs，并设置 <code>decoder_layer=4</code>、<code>text_embedding_dim=2560</code>、<code>query_dim=2048</code>。</td>
+          </tr>
+          <tr>
+            <td>VoxTell 图像预处理</td>
+            <td><code>VoxTell/voxtell/inference/predictor.py:110-134</code></td>
+            <td>医学图像输入会 crop nonzero 区域并做 z-score normalization，输入语义是 dense intensity volume。</td>
+          </tr>
+          <tr>
+            <td>ResidualEncoder 源码</td>
+            <td><code>/home/comp/csrkzhu/miniconda3/lib/python3.13/site-packages/dynamic_network_architectures/building_blocks/residual_encoders.py:13</code></td>
+            <td>源码确认 <code>ResidualEncoder</code> 先构造默认 stem，再逐 stage 构造 <code>StackedResidualBlocks</code>，forward 时返回每个 stage 的 skip。</td>
+          </tr>
+          <tr>
+            <td>Residual block 源码</td>
+            <td><code>/home/comp/csrkzhu/miniconda3/lib/python3.13/site-packages/dynamic_network_architectures/building_blocks/residual.py:13</code></td>
+            <td><code>BasicBlockD</code> 是 ResNet-D 风格 block：主路径两次 3D conv，skip 路径在 stride 或通道变化时使用 avgpool / 1x1 projection。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>ResidualEncoder 逐源码核实</h2>
+      <p><strong>本次已经从三层证据交叉确定 VoxTell 的 nnU-Net-style encoder 结构</strong>：VoxTell v1.1 <code>plans.json</code>、VoxTell model 构造代码、以及当前环境安装的 <code>dynamic_network_architectures</code> 源码。结论是：VoxTell 使用的不是一个普通 CNN encoder，而是 <code>ResidualEncoder</code> 包装的 6-stage residual feature pyramid。</p>
+      <table>
+        <thead><tr><th>组件</th><th>源码行为</th><th>VoxTell v1.1 中的实际结果</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>ResidualEncoder</code></td>
+            <td>如果 <code>disable_default_stem=False</code>，先创建一个 <code>StackedConvBlocks(1)</code> stem；随后循环 <code>n_stages</code> 次，每个 stage 创建一个 <code>StackedResidualBlocks</code>；forward 中依次执行 stem 和 stages，并把每个 stage 输出放入 <code>ret</code>，<code>return_skips=True</code> 时返回全部 skip。</td>
+            <td>VoxTell 构造时传入 <code>return_skips=True</code>、<code>disable_default_stem=False</code>，因此 decoder 和 prompt fusion 使用的是 6 个多尺度 skip feature。</td>
+          </tr>
+          <tr>
+            <td>默认 stem</td>
+            <td><code>StackedConvBlocks(1, Conv3d, input_channels, stem_channels, kernel_size, stride=1)</code>；stem 不做下采样。</td>
+            <td>实际实例化为 <code>Conv3d(1,32,k=3,s=1,p=1) + InstanceNorm3d + LeakyReLU</code>，参数 960。</td>
+          </tr>
+          <tr>
+            <td><code>StackedResidualBlocks</code></td>
+            <td>第一个 residual block 使用 stage 的 <code>initial_stride</code>；同一 stage 内后续 block 都是 stride=1。<code>n_blocks_per_stage</code> 决定每个 stage 的深度。</td>
+            <td>VoxTell 的 block 数是 <code>[1,3,4,6,6,6]</code>，总计 26 个 <code>BasicBlockD</code>。</td>
+          </tr>
+          <tr>
+            <td><code>BasicBlockD</code> 主路径</td>
+            <td><code>conv1 = ConvDropoutNormReLU(... stride=stage_stride ...)</code>；<code>conv2 = ConvDropoutNormReLU(... stride=1, nonlin=None ...)</code>；之后 <code>out += residual</code>，再执行 <code>nonlin2</code>。</td>
+            <td>在 VoxTell plans 下，每个主路径卷积是 <code>Conv3d + InstanceNorm3d</code>，第一层带 <code>LeakyReLU</code>，第二层不带激活，残差相加后再 <code>LeakyReLU</code>。</td>
+          </tr>
+          <tr>
+            <td><code>BasicBlockD</code> skip 路径</td>
+            <td>如果 stride 不为 1，先用 <code>AvgPool3d(stride)</code>；如果输入/输出通道不同，再接 <code>1x1 Conv + Norm</code>；如果 stride 和通道都不变，则 skip 是 identity。</td>
+            <td>stage 1-4 的首个 block 是 <code>AvgPool3d + 1x1 projection</code>；stage 5 的首个 block 因为 320->320 通道不变，所以 skip 只有 <code>AvgPool3d</code>。</td>
+          </tr>
+          <tr>
+            <td><code>ConvDropoutNormReLU</code></td>
+            <td>卷积使用 same padding 逻辑：<code>padding=(kernel_size-1)//2</code>；随后按配置接 dropout、norm、nonlin。</td>
+            <td>VoxTell plans 设置 <code>Conv3d</code>、<code>InstanceNorm3d(affine=True)</code>、<code>LeakyReLU(inplace=True)</code>、<code>conv_bias=True</code>、无 dropout。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>VoxTell v1.1 encoder 的真实 stage 形态</h3>
+      <table>
+        <thead><tr><th>Stage</th><th>分辨率变化，按 <code>192^3</code> patch</th><th>通道</th><th>Residual blocks</th><th>首个 block skip</th><th class="num">参数</th></tr></thead>
+        <tbody>
+          <tr><td>stem</td><td><code>192 -> 192</code></td><td><code>1 -> 32</code></td><td>0</td><td>n/a</td><td class="num">960</td></tr>
+          <tr><td>0</td><td><code>192 -> 192</code></td><td><code>32 -> 32</code></td><td>1</td><td>identity</td><td class="num">55,488</td></tr>
+          <tr><td>1</td><td><code>192 -> 96</code></td><td><code>32 -> 64</code></td><td>3</td><td><code>AvgPool3d + 1x1 Conv</code></td><td class="num">611,584</td></tr>
+          <tr><td>2</td><td><code>96 -> 48</code></td><td><code>64 -> 128</code></td><td>4</td><td><code>AvgPool3d + 1x1 Conv</code></td><td class="num">3,329,280</td></tr>
+          <tr><td>3</td><td><code>48 -> 24</code></td><td><code>128 -> 256</code></td><td>6</td><td><code>AvgPool3d + 1x1 Conv</code></td><td class="num">20,391,424</td></tr>
+          <tr><td>4</td><td><code>24 -> 12</code></td><td><code>256 -> 320</code></td><td>6</td><td><code>AvgPool3d + 1x1 Conv</code></td><td class="num">32,718,720</td></tr>
+          <tr><td>5</td><td><code>12 -> 6</code></td><td><code>320 -> 320</code></td><td>6</td><td><code>AvgPool3d</code></td><td class="num">33,189,120</td></tr>
+        </tbody>
+      </table>
+      <p class="note">因此，“nnU-Net 风格的 ResidualEncoder”在这里不是泛泛地指 U-Net，而是一个 plans 驱动的 3D residual encoder：默认 stem、6 个分辨率 stage、stage 内堆叠 residual blocks、stride 下采样、逐 stage 返回 skips，并保存 <code>output_channels</code>、<code>strides</code>、<code>kernel_sizes</code> 供 decoder 精确复用。</p>
+    </section>
+
+    <section>
+      <h2>结构差异</h2>
+      <table>
+        <thead><tr><th>维度</th><th>Body-Tell 当前实现</th><th>VoxTell / nnU-Net-style 实现</th><th>影响</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>输入模态</td>
+            <td>binary occupancy grid，来自表面点云体素化。</td>
+            <td>CT/MRI/PET 等 dense medical image patch，经过 z-score normalization。</td>
+            <td>occupancy 没有 HU/intensity texture、跨模态强度差异和图像噪声模式；图像 backbone 需要更强的纹理和尺度建模能力。</td>
+          </tr>
+          <tr>
+            <td>stage 数</td>
+            <td>5 stages：<code>[32,64,128,256,320]</code>。</td>
+            <td>6 stages：<code>[32,64,128,256,320,320]</code>。</td>
+            <td>VoxTell 多一个低分辨率 stage，感受野更深，参数和 activation 也更高。</td>
+          </tr>
+          <tr>
+            <td>每 stage 深度</td>
+            <td>每 stage 一个 <code>_ConvBlock</code>，每个 block 两个 3D conv。</td>
+            <td>stage block 数 <code>[1,3,4,6,6,6]</code>，总计 26 个 residual blocks，另有 stem。</td>
+            <td>VoxTell 的高层 stage 特别深，主要参数差距来自 stage 3-5。</td>
+          </tr>
+          <tr>
+            <td>残差连接</td>
+            <td>无 residual skip。</td>
+            <td><code>BasicBlockD</code> residual path；stride 或通道变化时用 avgpool + 1x1 projection skip。</td>
+            <td>残差结构让更深的 3D encoder 更容易训练；Body-Tell 的浅层普通 CNN 更简单但表达能力较弱。</td>
+          </tr>
+          <tr>
+            <td>归一化/激活</td>
+            <td><code>GroupNorm</code> + <code>GELU</code>，卷积 bias=False。</td>
+            <td><code>InstanceNorm3d(affine=True)</code> + <code>LeakyReLU</code>，conv_bias=True。</td>
+            <td>VoxTell 更接近 nnU-Net 医学图像分割默认风格；Body-Tell 更像轻量自定义 3D CNN。</td>
+          </tr>
+          <tr>
+            <td>decoder 契约</td>
+            <td>decoder 只接收 <code>encoder_channels</code>，与 nnU-Net encoder 解耦。</td>
+            <td>decoder 直接依赖 encoder 的 <code>output_channels</code>、<code>strides</code>、<code>kernel_sizes</code>。</td>
+            <td>Body-Tell 更容易脱离 VoxTell/nnU-Net 依赖运行，但也失去 plans 驱动的一致性。</td>
+          </tr>
+          <tr>
+            <td>mask projection stage</td>
+            <td>配置请求 5，但代码用 <code>min(num_maskformer_stages, len(encoder_channels)-1)</code>，实际只有 4 个 projection。</td>
+            <td>5 个 projection，对应 VoxTell 的前 5 个 decoder configs。</td>
+            <td>Body-Tell 除 encoder 变浅外，多尺度 mask fusion 也少一级。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>参数量对比</h2>
+      <h3>唯一参数按模块分组</h3>
+      <table>
+        <thead><tr><th>模块</th><th class="num">Body-Tell</th><th class="num">VoxTell</th><th class="num">差值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>encoder</td><td class="num">8,492,000</td><td class="num">90,296,576</td><td class="num">+81,804,576</td><td>最大结构性差别；VoxTell encoder 是 Body-Tell 的 10.63 倍。</td></tr>
+          <tr><td>decoder own params</td><td class="num">8,109,408</td><td class="num">12,175,429</td><td class="num">+4,066,021</td><td>VoxTell 多一个 stage；注意 VoxTell decoder 对象内部保存 encoder 引用，统计唯一参数时不重复计算 encoder。</td></tr>
+          <tr><td>visual/bottleneck projection</td><td class="num">4,853,760</td><td class="num">4,853,760</td><td class="num">0</td><td>两边选中的 visual channel 都是 320，投影到 2048。</td></tr>
+          <tr><td>text projection</td><td class="num">9,441,280</td><td class="num">9,441,280</td><td class="num">0</td><td>两边都是 2560 -> 2048 -> 2048。</td></tr>
+          <tr><td>transformer decoder</td><td class="num">251,858,944</td><td class="num">251,858,944</td><td class="num">0</td><td>两边同为 6 层、2048 hidden、8 heads；这是全模型最大参数来源。</td></tr>
+          <tr><td>mask projection</td><td class="num">46,225,440</td><td class="num">71,403,552</td><td class="num">+25,178,112</td><td>Body-Tell 实际 4 个 projection；VoxTell 5 个 projection。</td></tr>
+          <tr><td><strong>总计</strong></td><td class="num"><strong>328,980,832</strong></td><td class="num"><strong>440,029,541</strong></td><td class="num"><strong>+111,048,709</strong></td><td>VoxTell 全模型约为 Body-Tell 的 1.34 倍。</td></tr>
+        </tbody>
+      </table>
+
+      <h3>encoder stage 参数</h3>
+      <table>
+        <thead><tr><th>Stage</th><th class="num">Body-Tell <code>_BodyEncoder</code></th><th class="num">VoxTell <code>ResidualEncoder</code></th><th>备注</th></tr></thead>
+        <tbody>
+          <tr><td>stem</td><td class="num">n/a</td><td class="num">960</td><td>VoxTell <code>ResidualEncoder</code> 默认 stem。</td></tr>
+          <tr><td>0</td><td class="num">28,640</td><td class="num">55,488</td><td>同为 32 channels，但 VoxTell 有 residual block。</td></tr>
+          <tr><td>1</td><td class="num">166,144</td><td class="num">611,584</td><td>VoxTell stage 1 有 3 个 residual blocks。</td></tr>
+          <tr><td>2</td><td class="num">664,064</td><td class="num">3,329,280</td><td>VoxTell stage 2 有 4 个 residual blocks。</td></tr>
+          <tr><td>3</td><td class="num">2,655,232</td><td class="num">20,391,424</td><td>高层开始拉开数量级差距。</td></tr>
+          <tr><td>4</td><td class="num">4,977,920</td><td class="num">32,718,720</td><td>VoxTell stage 4 有 6 个 320-channel residual blocks。</td></tr>
+          <tr><td>5</td><td class="num">n/a</td><td class="num">33,189,120</td><td>Body-Tell 没有第 6 个 stage。</td></tr>
+          <tr><td><strong>encoder 总计</strong></td><td class="num"><strong>8,492,000</strong></td><td class="num"><strong>90,296,576</strong></td><td>差值 <strong>81,804,576</strong>。</td></tr>
+        </tbody>
+      </table>
+      <p class="note">统计方法：本地实例化 <code>VoxTellBodyModel(VoxTellBodyConfig())</code>；VoxTell 使用 v1.1 <code>plans.json</code> 的 architecture kwargs，并按推理入口设置 <code>decoder_layer=4</code>、<code>text_embedding_dim=2560</code>、<code>query_dim=2048</code>、<code>num_heads=32</code>、<code>deep_supervision=False</code>。由于当前环境缺少 <code>positional_encodings</code> 包，统计 VoxTell 参数时仅 stub 了固定 positional buffer；该 buffer 不是 trainable parameter，不影响上述参数量。</p>
+    </section>
+
+    <section>
+      <h2>为什么 Body-Tell 可能被写成轻量 encoder</h2>
+      <ol>
+        <li><strong>输入信号更简单。</strong>Body-Tell 的输入是 binary occupancy，表示表面点是否落入体素；VoxTell 的输入是 CT/MRI/PET dense intensity volume。医学图像 encoder 要处理强度、纹理、噪声、器官边界和跨模态差异，因此 nnU-Net-style residual encoder 更合理。occupancy grid 没有这些强度统计，第一阶段用轻量几何 CNN 是可以理解的。</li>
+        <li><strong>3D 体素计算成本非常敏感。</strong>Body-Tell 配置的 volume size 是 <code>[144,129,256]</code>。如果直接搬 6-stage residual encoder，不只是多 81.8M encoder 参数，还会显著增加 3D convolution activation、显存和训练时间。参数量只是下限，实际 compute/FLOPs 差距会更大。</li>
+        <li><strong>当前模型的瓶颈不只在 encoder。</strong>Body-Tell 即使用轻量 encoder，总参数仍有 328.98M，其中 transformer decoder 独占 251.86M。继续加重 encoder 会让全模型接近或超过 VoxTell 的 440M，同时增加过拟合风险。</li>
+        <li><strong>迁移实现更少依赖。</strong>Body-Tell 当前没有直接依赖 nnU-Net plans 构建 encoder/decoder，而是手写 <code>_BodyEncoder</code> 和 <code>_VoxTellBodyDecoder</code>。这降低了迁移复杂度，也让模型能围绕 occupancy grid 快速跑通训练。</li>
+      </ol>
+      <p class="note">这些是基于代码和任务差异的工程推断，不等同于作者显式设计说明。仓库内没有找到“轻量 encoder”设计 rationale 的文字记录。</p>
+    </section>
+
+    <section>
+      <h2>这是否一定合理</h2>
+      <p>轻量 encoder 是合理的 baseline，但不一定是最终最优。当前 Body-Tell 的 encoder 只有 8.49M 参数，占全模型约 2.58%；如果验证 Dice 长期不动，问题可能来自 prompt/label 分布、数据划分、occupancy 表达的信息缺失，也可能来自 visual encoder 表达能力不足。</p>
+      <div class="grid2">
+        <div>
+          <h3>保留轻量 encoder 的理由</h3>
+          <ul>
+            <li>更低显存和计算开销，适合快速迭代。</li>
+            <li>occupancy grid 没有医学图像强度纹理，未必需要完整 nnU-Net encoder。</li>
+            <li>可以减少在当前数据规模上的过拟合压力。</li>
+            <li>实现简单，便于定位 prompt-conditioned decoder 和 loss 的问题。</li>
+          </ul>
+        </div>
+        <div>
+          <h3>潜在风险</h3>
+          <ul>
+            <li>5-stage 浅 encoder 可能不足以建模长距离人体结构关系。</li>
+            <li>没有 residual block，深层表达和梯度路径弱于 VoxTell。</li>
+            <li>实际 fused mask stage 只有 4 个，少于 VoxTell 的 5 个多尺度融合点。</li>
+            <li>如果 occupancy 很稀疏，浅层 CNN 可能更难把表面点转成稳定体部语义。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>建议</h2>
+      <ol>
+        <li><strong>第一优先级：做 5-stage residual-lite encoder。</strong>保留 Body-Tell 当前通道 <code>[32,64,128,256,320]</code>、stride 规则和 decoder 接口，只把每个 <code>_ConvBlock</code> 替换成 residual stage。建议先试 <code>n_blocks=[1,1,1,1,1]</code> 或 <code>[1,2,2,2,2]</code>，这样最小化改动，同时直接验证“没有 residual/encoder 太浅”是否是瓶颈。</li>
+        <li><strong>第二优先级：引入 plans-like ResidualEncoder，但仍保持 5 stages。</strong>可以使用 <code>dynamic_network_architectures</code> 的 <code>ResidualEncoder</code> 或本地复刻 <code>BasicBlockD</code> 思路；输入仍是 occupancy，norm/activation 可先保持 Body-Tell 的 <code>GroupNorm + GELU</code>，避免一次改变过多变量。</li>
+        <li><strong>第三优先级：测试 VoxTell 6-stage 形态。</strong>增加第 6 个 <code>320</code> stage 会改变 selected feature 分辨率、decoder stage 数和 mask projection/fusion 数，应该作为单独实验，不应和 residual 化同时混在一个 ablation 里。</li>
+        <li><strong>不要把完整 VoxTell encoder 直接当作默认替换。</strong>仅 encoder 就会从 8.49M 增到 90.30M；全模型预计增加至少 81.80M 参数，且 activation/FLOPs 增幅更敏感。直接替换会让训练变慢，也更难判断收益来自残差、深度、第 6 stage 还是 norm/activation。</li>
+        <li><strong>修正或确认 mask stage 语义。</strong>当前配置写 <code>num_maskformer_stages=5</code>，但实际 <code>fused_stage_count=4</code>。如果 encoder 改成 6-stage，这个问题会直接影响多尺度融合是否对齐 VoxTell。</li>
+        <li><strong>如果目标是复用 VoxTell 权重，encoder 仍不是低成本入口。</strong>Body-Tell 输入 occupancy 与 VoxTell 图像输入语义不同，且 stage 数不同。相比 encoder，text projection、transformer decoder、mask projection 的结构兼容性更值得优先检查。</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
