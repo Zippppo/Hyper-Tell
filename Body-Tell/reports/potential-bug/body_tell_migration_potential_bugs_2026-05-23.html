@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 迁移潜在问题完整审计</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --border: #d8e0ea;
+      --head: #111827;
+      --critical: #b91c1c;
+      --high: #c2410c;
+      --medium: #b45309;
+      --low: #2563eb;
+      --ok: #15803d;
+      --code: #edf2f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      background: var(--head);
+      color: #fff;
+      padding: 28px 40px;
+      border-bottom: 4px solid #0f766e;
+    }
+    main {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
+    h1, h2, h3 { margin: 0 0 12px; line-height: 1.25; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 21px; margin-top: 28px; }
+    h3 { font-size: 17px; margin-top: 20px; }
+    p { margin: 8px 0 14px; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 22px;
+      margin: 18px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      background: #fff;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #eef3f8; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    pre {
+      overflow-x: auto;
+      background: #101827;
+      color: #e5edf6;
+      border-radius: 8px;
+      padding: 13px 15px;
+      line-height: 1.5;
+    }
+    ul, ol { padding-left: 22px; }
+    li { margin: 6px 0; }
+    .meta { color: #d1d8e3; margin-top: 6px; }
+    .small { color: var(--muted); font-size: 13px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 4px;
+    }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .critical { background: #fdecec; color: var(--critical); border-color: #f3b6b6; }
+    .high { background: #fff0e8; color: var(--high); border-color: #f4c7af; }
+    .medium { background: #fff7e6; color: var(--medium); border-color: #f1d19b; }
+    .low { background: #eef4ff; color: var(--low); border-color: #bfd1ff; }
+    .ok { background: #eaf7ee; color: var(--ok); border-color: #b7e2c3; }
+    .neutral { background: #edf2f7; color: #334155; border-color: #cbd5e1; }
+    .callout {
+      border-left: 4px solid var(--critical);
+      background: #fff5f5;
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 12px 0;
+    }
+    .callout.ok {
+      border-left-color: var(--ok);
+      background: #f0fbf4;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Body-Tell 迁移潜在问题完整审计</h1>
+    <div class="meta">日期：2026-05-23 ｜ 目录：<code>/home/comp/csrkzhu/code/Hyper-Tell/Body-Tell</code> ｜ 报告位置：<code>Body-Tell/reports/potential-bug/</code></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>一句话结论</h2>
+      <div class="callout">
+        <p><strong>不是只有之前提到的几个问题。</strong> 从 Python import 角度看，<code>Body-Tell/</code> 没有发现依赖外部本地 Python 脚本；但从“把目录单独迁出并继续训练/推理/复现实验”的角度看，目前至少有 12 类迁移问题。</p>
+        <p>真正阻断迁移的不是 <code>body_tell</code> 包内部代码，而是启动入口、配置根目录、git/ignore 状态、checkpoint 内嵌配置、环境声明和 artifact 交付方式。</p>
+      </div>
+      <div class="grid">
+        <div class="metric">
+          <strong>0</strong>
+          <span>发现的外部本地 Python import</span>
+        </div>
+        <div class="metric">
+          <strong>12</strong>
+          <span>迁移问题类别</span>
+        </div>
+        <div class="metric">
+          <strong>10,779</strong>
+          <span><code>Dataset/voxel_data</code> 下的 <code>.npz</code> 文件数</span>
+        </div>
+        <div class="metric">
+          <strong>0</strong>
+          <span>git 跟踪的 <code>.npz</code> / <code>.pt</code> 文件数</span>
+        </div>
+        <div class="metric">
+          <strong>3.95GB</strong>
+          <span><code>checkpoints/phase1_bz2/best.pt</code></span>
+        </div>
+        <div class="metric">
+          <strong>8.1GB</strong>
+          <span><code>Body-Tell/</code> 当前总大小</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>审计边界</h2>
+      <ul>
+        <li>检查 <code>Body-Tell/</code> 内 Python import，确认是否引用父仓库 <code>models/</code>、<code>utils/</code>、<code>data/</code>、<code>eval/</code>、<code>scripts/</code>、<code>VoxTell/voxtell</code>。</li>
+        <li>检查训练、推理、可视化、artifact 脚本、Slurm 和配置中的路径假设。</li>
+        <li>检查 <code>.gitignore</code> 和 git tracked files，判断迁出方式是“复制目录”还是“从 git clone 重建”时会缺什么。</li>
+        <li>没有执行完整 GPU/DDP 训练；本报告关注迁移可运行性和复现风险。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>正向结论</h2>
+      <div class="callout ok">
+        <p><strong>核心包边界是干净的。</strong> AST import 扫描没有发现 <code>Body-Tell/</code> 内 Python 代码 import 父仓库本地模块。非标准库依赖只有第三方包：</p>
+        <pre>numpy
+plotly
+torch
+tqdm
+transformers
+wandb
+yaml</pre>
+        <p>因此，如果把代码、数据、artifact、checkpoint 和环境一起迁出，<code>Body-Tell/</code> 可以成为独立项目。当前问题集中在项目工程化边界。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>完整迁移问题清单</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>级别</th>
+            <th>问题</th>
+            <th>证据</th>
+            <th>迁移影响</th>
+            <th>建议处理</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>M01</td>
+            <td><span class="tag critical">阻断训练</span></td>
+            <td>训练 Slurm 入口在 <code>Body-Tell/</code> 外部，并硬编码父仓库绝对路径。</td>
+            <td><code>slurm/body-tell-phase1.sh:14</code> 使用 <code>cd /home/comp/csrkzhu/code/Hyper-Tell</code>；<code>:16-17</code> 使用 <code>Body-Tell/train.py</code> 和 <code>Body-Tell/configs/...</code>。</td>
+            <td>只迁出 <code>Body-Tell/</code> 后，原训练入口不存在且路径失效。</td>
+            <td>新增 <code>Body-Tell/slurm/body-tell-phase1.sh</code>，用脚本自身定位项目根，避免绝对路径。</td>
+          </tr>
+          <tr>
+            <td>M02</td>
+            <td><span class="tag critical">阻断训练</span></td>
+            <td>训练配置的 <code>data.root</code> 与 standalone 工作目录矛盾。</td>
+            <td><code>Body-Tell/configs/phase1_voxtell_body.yaml:18</code> 是 <code>root: Body-Tell</code>；<code>train.py:5-9</code> 的说明却是从 <code>Body-Tell/</code> 内运行 <code>python train.py --config configs/...</code>。</td>
+            <td>从 <code>Body-Tell/</code> 目录内运行时，数据路径会解析成 <code>Body-Tell/Body-Tell/...</code>。</td>
+            <td>把相对 <code>data.root</code> 解析到配置文件所在项目根；或迁出前把配置改成 <code>root: .</code> 并同步 checkpoint 配置。</td>
+          </tr>
+          <tr>
+            <td>M03</td>
+            <td><span class="tag critical">阻断训练</span></td>
+            <td><code>train.py</code> 不做项目根解析，只把 <code>cfg["data"]["root"]</code> 原样交给 Dataset。</td>
+            <td><code>train.py:344</code> 加载配置；<code>train.py:361</code> 调用 <code>build_dataset</code>；<code>body_tell/data/dataset.py:42-64</code> 从 <code>root</code> 派生所有数据路径。</td>
+            <td>训练能跑依赖当前调用者的工作目录，而不是项目自身位置。</td>
+            <td>在 <code>train.py</code> 中加入与 <code>inference.py::resolve_body_root()</code> 等价的解析逻辑。</td>
+          </tr>
+          <tr>
+            <td>M04</td>
+            <td><span class="tag high">阻断推理</span></td>
+            <td>checkpoint 内嵌旧配置，推理默认优先使用 checkpoint 配置。</td>
+            <td><code>train.py:452-460</code> 保存 checkpoint 时写入 <code>"config": cfg</code>；<code>inference.py:727-730</code> 如果 checkpoint 有 config 就覆盖 CLI 配置。</td>
+            <td>即使迁出后修了 <code>configs/phase1_voxtell_body.yaml</code>，旧 checkpoint 仍可能把 <code>data.root: Body-Tell</code> 带回推理流程。</td>
+            <td>迁移 checkpoint 时重写内嵌 config，或推理时默认只采用 checkpoint 的 model 配置，data root 从 CLI/config 文件解析；短期可用 <code>--ignore-checkpoint-config</code>。</td>
+          </tr>
+          <tr>
+            <td>M05</td>
+            <td><span class="tag critical">阻断复现</span></td>
+            <td>关键数据、embedding cache 和 checkpoint 被 git ignore，不会随普通 git clone 迁移。</td>
+            <td><code>.gitignore:8-9</code> 忽略 <code>Body-Tell/Dataset/</code> 和 <code>Body-Tell/artifacts/</code>；<code>.gitignore:101-112</code> 忽略 <code>*.npz</code> 和 <code>*.pt</code>；实际 git 跟踪 <code>.npz=0</code>、<code>.pt=0</code>。</td>
+            <td>git clone 后缺少 10,779 个 voxel <code>.npz</code>、<code>prompt_embeddings.pt</code> 和 <code>best.pt</code>，训练/推理都会失败。</td>
+            <td>定义迁移包清单：代码走 git，数据/artifact/checkpoint 走 rsync、对象存储或 release asset，并提供校验脚本。</td>
+          </tr>
+          <tr>
+            <td>M06</td>
+            <td><span class="tag high">阻断推理</span></td>
+            <td>默认推理 checkpoint 路径指向未跟踪文件。</td>
+            <td><code>inference.py:59-62</code> 默认 <code>ROOT/checkpoints/phase1_bz2/best.pt</code>；实际文件大小约 3.95GB，且 <code>Body-Tell/checkpoints/</code> 被 ignore。</td>
+            <td>迁出代码但不复制 checkpoint 时，默认推理命令无法运行。</td>
+            <td>在 README/迁移脚本中把 checkpoint 作为必需 artifact；或让推理入口在缺失时给出下载/放置路径提示。</td>
+          </tr>
+          <tr>
+            <td>M07</td>
+            <td><span class="tag high">阻断训练</span></td>
+            <td>prompt embedding cache 是训练必需文件，但未纳入可复现交付。</td>
+            <td><code>body_tell/data/dataset.py:75-82</code> 初始化 Dataset 时加载 <code>prompt_embeddings.pt</code>；该文件位于 <code>Body-Tell/artifacts/text_embeddings/</code>，被 ignore。</td>
+            <td>迁出代码后，Dataset 初始化会直接失败，除非复制 cache 或重跑 embedding 构建。</td>
+            <td>把 <code>prompt_embeddings.pt</code> 纳入 artifact 清单，并记录 Qwen 模型、hash 和重建命令。</td>
+          </tr>
+          <tr>
+            <td>M08</td>
+            <td><span class="tag medium">复现风险</span></td>
+            <td>embedding cache 与 <code>label_vocab.json</code> 严格 hash 绑定。</td>
+            <td><code>body_tell/data/vocabulary.py:281-292</code> 检查 prompt records 和 vocab hash；不一致会报错。</td>
+            <td>迁移中如果格式化、修改或重新生成 <code>label_vocab.json</code>，旧 cache 会失效。</td>
+            <td>迁移时把 vocab 和 cache 成对校验；修改 vocab 后必须重建 cache。</td>
+          </tr>
+          <tr>
+            <td>M09</td>
+            <td><span class="tag high">环境风险</span></td>
+            <td><code>Body-Tell/</code> 没有独立环境声明文件。</td>
+            <td>未发现 <code>requirements.txt</code>、<code>environment.yml</code>、<code>pyproject.toml</code> 或 <code>setup.py</code>；<code>slurm/body-tell-phase1.sh:12</code> 依赖 <code>source activate voxtell</code>。</td>
+            <td>迁到新机器后不知道该装哪些版本，尤其是 <code>torch</code>、<code>transformers</code>、<code>wandb</code>、<code>plotly</code>、CUDA 组合。</td>
+            <td>新增 <code>environment.yml</code> 或 <code>requirements.txt</code>，区分 train、inference、visualization、dev/test extras。</td>
+          </tr>
+          <tr>
+            <td>M10</td>
+            <td><span class="tag medium">工具风险</span></td>
+            <td>可视化脚本自动寻找原始数据时假设固定输出目录深度。</td>
+            <td><code>visualize_predictions.py:398-402</code> 假设 <code>Body-Tell/outputs/.../CASE_ID/CASE_ID_predictions.npz</code>，用 <code>input_path.parents[2]</code> 推导项目根。</td>
+            <td>迁移后如果输出目录放到项目外、目录层级变更或重命名 run，自动加载 original data 会失败。</td>
+            <td>保留 <code>--original</code> 作为显式路径；或新增 <code>--body-root</code> 参数替代 <code>parents[2]</code>。</td>
+          </tr>
+          <tr>
+            <td>M11</td>
+            <td><span class="tag low">低风险清理</span></td>
+            <td>报告和 metadata 中仍有 <code>Body-Tell/Dataset/...</code>、<code>Hyper-Tell</code> 或 parent root 概念。</td>
+            <td><code>scripts/scan_class_presence.py:175-180</code>、<code>configs/label_vocab.json</code>、<code>artifacts/data_stats/class_presence.json</code> 中有来源字符串；<code>scripts/parameter_audit.py:22</code> 定义 <code>REPO_ROOT = parents[2]</code>。</td>
+            <td>多数不是运行路径，但迁出后容易误导后续维护者，以为仍依赖 Hyper-Tell。</td>
+            <td>重生成 artifact metadata 或把字段命名成 <code>source_note</code>；删除/弱化父仓库 metadata。</td>
+          </tr>
+          <tr>
+            <td>M12</td>
+            <td><span class="tag medium">项目化不足</span></td>
+            <td>没有安装式包入口，复用依赖当前目录或 <code>PYTHONPATH</code>。</td>
+            <td>测试依赖 <code>conftest.py</code> 注入 <code>Body-Tell</code> 根；脚本通过自身路径插入 <code>sys.path</code>。这能运行，但不是标准 package 分发方式。</td>
+            <td>迁出后如果用户用 notebook、外部脚本或调度系统从任意目录 import，可能需要手动设置 <code>PYTHONPATH</code>。</td>
+            <td>新增 <code>pyproject.toml</code>，支持 <code>pip install -e .</code>，并提供 console scripts。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>从 <code>Body-Tell/</code> 内运行的路径验证</h2>
+      <p>读取当前配置后，从 <code>Body-Tell/</code> 目录内部检查训练必需路径，全部失败：</p>
+      <pre>cwd /home/comp/csrkzhu/code/Hyper-Tell/Body-Tell
+data.root Body-Tell
+Body-Tell/configs/label_vocab.json: False
+Body-Tell/Dataset/dataset_split.json: False
+Body-Tell/artifacts/data_stats/class_presence.json: False
+Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt: False
+Body-Tell/Dataset/voxel_data: False</pre>
+      <p>这说明当前“能训练”依赖父仓库工作目录，而不是 <code>Body-Tell/</code> 自身。</p>
+    </section>
+
+    <section>
+      <h2>迁移包必需内容</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>内容</th>
+            <th>当前位置</th>
+            <th>是否 git 跟踪</th>
+            <th>迁移要求</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Python 源码与测试</td>
+            <td><code>body_tell/</code>, <code>train.py</code>, <code>inference.py</code>, <code>scripts/</code>, <code>tests/</code></td>
+            <td><span class="tag ok">是</span></td>
+            <td>可直接随 git 迁移。</td>
+          </tr>
+          <tr>
+            <td>数据 split 和 metadata</td>
+            <td><code>Dataset/dataset_info.json</code>, <code>Dataset/dataset_split.json</code></td>
+            <td><span class="tag ok">是</span></td>
+            <td>保留即可。</td>
+          </tr>
+          <tr>
+            <td>voxel 数据</td>
+            <td><code>Dataset/voxel_data/*.npz</code></td>
+            <td><span class="tag critical">否</span></td>
+            <td>必须单独复制或下载；当前约 10,779 个文件。</td>
+          </tr>
+          <tr>
+            <td>class presence</td>
+            <td><code>artifacts/data_stats/class_presence.json</code></td>
+            <td><span class="tag ok">是</span></td>
+            <td>已跟踪，但建议迁移后与 voxel 数据重新校验。</td>
+          </tr>
+          <tr>
+            <td>prompt embeddings</td>
+            <td><code>artifacts/text_embeddings/prompt_embeddings.pt</code></td>
+            <td><span class="tag critical">否</span></td>
+            <td>必须复制或用 Qwen 重新生成；文件约 2.7MB。</td>
+          </tr>
+          <tr>
+            <td>训练 checkpoint</td>
+            <td><code>checkpoints/phase1_bz2/best.pt</code></td>
+            <td><span class="tag critical">否</span></td>
+            <td>推理必需；文件约 3.95GB。</td>
+          </tr>
+          <tr>
+            <td>环境声明</td>
+            <td>缺失</td>
+            <td><span class="tag critical">否</span></td>
+            <td>需要新建。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>不是迁移阻断的问题</h2>
+      <ul>
+        <li><code>VoxTell</code> 出现在类名、模型名和注释中，不等价于运行时依赖 <code>VoxTell/</code> 目录。</li>
+        <li><code>Body-Tell/Dataset/...</code> 出现在部分 JSON metadata 的 source 字段中，目前看是说明文字，不是实际打开文件路径。</li>
+        <li>脚本里把 <code>Body-Tell</code> 根目录插入 <code>sys.path</code> 是当前可运行方式，不是外部依赖；但它说明项目还没有标准 package 化。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>建议修复顺序</h2>
+      <ol>
+        <li><strong>先修 M02/M03：</strong> 统一训练和推理的项目根解析，让 <code>cd Body-Tell</code> 后可以直接训练。</li>
+        <li><strong>再修 M01：</strong> 把 Slurm 入口迁入 <code>Body-Tell/slurm/</code>，去掉绝对路径。</li>
+        <li><strong>处理 M05/M06/M07：</strong> 写清楚数据、embedding cache、checkpoint 的迁移包清单和校验命令。</li>
+        <li><strong>处理 M04：</strong> 让 checkpoint 内嵌 config 不覆盖迁移后的 data root，或提供 checkpoint config rewrite 脚本。</li>
+        <li><strong>处理 M09/M12：</strong> 新增环境文件和 <code>pyproject.toml</code>，支持 <code>pip install -e .</code>。</li>
+        <li><strong>最后处理 M10/M11：</strong> 清理可视化自动路径和历史 metadata。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>最低迁移验收标准</h2>
+      <pre># 1. 从独立目录内部加载包和测试
+cd Body-Tell
+PYTHONPATH=. pytest tests -q
+
+# 2. 检查必需 artifact
+test -d Dataset/voxel_data
+test -f Dataset/dataset_split.json
+test -f configs/label_vocab.json
+test -f artifacts/data_stats/class_presence.json
+test -f artifacts/text_embeddings/prompt_embeddings.pt
+test -f checkpoints/phase1_bz2/best.pt
+
+# 3. 训练入口应不再依赖父目录
+torchrun --nproc_per_node=2 train.py \
+  --config configs/phase1_voxtell_body.yaml \
+  --checkpoint-dir checkpoints/phase1_bz2
+
+# 4. 推理入口应可显式指定 root/config/checkpoint
+python inference.py \
+  --config configs/phase1_voxtell_body.yaml \
+  --checkpoint checkpoints/phase1_bz2/best.pt \
+  --case-id BDMAP_00000001 \
+  --prompts liver \
+  --output outputs/inference_smoke</pre>
+    </section>
+  </main>
+</body>
+</html>

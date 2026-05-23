@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 独立性与外部脚本依赖审计</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #5f6b7a;
+      --border: #d8dee6;
+      --accent: #0f766e;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --ok: #15803d;
+      --code: #f0f3f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      background: #172033;
+      color: #fff;
+      padding: 28px 40px;
+      border-bottom: 4px solid var(--accent);
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
+    h1, h2, h3 { margin: 0 0 12px; line-height: 1.25; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 21px; margin-top: 28px; }
+    h3 { font-size: 17px; margin-top: 20px; }
+    p { margin: 8px 0 14px; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    code {
+      background: var(--code);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 14px 16px;
+      line-height: 1.5;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 22px;
+      margin: 18px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      background: #fff;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { background: #eef2f6; }
+    ul, ol { padding-left: 22px; }
+    li { margin: 6px 0; }
+    .meta { color: #d8dee6; margin-top: 6px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfd;
+    }
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 4px;
+    }
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 650;
+      border: 1px solid transparent;
+    }
+    .ok { color: var(--ok); background: #eaf7ee; border-color: #b7e2c3; }
+    .warn { color: var(--warn); background: #fff4df; border-color: #f1d19b; }
+    .danger { color: var(--danger); background: #fdecec; border-color: #f3b6b6; }
+    .neutral { color: #334155; background: #edf2f7; border-color: #cbd5e1; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #eefaf7;
+      padding: 12px 14px;
+      margin: 12px 0;
+    }
+    .callout.warn { border-left-color: var(--warn); background: #fff8eb; color: var(--text); }
+    .small { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Body-Tell 独立性与外部脚本依赖审计</h1>
+    <div class="meta">生成日期：2026-05-23 ｜ 仓库：<code>/home/comp/csrkzhu/code/Hyper-Tell</code> ｜ 目标目录：<code>Body-Tell/</code></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>结论</h2>
+      <div class="callout">
+        <p><strong>Body-Tell 的 Python 代码基本可以作为独立项目迁出；没有发现训练/推理核心代码依赖 <code>Body-Tell/</code> 外部的 Python 脚本。</strong></p>
+        <p>当前主要问题不是跨目录 import，而是运行入口和默认路径仍假设它位于 <code>Hyper-Tell/Body-Tell</code> 这个父子目录结构中。也就是说：代码边界已经比较干净，但还没有达到“拷贝 <code>Body-Tell/</code> 后从目录内部直接训练”的状态。</p>
+      </div>
+      <div class="grid">
+        <div class="metric">
+          <strong>25</strong>
+          <span>检查的 Python 文件数</span>
+        </div>
+        <div class="metric">
+          <strong>0</strong>
+          <span>发现的外部本地 Python 脚本 import</span>
+        </div>
+        <div class="metric">
+          <strong>15/15</strong>
+          <span>isolated pytest 通过</span>
+        </div>
+        <div class="metric">
+          <strong>8.1G</strong>
+          <span><code>Body-Tell/</code> 当前目录体量</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>审计范围与方法</h2>
+      <ul>
+        <li>扫描 <code>Body-Tell/</code> 内所有 <code>*.py</code>，排除 <code>__pycache__</code>、<code>.pytest_cache</code>、历史报告、大型数据、checkpoint 和输出目录。</li>
+        <li>用 AST 提取 import，区分标准库、第三方库、<code>body_tell</code> 内部包和潜在本地外部包。</li>
+        <li>检查 <code>slurm/body-tell-phase1.sh</code>、训练配置、数据集加载路径、脚本默认参数和硬编码路径。</li>
+        <li>从 <code>/tmp</code> 运行 isolated import：只让 <code>PYTHONPATH</code> 指向 <code>Body-Tell/</code>，确认核心包解析位置。</li>
+        <li>从 <code>/tmp</code> 运行测试：<code>PYTHONPATH=/home/comp/csrkzhu/code/Hyper-Tell/Body-Tell pytest /home/comp/csrkzhu/code/Hyper-Tell/Body-Tell/tests -q</code>。</li>
+      </ul>
+      <p class="small">没有执行完整 DDP/GPU 训练；本报告针对代码独立性、路径可迁移性和静态/轻量运行验证。</p>
+    </section>
+
+    <section>
+      <h2>Python Import 边界</h2>
+      <p>核心训练入口 <code>Body-Tell/train.py</code> 只 import <code>body_tell.*</code> 内部包和第三方库：</p>
+      <pre>Body-Tell/train.py:31 from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
+Body-Tell/train.py:32 from body_tell.losses.prompt_losses import PromptSegmentationLoss
+Body-Tell/train.py:33 from body_tell.metrics.prompt_metrics import compute_prompt_metrics
+Body-Tell/train.py:34 from body_tell.models.voxtell_body_model import VoxTellBodyConfig, VoxTellBodyModel</pre>
+      <p>数据集模块也只使用本包相对 import：</p>
+      <pre>Body-Tell/body_tell/data/dataset.py:13 from .vocabulary import (...)</pre>
+      <table>
+        <thead>
+          <tr>
+            <th>类别</th>
+            <th>模块</th>
+            <th>判断</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>内部包</td>
+            <td><code>body_tell</code></td>
+            <td><span class="badge ok">通过</span> 所有核心 import 都落在 <code>Body-Tell/body_tell</code>。</td>
+          </tr>
+          <tr>
+            <td>第三方库</td>
+            <td><code>numpy</code>, <code>torch</code>, <code>yaml</code>, <code>tqdm</code>, <code>wandb</code>, <code>transformers</code>, <code>plotly</code></td>
+            <td><span class="badge neutral">环境依赖</span> 需要环境文件显式声明。</td>
+          </tr>
+          <tr>
+            <td>顶层 Hyper-Tell 本地包</td>
+            <td><code>models</code>, <code>utils</code>, <code>data</code>, <code>eval</code>, <code>scripts</code>, <code>VoxTell/voxtell</code></td>
+            <td><span class="badge ok">未发现</span> 没有发现训练/推理核心代码 import 这些外部本地模块。</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Isolated import 结果</h3>
+      <pre>body_tell -> Body-Tell/body_tell/__init__.py
+body_tell.data.dataset -> Body-Tell/body_tell/data/dataset.py
+body_tell.data.vocabulary -> Body-Tell/body_tell/data/vocabulary.py
+body_tell.losses.prompt_losses -> Body-Tell/body_tell/losses/prompt_losses.py
+body_tell.metrics.prompt_metrics -> Body-Tell/body_tell/metrics/prompt_metrics.py
+body_tell.models.transformer -> Body-Tell/body_tell/models/transformer.py
+body_tell.models.voxtell_body_model -> Body-Tell/body_tell/models/voxtell_body_model.py</pre>
+    </section>
+
+    <section>
+      <h2>发现的问题</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>级别</th>
+            <th>位置</th>
+            <th>问题</th>
+            <th>影响</th>
+            <th>建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge danger">高</span></td>
+            <td><code>slurm/body-tell-phase1.sh:14-17</code></td>
+            <td>Slurm 入口在 <code>Body-Tell/</code> 外部，并硬编码 <code>cd /home/comp/csrkzhu/code/Hyper-Tell</code>，再用 <code>Body-Tell/train.py</code> 启动。</td>
+            <td>迁出 <code>Body-Tell/</code> 后，原 Slurm 脚本不可用；训练成功依赖当前父目录布局。</td>
+            <td>复制或新建 <code>Body-Tell/slurm/phase1.sh</code>，从脚本自身定位项目根目录，并执行 <code>torchrun train.py --config configs/phase1_voxtell_body.yaml</code>。</td>
+          </tr>
+          <tr>
+            <td><span class="badge danger">高</span></td>
+            <td><code>Body-Tell/configs/phase1_voxtell_body.yaml:17-18</code>, <code>Body-Tell/train.py:3-9</code></td>
+            <td>配置里 <code>data.root: Body-Tell</code>，但 <code>train.py</code> 使用说明是从 <code>Body-Tell/</code> 内部执行 <code>python train.py --config configs/...</code>。</td>
+            <td>如果进入 <code>Body-Tell/</code> 目录后按说明运行，数据路径会变成 <code>Body-Tell/Body-Tell/...</code>。</td>
+            <td>把 <code>data.root</code> 改成 <code>.</code>，或在 <code>train.py</code> 中把相对路径统一解析到配置文件所在项目根。推荐后者更稳。</td>
+          </tr>
+          <tr>
+            <td><span class="badge warn">中</span></td>
+            <td><code>Body-Tell/</code> 根目录</td>
+            <td>未发现 <code>requirements.txt</code>、<code>environment.yml</code>、<code>pyproject.toml</code> 或 <code>setup.py</code>。</td>
+            <td>Python 代码虽然独立，但环境不可复现；当前 Slurm 使用 <code>source activate voxtell</code>，这只是外部环境名称。</td>
+            <td>新增最小环境清单，至少覆盖 <code>torch</code>、<code>numpy</code>、<code>PyYAML</code>、<code>tqdm</code>；可选项覆盖 <code>wandb</code>、<code>transformers</code>、<code>plotly</code>、<code>pytest</code>。</td>
+          </tr>
+          <tr>
+            <td><span class="badge warn">中</span></td>
+            <td><code>Body-Tell/body_tell/data/dataset.py:50-64</code></td>
+            <td>训练数据、split、class presence 和 prompt embedding cache 都从 <code>root</code> 派生。</td>
+            <td>这不是外部 Python 依赖，但迁移时必须同步复制或重新生成这些 artifact。</td>
+            <td>在 README 或环境检查脚本中列出必需文件，并在启动时给出清晰缺失错误。</td>
+          </tr>
+          <tr>
+            <td><span class="badge warn">中</span></td>
+            <td><code>Body-Tell/scripts/parameter_audit.py:22</code>, <code>:497</code></td>
+            <td><code>REPO_ROOT = parents[2]</code> 会记录父目录为 repo root。</td>
+            <td>不是运行依赖，也不参与 import；但迁出后报告中的 repo metadata 会变成新父目录。</td>
+            <td>如果要完全项目化，改名为 <code>PARENT_ROOT</code> 或删除该 metadata，避免误导。</td>
+          </tr>
+          <tr>
+            <td><span class="badge neutral">低</span></td>
+            <td><code>Body-Tell/scripts/scan_class_presence.py:175-180</code>, <code>configs/label_vocab.json</code></td>
+            <td>一些生成的 JSON metadata 中保留 <code>Body-Tell/Dataset/...</code> 字符串。</td>
+            <td>这些字段目前是来源说明，不是用于打开文件的运行路径。</td>
+            <td>迁出后可在重新生成 artifact 时改成相对项目根的说明，或保留作为历史来源。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>路径可移植性验证</h2>
+      <p>从 <code>Body-Tell/</code> 目录内部读取当前训练配置，并按 <code>data.root</code> 检查训练所需路径，全部解析失败：</p>
+      <pre>Body-Tell/configs/label_vocab.json: False
+Body-Tell/Dataset/dataset_split.json: False
+Body-Tell/artifacts/data_stats/class_presence.json: False
+Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt: False
+Body-Tell/Dataset/voxel_data: False</pre>
+      <p>原因是当前配置要求工作目录为 <code>Hyper-Tell/</code> 父目录，而不是 <code>Body-Tell/</code> 自身。这与 <code>train.py</code> 顶部用法说明不一致。</p>
+      <p><code>inference.py</code> 的路径处理更接近独立项目：它用 <code>ROOT = Path(__file__).resolve().parent</code> 设置默认配置和 checkpoint，并通过 <code>resolve_body_root()</code> 兼容 <code>data.root: Body-Tell</code>。</p>
+    </section>
+
+    <section>
+      <h2>训练与脚本入口</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>入口</th>
+            <th>当前状态</th>
+            <th>独立迁出判断</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Body-Tell/train.py</code></td>
+            <td>核心 import 干净；默认 <code>--config configs/...</code>、<code>--checkpoint-dir checkpoints</code> 支持从项目根运行。</td>
+            <td><span class="badge warn">需修路径</span> 配置 <code>data.root</code> 仍假设父目录。</td>
+          </tr>
+          <tr>
+            <td><code>Body-Tell/inference.py</code></td>
+            <td>使用脚本所在目录作为默认根；可从外部目录执行 help 和 import。</td>
+            <td><span class="badge ok">较好</span> 比训练入口更可迁移。</td>
+          </tr>
+          <tr>
+            <td><code>Body-Tell/scripts/*.py</code></td>
+            <td>多数脚本使用 <code>Path(__file__).resolve().parents[1]</code> 作为 <code>Body-Tell</code> 根目录。</td>
+            <td><span class="badge ok">较好</span> 没有依赖父仓库 Python 脚本。</td>
+          </tr>
+          <tr>
+            <td><code>slurm/body-tell-phase1.sh</code></td>
+            <td>位于父仓库 <code>slurm/</code>，硬编码父仓库路径。</td>
+            <td><span class="badge danger">不可直接迁出</span> 需要复制并改成相对自身路径。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>运行验证</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>验证项</th>
+            <th>命令摘要</th>
+            <th>结果</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>核心包 isolated import</td>
+            <td><code>cd /tmp &amp;&amp; PYTHONPATH=.../Body-Tell python -c "import body_tell..."</code></td>
+            <td><span class="badge ok">通过</span> 全部解析到 <code>Body-Tell/body_tell</code>。</td>
+          </tr>
+          <tr>
+            <td>训练入口 help</td>
+            <td><code>cd /tmp &amp;&amp; python .../Body-Tell/train.py --help</code></td>
+            <td><span class="badge ok">通过</span> 可独立加载 CLI。</td>
+          </tr>
+          <tr>
+            <td>推理入口 help</td>
+            <td><code>cd /tmp &amp;&amp; python .../Body-Tell/inference.py --help</code></td>
+            <td><span class="badge ok">通过</span> 可独立加载 CLI。</td>
+          </tr>
+          <tr>
+            <td>单元测试</td>
+            <td><code>PYTHONPATH=.../Body-Tell pytest .../Body-Tell/tests -q</code></td>
+            <td><span class="badge ok">通过</span> <code>15 passed in 28.39s</code>。</td>
+          </tr>
+          <tr>
+            <td>从 <code>Body-Tell/</code> 内部解析训练数据路径</td>
+            <td>读取 <code>configs/phase1_voxtell_body.yaml</code> 后检查 <code>data.root</code> 派生路径。</td>
+            <td><span class="badge danger">失败</span> 所有必需路径都被解析到不存在的 <code>Body-Tell/Body-Tell/...</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>建议的迁出前修复</h2>
+      <ol>
+        <li>把训练配置的项目根处理统一到 <code>train.py</code>：相对 <code>data.root</code> 优先按配置文件所在目录解析；当值为 <code>Body-Tell</code> 且脚本根同名时回退到脚本根。可直接复用 <code>inference.py::resolve_body_root()</code> 的思路。</li>
+        <li>新增 <code>Body-Tell/slurm/body-tell-phase1.sh</code>，脚本内部定位 <code>Body-Tell</code> 根目录，避免硬编码 <code>/home/comp/csrkzhu/code/Hyper-Tell</code>。</li>
+        <li>把推荐启动命令改成项目内命令：<code>cd Body-Tell &amp;&amp; torchrun --nproc_per_node=2 train.py --config configs/phase1_voxtell_body.yaml --checkpoint-dir checkpoints/phase1_bz2</code>。</li>
+        <li>新增环境声明文件，例如 <code>requirements.txt</code> 或 <code>environment.yml</code>。当前 <code>source activate voxtell</code> 只是机器本地约定。</li>
+        <li>新增迁移检查命令：验证 <code>Dataset/dataset_split.json</code>、<code>Dataset/voxel_data</code>、<code>configs/label_vocab.json</code>、<code>artifacts/data_stats/class_presence.json</code>、<code>artifacts/text_embeddings/prompt_embeddings.pt</code> 是否存在。</li>
+        <li>把 standalone CI/smoke test 固化为：<code>cd Body-Tell &amp;&amp; PYTHONPATH=. pytest tests -q</code>，并增加一个只构建 dataset 的路径测试。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>最终判断</h2>
+      <p><span class="badge ok">Python 代码独立性：通过</span> 没有发现 <code>Body-Tell/</code> 依赖外部 Python 脚本。</p>
+      <p><span class="badge warn">项目迁移就绪度：部分通过</span> 如果只是拷贝代码和数据，核心包可运行；如果希望像独立项目一样从目录内部训练，还需要修复训练配置根目录、迁移 Slurm 入口和补齐环境声明。</p>
+      <p><span class="badge danger">当前最大风险</span> <code>slurm/body-tell-phase1.sh</code> 和 <code>data.root: Body-Tell</code> 让训练依赖父仓库工作目录。这个风险会在迁出时直接暴露。</p>
+    </section>
+  </main>
+</body>
+</html>

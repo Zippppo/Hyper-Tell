@@ -163,6 +163,7 @@
     <div class="callout goodbox">
       <p><strong>VoxTell v1.1 的 prompt/text decoder 权重可以复用到 Body-Tell 当前模型。</strong> 通过模块名映射后, <code>project_visual_embed</code>、<code>project_text_embed</code>、<code>mask_projections</code> 和 <code>transformer_decoder</code> 都能 100% 按 shape 对齐加载。</p>
       <p>按当前 Body-Tell 架构统计, 可从 VoxTell 权重初始化 <strong>312,379,424 / 328,980,832</strong> 个参数, 约占 <strong>95.0%</strong>。不能直接加载的是 Body-Tell 自己的轻量 encoder/decoder, 约 <strong>16.6M</strong> 参数。</p>
+      <p><strong><code>checkpoints/best.pth</code> 和 <code>hyperbody-best.pth</code> 已确认不是 Body-Tell 权重。</strong> 两者主要是 HyperBody/UNet 系列权重, 不能用于 Body-Tell 初始化, 也不能作为本报告里的 VoxTell 权重复用候选。</p>
     </div>
   </section>
 
@@ -181,12 +182,12 @@
         <tr>
           <td><code>checkpoints/best.pth</code></td>
           <td class="num">82.8MB</td>
-          <td><span class="tag bad">不适用</span> key 前缀为 <code>unet</code>、<code>hyp_head</code>、<code>label_emb</code>, 属于旧 HyperBody/UNet 权重, 不是 VoxTell prompt decoder 权重。</td>
+          <td><span class="tag bad">不可用</span> key 前缀为 <code>unet</code>、<code>hyp_head</code>、<code>label_emb</code>, 属于 HyperBody/UNet 系列权重, 不是 Body-Tell 权重, 也不是 VoxTell prompt decoder 权重。应从 Body-Tell 初始化候选中排除。</td>
         </tr>
         <tr>
           <td><code>hyperbody-best.pth</code></td>
           <td class="num">82.8MB</td>
-          <td><span class="tag bad">不适用</span> 与 <code>checkpoints/best.pth</code> 结构一致, 不是本次要复用的 VoxTell 权重。</td>
+          <td><span class="tag bad">不可用</span> 与 <code>checkpoints/best.pth</code> 结构一致, 主要是 HyperBody 权重, 不是 Body-Tell 权重。不能用于 Body-Tell 当前模型。</td>
         </tr>
         <tr>
           <td><code>Body-Tell/checkpoints/phase1_bz2/best.pt</code></td>
