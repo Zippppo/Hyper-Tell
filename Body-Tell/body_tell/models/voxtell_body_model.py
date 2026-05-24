@@ -71,7 +71,7 @@ class VoxTellBodyModel(nn.Module):
             nhead=self.config.transformer_num_heads,
             dim_feedforward=self.config.transformer_feedforward_dim,
             dropout=self.config.transformer_dropout,
-            activation="gelu",
+            activation="relu",
             normalize_before=True,
         )
         self.transformer_decoder = TransformerDecoder(

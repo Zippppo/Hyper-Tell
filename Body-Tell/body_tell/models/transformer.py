@@ -145,17 +145,6 @@ class TransformerDecoderLayer(nn.Module):
         pos: Optional[Tensor] = None,
         query_pos: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor]:
-        tgt2 = self.norm1(tgt)
-        q = k = self.with_pos_embed(tgt2, query_pos)
-        tgt2, _ = self.self_attn(
-            q,
-            k,
-            value=tgt2,
-            attn_mask=tgt_mask,
-            key_padding_mask=tgt_key_padding_mask,
-        )
-        tgt = tgt + self.dropout1(tgt2)
-
         tgt2 = self.norm2(tgt)
         tgt2, attn_weights = self.multihead_attn(
             query=self.with_pos_embed(tgt2, query_pos),
@@ -220,4 +209,3 @@ def _get_activation_fn(activation: str) -> Callable[[Tensor], Tensor]:
 
 
 __all__ = ["TransformerDecoder", "TransformerDecoderLayer"]
-
