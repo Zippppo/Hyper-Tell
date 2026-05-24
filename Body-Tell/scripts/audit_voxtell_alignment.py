@@ -75,7 +75,7 @@ def body_projection_rows(config: Any) -> list[dict[str, Any]]:
                 "output_dim": output_dim,
                 "weight_shape": (output_dim, int(config.text_projection_hidden_dim)),
                 "bias_shape": (output_dim,),
-                "key": f"mask_projections.{stage_index}.2",
+                "key": f"project_to_decoder_channels.{stage_index}.2",
                 "target_key": f"project_to_decoder_channels.{stage_index}.2",
             }
         )
@@ -434,7 +434,7 @@ def make_audit(args: argparse.Namespace) -> dict[str, Any]:
             "num_maskformer_stages_config": int(body_config.num_maskformer_stages),
             "fused_stage_count_actual": len(body_rows),
             "encoder_channels": list(body_config.encoder_channels),
-            "projection_prefix": "mask_projections",
+            "projection_prefix": "project_to_decoder_channels",
             "target_projection_prefix": "project_to_decoder_channels",
             "projection_rows": body_rows,
         },
@@ -635,7 +635,7 @@ def render_html_report(audit: dict[str, Any]) -> str:
 
   <section>
     <h2>Projection Shape Baseline</h2>
-    <p><strong>Body-Tell current</strong>: <code>num_heads={body['num_heads']}</code>, actual fused projection stages <code>{body['fused_stage_count_actual']}</code> from configured <code>{body['num_maskformer_stages_config']}</code>; prefix is <code>mask_projections</code>, target aligned prefix is <code>project_to_decoder_channels</code>.</p>
+    <p><strong>Body-Tell current</strong>: <code>num_heads={body['num_heads']}</code>, actual fused projection stages <code>{body['fused_stage_count_actual']}</code> from configured <code>{body['num_maskformer_stages_config']}</code>; prefix is <code>project_to_decoder_channels</code>.</p>
     {projection_table(body['projection_rows'])}
     <p><strong>VoxTell source default</strong>: <code>num_heads={voxtell['source_default']['num_heads']}</code>. This is the class default in <code>voxtell_model.py</code>, not necessarily the shipped v1.1 checkpoint profile.</p>
     {projection_table(voxtell['source_default']['projection_rows'])}

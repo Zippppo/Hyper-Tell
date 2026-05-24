@@ -7,16 +7,24 @@ from dataclasses import dataclass
 from typing import List, Sequence, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .transformer import TransformerDecoder, TransformerDecoderLayer
+
+
+VOXTELL_V1_1_ENCODER_CHANNELS: Tuple[int, ...] = (32, 64, 128, 256, 320, 320)
+VOXTELL_V1_1_N_BLOCKS_PER_STAGE: Tuple[int, ...] = (1, 3, 4, 6, 6, 6)
 
 
 @dataclass(frozen=True)
 class VoxTellBodyConfig:
     input_channels: int = 1
     encoder_channels: Tuple[int, ...] = (32, 64, 128, 256, 320)
+    backbone: str = "conv"
+    n_blocks_per_stage: Tuple[int, ...] | None = None
+    encoder_conv_bias: bool = True
+    encoder_norm: str = "instance_norm_3d"
+    encoder_activation: str = "leaky_relu"
     text_embedding_dim: int = 2560
     query_dim: int = 2048
     text_projection_hidden_dim: int = 2048
@@ -42,20 +50,20 @@ class VoxTellBodyModel(nn.Module):
             raise ValueError("encoder_channels must contain at least two stages")
         if self.config.num_maskformer_stages < 1:
             raise ValueError("num_maskformer_stages must be at least 1 for the dynamic mask head")
+        if self.config.num_heads < 1:
+            raise ValueError("num_heads must be at least 1")
 
-        self.encoder = _BodyEncoder(
-            input_channels=self.config.input_channels,
-            channels=self.config.encoder_channels,
-        )
+        encoder_channels = tuple(int(channel) for channel in self.config.encoder_channels)
+        self.encoder = self._build_encoder(encoder_channels)
         selected_stage = self.config.decoder_layer
         if selected_stage < 0:
-            selected_stage = len(self.config.encoder_channels) + selected_stage
-        if selected_stage < 0 or selected_stage >= len(self.config.encoder_channels):
+            selected_stage = len(encoder_channels) + selected_stage
+        if selected_stage < 0 or selected_stage >= len(encoder_channels):
             raise ValueError("decoder_layer selects no encoder stage")
         self.selected_stage = selected_stage
 
-        selected_channels = self.config.encoder_channels[self.selected_stage]
-        self.project_visual_embed = nn.Sequential(
+        selected_channels = encoder_channels[self.selected_stage]
+        self.project_bottleneck_embed = nn.Sequential(
             nn.Linear(selected_channels, self.config.query_dim),
             nn.GELU(),
             nn.Linear(self.config.query_dim, self.config.query_dim),
@@ -82,12 +90,12 @@ class VoxTellBodyModel(nn.Module):
 
         self.fused_stage_count = min(
             self.config.num_maskformer_stages,
-            len(self.config.encoder_channels) - 1,
+            len(encoder_channels) - 1,
         )
-        self.mask_projections = nn.ModuleList()
-        for stage_index, channels in enumerate(self.config.encoder_channels[: self.fused_stage_count]):
+        self.project_to_decoder_channels = nn.ModuleList()
+        for stage_index, channels in enumerate(encoder_channels[: self.fused_stage_count]):
             output_dim = channels if stage_index == 0 else channels * self.config.num_heads
-            self.mask_projections.append(
+            self.project_to_decoder_channels.append(
                 nn.Sequential(
                     nn.Linear(self.config.query_dim, self.config.text_projection_hidden_dim),
                     nn.GELU(),
@@ -95,11 +103,37 @@ class VoxTellBodyModel(nn.Module):
                 )
             )
 
-        self.decoder = _VoxTellBodyDecoder(
-            encoder_channels=self.config.encoder_channels,
-            num_heads=self.config.num_heads,
-            fused_stage_count=self.fused_stage_count,
+        self.decoder = VoxTellDecoder(
+            encoder=self.encoder,
+            num_classes=1,
+            n_conv_per_stage=[1] * (len(encoder_channels) - 1),
             deep_supervision=self.config.deep_supervision,
+            num_maskformer_stages=self.fused_stage_count,
+            num_heads=self.config.num_heads,
+        )
+
+    def _build_encoder(self, encoder_channels: Tuple[int, ...]) -> nn.Module:
+        backbone = self.config.backbone.lower().replace("-", "_")
+        if backbone in {"conv", "body_conv", "legacy_conv"}:
+            return _BodyEncoder(
+                input_channels=self.config.input_channels,
+                channels=encoder_channels,
+            )
+        if backbone in {"residual_encoder", "voxtell_residual_encoder"}:
+            return _build_voxtell_residual_encoder(
+                input_channels=self.config.input_channels,
+                channels=encoder_channels,
+                n_blocks_per_stage=_resolve_n_blocks_per_stage(
+                    encoder_channels,
+                    self.config.n_blocks_per_stage,
+                ),
+                conv_bias=self.config.encoder_conv_bias,
+                norm=self.config.encoder_norm,
+                activation=self.config.encoder_activation,
+            )
+        raise ValueError(
+            "backbone must be one of 'conv' or 'residual_encoder', "
+            f"got {self.config.backbone!r}"
         )
 
     def forward(self, occupancy: Tensor, text_embeddings: Tensor) -> Tensor | List[Tensor]:
@@ -115,10 +149,15 @@ class VoxTellBodyModel(nn.Module):
         selected_feature = skips[self.selected_stage]
         batch_size, channels, depth, height, width = selected_feature.shape
 
-        memory = selected_feature.permute(2, 3, 4, 0, 1).reshape(-1, batch_size, channels)
-        memory = self.project_visual_embed(memory)
+        bottleneck_embed = selected_feature.permute(0, 3, 4, 2, 1)
+        bottleneck_embed = self.project_bottleneck_embed(bottleneck_embed)
+        memory = bottleneck_embed.permute(1, 2, 3, 0, 4).reshape(
+            -1,
+            batch_size,
+            self.config.query_dim,
+        )
         pos = sinusoidal_position_encoding_3d(
-            (depth, height, width),
+            (height, width, depth),
             self.config.query_dim,
             device=memory.device,
             dtype=memory.dtype,
@@ -133,7 +172,10 @@ class VoxTellBodyModel(nn.Module):
         )
         mask_embedding = mask_embedding.permute(1, 0, 2)
 
-        stage_embeddings = [projection(mask_embedding) for projection in self.mask_projections]
+        stage_embeddings = [
+            projection(mask_embedding)
+            for projection in self.project_to_decoder_channels
+        ]
         num_prompts = text_embeddings.shape[1]
         per_prompt_outputs: List[List[Tensor]] = []
         for prompt_index in range(num_prompts):
@@ -155,6 +197,20 @@ class VoxTellBodyModel(nn.Module):
 class _BodyEncoder(nn.Module):
     def __init__(self, input_channels: int, channels: Sequence[int]) -> None:
         super().__init__()
+        self.output_channels = tuple(int(channel) for channel in channels)
+        self.conv_op = nn.Conv3d
+        self.conv_bias = False
+        self.norm_op = _BodyDecoderNorm
+        self.norm_op_kwargs = {}
+        self.dropout_op = None
+        self.dropout_op_kwargs = None
+        self.nonlin = nn.GELU
+        self.nonlin_kwargs = {}
+        self.kernel_sizes = tuple((3, 3, 3) for _ in channels)
+        self.strides = tuple(
+            (1, 1, 1) if index == 0 else (2, 2, 2)
+            for index in range(len(channels))
+        )
         stages = []
         current_channels = input_channels
         for stage_index, output_channels in enumerate(channels):
@@ -171,84 +227,233 @@ class _BodyEncoder(nn.Module):
         return skips
 
 
-class _VoxTellBodyDecoder(nn.Module):
+class _BodyDecoderNorm(nn.GroupNorm):
+    def __init__(self, num_channels: int) -> None:
+        super().__init__(_num_groups(num_channels), num_channels)
+
+
+def _build_voxtell_residual_encoder(
+    input_channels: int,
+    channels: Sequence[int],
+    n_blocks_per_stage: Sequence[int],
+    conv_bias: bool,
+    norm: str,
+    activation: str,
+) -> nn.Module:
+    try:
+        from dynamic_network_architectures.building_blocks.residual import BasicBlockD
+        from dynamic_network_architectures.building_blocks.residual_encoders import ResidualEncoder
+    except ImportError as exc:
+        raise RuntimeError(
+            "backbone='residual_encoder' requires dynamic_network_architectures"
+        ) from exc
+
+    output_channels = tuple(int(channel) for channel in channels)
+    blocks_per_stage = tuple(int(blocks) for blocks in n_blocks_per_stage)
+    kernel_sizes = tuple((3, 3, 3) for _ in output_channels)
+    strides = tuple(
+        (1, 1, 1) if index == 0 else (2, 2, 2)
+        for index in range(len(output_channels))
+    )
+
+    encoder = ResidualEncoder(
+        input_channels=input_channels,
+        n_stages=len(output_channels),
+        features_per_stage=output_channels,
+        conv_op=nn.Conv3d,
+        kernel_sizes=kernel_sizes,
+        strides=strides,
+        n_blocks_per_stage=blocks_per_stage,
+        conv_bias=bool(conv_bias),
+        norm_op=_resolve_residual_norm(norm),
+        norm_op_kwargs={"eps": 1e-5, "affine": True},
+        dropout_op=None,
+        dropout_op_kwargs=None,
+        nonlin=_resolve_residual_activation(activation),
+        nonlin_kwargs={"inplace": True},
+        block=BasicBlockD,
+        bottleneck_channels=None,
+        return_skips=True,
+        disable_default_stem=False,
+        stem_channels=None,
+    )
+    encoder.output_channels = tuple(int(channel) for channel in encoder.output_channels)
+    encoder.strides = tuple(
+        tuple(int(value) for value in stride)
+        for stride in encoder.strides
+    )
+    encoder.n_blocks_per_stage = blocks_per_stage
+    encoder.conv_bias = bool(conv_bias)
+    encoder.kernel_sizes = kernel_sizes
+    encoder.norm = norm
+    encoder.activation = activation
+    return encoder
+
+
+class VoxTellDecoder(nn.Module):
     def __init__(
         self,
-        encoder_channels: Sequence[int],
-        num_heads: int,
-        fused_stage_count: int,
+        encoder: nn.Module,
+        num_classes: int,
+        n_conv_per_stage: int | Sequence[int],
         deep_supervision: bool,
+        num_maskformer_stages: int = 5,
+        nonlin_first: bool = False,
+        norm_op: type[nn.Module] | None = None,
+        norm_op_kwargs: dict | None = None,
+        dropout_op: type[nn.Module] | None = None,
+        dropout_op_kwargs: dict | None = None,
+        nonlin: type[nn.Module] | None = None,
+        nonlin_kwargs: dict | None = None,
+        conv_bias: bool | None = None,
+        num_heads: int = 1,
     ) -> None:
         super().__init__()
-        self.encoder_channels = tuple(int(x) for x in encoder_channels)
-        self.num_heads = int(num_heads)
-        self.fused_stage_count = int(fused_stage_count)
         self.deep_supervision = bool(deep_supervision)
+        self.encoder = encoder
+        self.num_classes = int(num_classes)
+        self.num_heads = int(num_heads)
 
-        upconvs = []
-        blocks = []
+        try:
+            from dynamic_network_architectures.building_blocks.helper import get_matching_convtransp
+            from dynamic_network_architectures.building_blocks.simple_conv_blocks import StackedConvBlocks
+        except ImportError as exc:
+            raise RuntimeError("VoxTellDecoder requires dynamic_network_architectures") from exc
+
+        encoder_channels = tuple(int(channel) for channel in encoder.output_channels)
+        n_stages_encoder = len(encoder_channels)
+        if n_stages_encoder < 2:
+            raise ValueError("VoxTellDecoder requires at least two encoder stages")
+
+        if isinstance(n_conv_per_stage, int):
+            n_conv_per_stage = [int(n_conv_per_stage)] * (n_stages_encoder - 1)
+        else:
+            n_conv_per_stage = [int(value) for value in n_conv_per_stage]
+        if len(n_conv_per_stage) != n_stages_encoder - 1:
+            raise ValueError(
+                "n_conv_per_stage must have one less entry than encoder stages: "
+                f"expected {n_stages_encoder - 1}, got {len(n_conv_per_stage)}"
+            )
+
+        self.num_maskformer_stages = min(int(num_maskformer_stages), n_stages_encoder - 1)
+        if self.num_maskformer_stages < 1:
+            raise ValueError("num_maskformer_stages must select at least one decoder output")
+
+        conv_op = encoder.conv_op
+        transpconv_op = get_matching_convtransp(conv_op=conv_op)
+        conv_bias = encoder.conv_bias if conv_bias is None else bool(conv_bias)
+        norm_op = encoder.norm_op if norm_op is None else norm_op
+        norm_op_kwargs = encoder.norm_op_kwargs if norm_op_kwargs is None else norm_op_kwargs
+        dropout_op = encoder.dropout_op if dropout_op is None else dropout_op
+        dropout_op_kwargs = (
+            encoder.dropout_op_kwargs if dropout_op_kwargs is None else dropout_op_kwargs
+        )
+        nonlin = encoder.nonlin if nonlin is None else nonlin
+        nonlin_kwargs = encoder.nonlin_kwargs if nonlin_kwargs is None else nonlin_kwargs
+        norm_op_kwargs = {} if norm_op_kwargs is None else dict(norm_op_kwargs)
+        dropout_op_kwargs = {} if dropout_op_kwargs is None else dict(dropout_op_kwargs)
+        nonlin_kwargs = {} if nonlin_kwargs is None else dict(nonlin_kwargs)
+
+        stages = []
+        transpconvs = []
         seg_layers = []
-        current_channels = self.encoder_channels[-1]
-        for target_stage in reversed(range(len(self.encoder_channels) - 1)):
-            target_channels = self.encoder_channels[target_stage]
-            upconvs.append(
-                nn.ConvTranspose3d(
-                    current_channels,
-                    target_channels,
-                    kernel_size=2,
-                    stride=2,
+        for stage_idx in range(1, n_stages_encoder):
+            if stage_idx <= n_stages_encoder - self.num_maskformer_stages:
+                input_features_below = encoder_channels[-stage_idx]
+            else:
+                input_features_below = encoder_channels[-stage_idx] + self.num_heads
+
+            input_features_skip = encoder_channels[-(stage_idx + 1)]
+            stride_for_transpconv = encoder.strides[-stage_idx]
+
+            transpconvs.append(
+                transpconv_op(
+                    input_features_below,
+                    input_features_skip,
+                    stride_for_transpconv,
+                    stride_for_transpconv,
+                    bias=conv_bias,
                 )
             )
-            blocks.append(_ConvBlock(target_channels * 2, target_channels))
+            stages.append(
+                StackedConvBlocks(
+                    n_conv_per_stage[stage_idx - 1],
+                    conv_op,
+                    2 * input_features_skip,
+                    input_features_skip,
+                    encoder.kernel_sizes[-(stage_idx + 1)],
+                    1,
+                    conv_bias,
+                    norm_op,
+                    norm_op_kwargs,
+                    dropout_op,
+                    dropout_op_kwargs,
+                    nonlin,
+                    nonlin_kwargs,
+                    nonlin_first,
+                )
+            )
+            seg_layers.append(
+                conv_op(
+                    input_features_skip + self.num_heads,
+                    self.num_classes,
+                    1,
+                    1,
+                    0,
+                    bias=True,
+                )
+            )
 
-            uses_intermediate_fusion = self._uses_fusion(target_stage) and target_stage > 0
-            if uses_intermediate_fusion:
-                if self.deep_supervision:
-                    seg_layers.append(nn.Conv3d(target_channels + self.num_heads, 1, kernel_size=1))
-                else:
-                    seg_layers.append(nn.Identity())
-                current_channels = target_channels + self.num_heads
-            else:
-                seg_layers.append(nn.Identity())
-                current_channels = target_channels
-
-        self.upconvs = nn.ModuleList(upconvs)
-        self.blocks = nn.ModuleList(blocks)
+        self.stages = nn.ModuleList(stages)
+        self.transpconvs = nn.ModuleList(transpconvs)
         self.seg_layers = nn.ModuleList(seg_layers)
 
     def forward(self, skips: Sequence[Tensor], mask_embeddings: Sequence[Tensor]) -> List[Tensor]:
-        x = skips[-1]
-        outputs = []
+        if len(mask_embeddings) != self.num_maskformer_stages:
+            raise ValueError(
+                "mask_embeddings count must match fused decoder stages: "
+                f"expected {self.num_maskformer_stages}, got {len(mask_embeddings)}"
+            )
 
-        for decoder_index, target_stage in enumerate(reversed(range(len(skips) - 1))):
-            skip = skips[target_stage]
-            x = self.upconvs[decoder_index](x)
+        lres_input = skips[-1]
+        outputs: List[Tensor] = []
+        stage_mask_embeddings = list(mask_embeddings)[::-1]
+
+        for stage_idx in range(len(self.stages)):
+            x = self.transpconvs[stage_idx](lres_input)
+            skip = skips[-(stage_idx + 2)]
             if x.shape[2:] != skip.shape[2:]:
-                x = F.interpolate(x, size=skip.shape[2:], mode="trilinear", align_corners=False)
+                raise ValueError(
+                    "VoxTellDecoder requires stride-compatible input sizes; "
+                    f"stage {stage_idx} transposed-conv output spatial {tuple(x.shape[2:])} "
+                    f"does not match skip spatial {tuple(skip.shape[2:])}"
+                )
             x = torch.cat((x, skip), dim=1)
-            x = self.blocks[decoder_index](x)
+            x = self.stages[stage_idx](x)
 
-            if target_stage == 0:
-                mask_embedding = mask_embeddings[0]
-                outputs.append(torch.einsum("b c d h w, b n c -> b n d h w", x, mask_embedding))
-                continue
-
-            if self._uses_fusion(target_stage):
-                mask_embedding = mask_embeddings[target_stage]
+            if stage_idx == len(self.stages) - 1:
+                outputs.append(
+                    torch.einsum("b c d h w, b n c -> b n d h w", x, stage_mask_embeddings[-1])
+                )
+            elif stage_idx >= len(self.stages) - len(stage_mask_embeddings):
+                mask_embedding = stage_mask_embeddings.pop(0)
                 batch_size, _, channels = mask_embedding.shape
-                mask_embedding = mask_embedding.view(batch_size, self.num_heads, channels // self.num_heads)
+                if channels % self.num_heads != 0:
+                    raise ValueError(
+                        "mask embedding channels must be divisible by num_heads: "
+                        f"got {channels} channels and num_heads={self.num_heads}"
+                    )
+                mask_embedding = mask_embedding.view(batch_size, self.num_heads, -1)
                 fusion = torch.einsum("b c d h w, b n c -> b n d h w", x, mask_embedding)
                 x = torch.cat((x, fusion), dim=1)
-                if self.deep_supervision:
-                    outputs.append(self.seg_layers[decoder_index](x))
+                outputs.append(self.seg_layers[stage_idx](x))
+
+            lres_input = x
 
         outputs = outputs[::-1]
         if not self.deep_supervision:
             return outputs[:1]
         return outputs
-
-    def _uses_fusion(self, stage_index: int) -> bool:
-        return stage_index < self.fused_stage_count
 
 
 class _ConvBlock(nn.Module):
@@ -272,6 +477,44 @@ def _num_groups(channels: int) -> int:
         if channels % groups == 0:
             return groups
     return 1
+
+
+def _resolve_n_blocks_per_stage(
+    encoder_channels: Tuple[int, ...],
+    n_blocks_per_stage: Sequence[int] | None,
+) -> Tuple[int, ...]:
+    if n_blocks_per_stage is None:
+        if encoder_channels == VOXTELL_V1_1_ENCODER_CHANNELS:
+            return VOXTELL_V1_1_N_BLOCKS_PER_STAGE
+        return tuple(1 for _ in encoder_channels)
+
+    blocks = tuple(int(blocks) for blocks in n_blocks_per_stage)
+    if len(blocks) != len(encoder_channels):
+        raise ValueError(
+            "n_blocks_per_stage must have one entry per encoder stage: "
+            f"got {len(blocks)} blocks for {len(encoder_channels)} stages"
+        )
+    return blocks
+
+
+def _resolve_residual_norm(norm: str) -> type[nn.Module]:
+    normalized = norm.lower().replace("-", "_")
+    if normalized in {"instance", "instance_norm", "instance_norm_3d", "instancenorm3d"}:
+        return nn.InstanceNorm3d
+    raise ValueError(
+        "residual_encoder uses the VoxTell norm policy and only supports "
+        f"InstanceNorm3d, got {norm!r}"
+    )
+
+
+def _resolve_residual_activation(activation: str) -> type[nn.Module]:
+    normalized = activation.lower().replace("-", "_")
+    if normalized in {"leaky_relu", "leakyrelu"}:
+        return nn.LeakyReLU
+    raise ValueError(
+        "residual_encoder uses the VoxTell activation policy and only supports "
+        f"LeakyReLU, got {activation!r}"
+    )
 
 
 def sinusoidal_position_encoding_3d(
@@ -308,4 +551,11 @@ def sinusoidal_position_encoding_3d(
     return encoded[:, :dim].unsqueeze(1)
 
 
-__all__ = ["VoxTellBodyConfig", "VoxTellBodyModel", "sinusoidal_position_encoding_3d"]
+__all__ = [
+    "VOXTELL_V1_1_ENCODER_CHANNELS",
+    "VOXTELL_V1_1_N_BLOCKS_PER_STAGE",
+    "VoxTellBodyConfig",
+    "VoxTellDecoder",
+    "VoxTellBodyModel",
+    "sinusoidal_position_encoding_3d",
+]

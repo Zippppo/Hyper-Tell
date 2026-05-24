@@ -98,7 +98,7 @@ def _make_tiny_body_tell_root(tmp_path: Path) -> Path:
         "version": "phase0-2026-05-20",
         "num_cases": 1,
         "num_classes": 4,
-        "shape_summary": {"recommended_volume_size": [4, 5, 6]},
+        "shape_summary": {"recommended_volume_size": [8, 8, 8]},
         "cases": {
             "CASE_0001": {
                 "filename": "CASE_0001.npz",
@@ -189,7 +189,7 @@ def test_body_config_targets_cropped_s2i_package() -> None:
     assert cfg["data"]["voxel_dir"] == "S2I-Dataset-70cls/data"
     assert cfg["data"]["split_path"] == "S2I-Dataset-70cls/dataset_split.json"
     assert cfg["data"]["presence_path"] == "S2I-Dataset-70cls/class_presence.json"
-    assert cfg["data"]["volume_size"] == [129, 108, 256]
+    assert cfg["data"]["volume_size"] == [128, 128, 256]
 
 
 def test_mini_overfit_loss_decreases(tmp_path: Path) -> None:
@@ -200,7 +200,7 @@ def test_mini_overfit_loss_decreases(tmp_path: Path) -> None:
     dataset = HyperBodyPromptDataset(
         root=root,
         split="train",
-        volume_size=(4, 5, 6),
+        volume_size=(8, 8, 8),
         num_positive=2,
         num_negative=1,
         seed=0,
@@ -262,7 +262,7 @@ def test_mini_overfit_dice_improves(tmp_path: Path) -> None:
     dataset = HyperBodyPromptDataset(
         root=root,
         split="train",
-        volume_size=(4, 5, 6),
+        volume_size=(8, 8, 8),
         num_positive=2,
         num_negative=1,
         seed=0,

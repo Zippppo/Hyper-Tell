@@ -2,29 +2,49 @@ schema_version: 1
 project: Body-Tell VoxTell alignment
 created_at: '2026-05-24'
 lead_plan: lead.html
+status_files:
+  json: workflow_status.json
+  html: workflow_status.html
 status_model:
   todo: Task is defined but not currently runnable.
   ready: Task dependencies are accepted and the task can be assigned.
   assigned: A worker run has been started.
   submitted: Worker produced a result and is waiting for manager review.
   needs_fix: Review failed; rerun the same worker with the review notes.
+  gate_failed: Review accepted or looked complete, but a required integration gate failed or was missing.
   blocked: Task cannot move without human input or an external artifact.
   accepted: Manager accepted the result and appended progress to lead.html.
+required_gates:
+  phase1_slurm:
+    command: sbatch slurm/body-tell-phase1.sh
+    accounting_command: sacct -j <JOB_ID> --format=JobID,State,ExitCode,Elapsed -n
+    pass_condition: Main job state is COMPLETED and exit code is 0:0.
+    artifact_policy: Record job id, command, final state, exit code, elapsed time, and the smallest relevant failure excerpt
+      in REVIEW.html or runs/<TASK_ID>/GATE.html.
 global_rules:
 - Use conda environment voxtell for verification commands.
 - Reports and run results must be written as HTML.
 - lead.html is owned only by the manager.
 - Workers must not edit lead.html or workflow_manifest.yaml.
 - Workers must keep changes limited to the assigned task and plan file.
+- Long-lived leader sessions must use compact status files or run_manager.py status for monitoring; do not tail child event
+  logs.
+- Reviewers must submit slurm/body-tell-phase1.sh and may accept only when the main job is COMPLETED with exit code 0:0.
+- Rerun prompts must include the current manager note so workers address needs_fix or gate_failed causes directly.
+- Prefer auto --max-tasks 1 for checkpointed phase work; continuous auto should be an explicit human choice.
+- Commit only after the task is accepted and all required gates pass; keep workflow-infrastructure commits separate from worker
+  implementation commits.
 agents:
   manager:
-    role: Owns lead.html, selects runnable tasks, reviews worker outputs, and records accepted progress.
+    role: Owns lead.html, selects runnable tasks, reviews worker outputs, records accepted progress, and monitors only through
+      compact status.
     writable:
     - Body-Tell/reports/26-05-24/lead.html
     - Body-Tell/reports/26-05-24/workflow_manifest.yaml
     - Body-Tell/reports/26-05-24/runs/**
   reviewer:
-    role: Reviews a submitted worker result against the plan, git diff, tests, and acceptance criteria.
+    role: Reviews a submitted worker result against the plan, git diff, tests, acceptance criteria, and required phase1 Slurm
+      gate.
     writable:
     - Body-Tell/reports/26-05-24/runs/**/REVIEW.html
   sp_a_architecture_worker:
@@ -115,7 +135,7 @@ tasks:
     title: Replace encoder with VoxTell residual encoder
     owner: sp_a_architecture_worker
     phase: 2
-    status: todo
+    status: accepted
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P1
@@ -126,11 +146,23 @@ tasks:
     - Existing model shape tests are updated and passing.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
+    updated_at: '2026-05-24T14:07:56.857772+00:00'
+    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P2/REVIEW.html.
+    history:
+    - at: '2026-05-24T13:38:21.364130+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P2/PROMPT.md
+    - at: '2026-05-24T13:59:51.025497+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists.
+    - at: '2026-05-24T14:07:56.857772+00:00'
+      status: accepted
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P2/REVIEW.html.
   SP-A.P3:
     title: Replace decoder with VoxTellDecoder
     owner: sp_a_architecture_worker
     phase: 2
-    status: todo
+    status: accepted
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P2
@@ -141,11 +173,29 @@ tasks:
     - SP-C Task5 precondition is satisfied or the remaining blocker is explicit.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_prompt_loss_backward.py
+    updated_at: '2026-05-24T14:46:25.835234+00:00'
+    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P3/REVIEW.html.
+    history:
+    - at: '2026-05-24T14:07:57.290534+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P3/PROMPT.md
+    - at: '2026-05-24T14:15:12.735418+00:00'
+      status: needs_fix
+      note: Manager interrupted stale assigned worker to run post-accept Slurm gate; rerun SP-A.P3.
+    - at: '2026-05-24T14:15:29.985010+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P3/PROMPT.md
+    - at: '2026-05-24T14:35:44.361424+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists.
+    - at: '2026-05-24T14:46:25.835234+00:00'
+      status: accepted
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P3/REVIEW.html.
   SP-A.P4:
     title: Align projection, mask head, num_heads decision, and forward layout
     owner: sp_a_architecture_worker
     phase: 2
-    status: todo
+    status: accepted
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P0
@@ -158,6 +208,39 @@ tasks:
     - P6 skip whitelist candidate is explicit.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
+    updated_at: '2026-05-24T18:22:02.707317+00:00'
+    last_note: 'SP-A.P4 accepted after phase1 Slurm gate job 37739 completed successfully with 128x128x256 dataset shape.
+      Phase1 Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.'
+    history:
+    - at: '2026-05-24T14:46:26.285449+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P4/PROMPT.md
+    - at: '2026-05-24T14:49:49.593706+00:00'
+      status: needs_fix
+      note: Paused by leader immediately after SP-A.P3 acceptance; rerun SP-A.P4 when resuming.
+    - at: '2026-05-24T14:52:27.975797+00:00'
+      status: needs_fix
+      note: 'Paused by leader after SP-A.P3 acceptance. Post-accept Slurm gate job 37715 failed before commit: VoxTellDecoder
+        stride-compatible input mismatch at stage 0, transposed output spatial (18, 14, 32) vs skip spatial (17, 14, 32).
+        Rerun SP-A.P4 to address layout/projection/shape path.'
+    - at: '2026-05-24T14:58:37.849126+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P4/PROMPT.md
+    - at: '2026-05-24T15:13:25.966736+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists.
+    - at: '2026-05-24T15:18:43.544879+00:00'
+      status: accepted
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P4/REVIEW.html.
+    - at: '2026-05-24T15:24:31.835125+00:00'
+      status: gate_failed
+      note: 'Post-accept phase1 Slurm gate job 37719 failed after SP-A.P4 review acceptance; no commit made. Failure remains
+        VoxTellDecoder stride-compatible input mismatch at stage 0: transposed output spatial (18, 14, 32) vs skip spatial
+        (17, 14, 32). Rerun SP-A.P4 before advancing to SP-A.P5.'
+    - at: '2026-05-24T18:22:02.707317+00:00'
+      status: accepted
+      note: 'SP-A.P4 accepted after phase1 Slurm gate job 37739 completed successfully with 128x128x256 dataset shape. Phase1
+        Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.'
   SP-A.P5:
     title: Implement position encoding strategy
     owner: sp_a_architecture_worker

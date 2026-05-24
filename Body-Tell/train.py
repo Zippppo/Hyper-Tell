@@ -112,6 +112,15 @@ def build_model(cfg: dict[str, Any]) -> VoxTellBodyModel:
     config = VoxTellBodyConfig(
         input_channels=mc["input_channels"],
         encoder_channels=tuple(mc["encoder_channels"]),
+        backbone=mc.get("backbone", "conv"),
+        n_blocks_per_stage=(
+            tuple(mc["n_blocks_per_stage"])
+            if mc.get("n_blocks_per_stage") is not None
+            else None
+        ),
+        encoder_conv_bias=mc.get("encoder_conv_bias", True),
+        encoder_norm=mc.get("encoder_norm", "instance_norm_3d"),
+        encoder_activation=mc.get("encoder_activation", "leaky_relu"),
         text_embedding_dim=mc["text_embedding_dim"],
         query_dim=mc["query_dim"],
         text_projection_hidden_dim=mc["text_projection_hidden_dim"],
@@ -408,7 +417,7 @@ def main() -> None:
 
         model = build_model(cfg).to(device)
         if distributed:
-            model = DDP(model, device_ids=[local_rank])
+            model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         if is_main_process():

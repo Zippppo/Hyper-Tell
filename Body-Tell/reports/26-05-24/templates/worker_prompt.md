@@ -14,6 +14,9 @@ Your source-of-truth sub-plan:
 Task scope:
 {{scope}}
 
+Current manager note / previous failure context:
+{{last_note}}
+
 Dependencies already accepted:
 {{dependencies}}
 
@@ -29,6 +32,7 @@ Global rules:
 - Do not edit `{{lead_file}}`.
 - Do not edit `{{manifest_file}}`.
 - Do not modify unrelated code or perform adjacent refactors.
+- If this is a rerun after `needs_fix` or `gate_failed`, directly address the current manager note and explain the fix in RESULT.html.
 - If the assigned task is impossible, write the blocker clearly in the result report instead of expanding scope.
 
 Required output:
@@ -41,4 +45,3 @@ Write `{{result_file}}` as an HTML report containing:
 6. Recommendation: `ready_for_review`, `needs_fix`, or `blocked`.
 
 Start by reading the lead plan and the source-of-truth sub-plan. Then complete only the assigned task.
-
