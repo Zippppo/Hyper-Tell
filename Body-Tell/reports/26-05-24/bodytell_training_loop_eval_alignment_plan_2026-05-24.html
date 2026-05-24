@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 训练机制与评估协议对齐计划</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #5c6678;
+      --line: #d9dee8;
+      --head: #eef2f7;
+      --code: #f1f4f8;
+      --red: #b3261e;
+      --amber: #8a5a00;
+      --green: #187044;
+      --blue: #2459a8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.62;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 36px 24px 60px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 22px;
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    p { margin: 8px 0; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      margin: 18px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 2px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: var(--head);
+      font-weight: 650;
+    }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      border-radius: 6px;
+      padding: 12px;
+      border: 1px solid var(--line);
+    }
+    pre code {
+      background: transparent;
+      padding: 0;
+    }
+    ul, ol {
+      margin: 8px 0;
+      padding-left: 22px;
+    }
+    li { margin: 5px 0; }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+    .card strong {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .card span {
+      display: block;
+      font-size: 20px;
+      font-weight: 760;
+    }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eef2f7;
+      color: #39445a;
+      white-space: nowrap;
+    }
+    .tag.bad { background: #fdeeee; color: var(--red); }
+    .tag.warn { background: #fff5db; color: var(--amber); }
+    .tag.ok { background: #e9f7ef; color: var(--green); }
+    .tag.info { background: #e7f0ff; color: var(--blue); }
+    .note {
+      border-left: 4px solid var(--blue);
+      padding: 10px 12px;
+      background: #eef5ff;
+      border-radius: 4px;
+      margin-top: 12px;
+    }
+    .note.warn {
+      border-left-color: var(--amber);
+      background: #fff5db;
+    }
+    .small { color: var(--muted); font-size: 13px; }
+    a { color: var(--blue); }
+    a:hover { text-decoration: underline; }
+    .child-link {
+      font-weight: 650;
+      text-decoration: none;
+      border-bottom: 1px dashed var(--blue);
+    }
+    @media (max-width: 900px) {
+      main { padding: 24px 14px 42px; }
+      .cards { grid-template-columns: 1fr 1fr; }
+      table { font-size: 13px; }
+      th, td { padding: 8px; }
+    }
+    @media (max-width: 560px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Body-Tell 训练机制与评估协议对齐计划</h1>
+    <p class="meta">日期：2026-05-24。编号：SP-C。父级来源：<a class="child-link" href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">Body-Tell 与 VoxTell 论文不一致项总控计划</a>。范围：训练 loop、optimizer/scheduler、deep supervision loss、checkpoint/resume、评估协议、测试矩阵与 paper-aligned 配置 profile。</p>
+    <div class="cards">
+      <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9</span></div>
+      <div class="card"><strong>状态</strong><span class="tag ok">已起草</span></div>
+      <div class="card"><strong>硬依赖</strong><span class="tag warn">SP-A P3 / SP-B Step 2</span></div>
+      <div class="card"><strong>目标</strong><span class="tag info">paper-aligned 训练闭环</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>本文件的角色</h2>
+    <p>SP-C 只负责训练机制与评估协议，不负责模型结构迁移，也不负责数据采样器和 vocabulary 扩充。结构问题继续由 SP-A 负责，数据构造问题继续由 SP-B 负责。</p>
+    <p>SP-C 的任务是把父报告中已经确认的训练侧差异变成可落地步骤：固定 update-count 训练节奏、SGD + polynomial decay、5-scale deep supervision、可精确恢复的 checkpoint、prompt-aware 评估协议，以及能暴露这些行为的测试矩阵。</p>
+    <p class="note warn">本计划不把当前默认训练全部强制切到 paper-aligned profile。先新增显式 profile 和代码路径，保留当前 AdamW/短训配置作为回退实验；只有在 smoke 和 resume 验收通过后，才应把长训入口切到 paper-aligned profile。</p>
+  </section>
+
+  <section>
+    <h2>归属映射</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>父报告条目</th>
+          <th>当前偏离</th>
+          <th>SP-C 任务</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>#1 训练框架</td>
+          <td>自定义 PyTorch loop，没有 nnU-Net 风格 fixed iteration 语义。</td>
+          <td><a class="child-link" href="#task-1">Task 1</a></td>
+        </tr>
+        <tr>
+          <td>#2 训练长度语义</td>
+          <td>当前默认 <code>epochs=50</code>，且 epoch 等于遍历 DataLoader。</td>
+          <td><a class="child-link" href="#task-0">Task 0</a>、<a class="child-link" href="#task-1">Task 1</a></td>
+        </tr>
+        <tr>
+          <td>#3 optimizer</td>
+          <td>当前 AdamW；VoxTell paper-aligned profile 应使用 SGD，initial LR <code>1e-4</code>。</td>
+          <td><a class="child-link" href="#task-2">Task 2</a></td>
+        </tr>
+        <tr>
+          <td>#4 LR schedule</td>
+          <td>当前恒定 LR；VoxTell 使用 polynomial decay。</td>
+          <td><a class="child-link" href="#task-3">Task 3</a>、<a class="child-link" href="#task-4">Task 4</a></td>
+        </tr>
+        <tr>
+          <td>#9 deep supervision</td>
+          <td>当前 <code>deep_supervision: false</code>，只优化最高分辨率输出。</td>
+          <td><a class="child-link" href="#task-5">Task 5</a>，依赖 SP-A P3</td>
+        </tr>
+        <tr>
+          <td>checkpoint / 评估 / 测试矩阵</td>
+          <td>父报告登记为训练机制同源缺口。</td>
+          <td><a class="child-link" href="#task-4">Task 4</a>、<a class="child-link" href="#task-6">Task 6</a>、<a class="child-link" href="#task-7">Task 7</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>前置依赖</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>依赖</th>
+          <th>原因</th>
+          <th>SP-C 处理</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SP-A P3：5-stage VoxTellDecoder</td>
+          <td>5-scale deep supervision 需要模型稳定返回 5 个尺度输出。</td>
+          <td>Task 5 在 SP-A P3 之前只能写配置和 loss 测试骨架，不启用长训。</td>
+        </tr>
+        <tr>
+          <td>SP-B Step 1：动态采样 RNG</td>
+          <td>训练 loop 每个 epoch 必须同时驱动 sampler 和 dataset epoch state。</td>
+          <td>Task 1 要调用 dataset epoch setter；若 dataset 尚未实现，则记录 warning 并在测试中暴露。</td>
+        </tr>
+        <tr>
+          <td>SP-B Step 2：patch-level 2+1</td>
+          <td>paper-aligned profile 的 prompt 监督应基于 patch present/absent，而不是 whole-case presence。</td>
+          <td>Task 6 的 prompt/negative 评估可以先在 whole-case 口径上 smoke，最终验收必须等 patch-level sampler 完成。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>实施任务</h2>
+
+    <h3 id="task-0">Task 0. 新增 paper-aligned profile 骨架</h3>
+    <ol>
+      <li>新增 <code>Body-Tell/configs/phase1_voxtell_paper_aligned.yaml</code>，显式声明 <code>profile: paper_aligned</code> 或等价字段。</li>
+      <li>集中写入训练语义：<code>iterations_per_epoch: 250</code>（机制对齐，固定每 epoch 的 update 数）、<code>optimizer: sgd</code>、<code>lr: 1e-4</code>、<code>lr_schedule: poly</code>、<code>deep_supervision: true</code>、<code>deep_supervision_weights: [1, 0.5, 0.25, 0.125, 0.0625]</code>。</li>
+      <li><strong>训练预算字段 <code>epochs</code> 与 <code>total_updates</code> 不写死论文 2000 / 500000</strong>。这两个字段由实际算力倒推决定：先估单 step 墙钟时间 <code>t_step</code> 和可承受训练时长 <code>T_budget</code>，再令 <code>total_updates = floor(T_budget / t_step)</code>、<code>epochs = ceil(total_updates / iterations_per_epoch)</code>。profile 中必须以注释或独立字段（如 <code>budget_source: "wall_clock=Xh, t_step=Ys"</code>）显式注明此预算来源，避免被误读为复刻论文。详见父文档 <a href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">总控计划</a> 中 2026-05-24 决议。</li>
+      <li>模型字段应引用 SP-A aligned 架构：<code>architecture: voxtell_v1_1</code>、<code>num_maskformer_stages: 5</code>。在 SP-A 未完成前，该 profile 可以存在但不作为默认训练入口。</li>
+      <li>训练启动日志和 W&amp;B config 中打印 <code>paper_aligned profile</code>、总 update 数、optimizer/scheduler、deep supervision 权重。</li>
+    </ol>
+    <p>验收：读取配置时能区分当前 baseline profile 与 paper-aligned profile；未启用 SP-A aligned 架构时，长训入口不能静默落回旧轻量模型。</p>
+
+    <h3 id="task-1">Task 1. 固定 update-count 训练 loop</h3>
+    <ol>
+      <li>新增 <code>iterations_per_epoch</code> 支持；当该字段存在时，一个 epoch 固定执行指定数量的 optimizer updates，不再等价于完整遍历 DataLoader。</li>
+      <li>实现可复用的无限 dataloader iterator；迭代耗尽后重建 iterator，但 <code>epoch</code> 和 <code>global_step</code> 语义保持连续。</li>
+      <li>日志同时记录 <code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、<code>samples_seen</code>。</li>
+      <li>每个 epoch 调用 <code>DistributedSampler.set_epoch(epoch)</code>；如果 dataset 提供 <code>set_epoch(epoch)</code>，同步调用它，保证 SP-B 动态 prompt RNG 能随 epoch 更新。</li>
+      <li>smoke 模式允许覆盖为小数值，例如 <code>epochs=2</code>、<code>iterations_per_epoch=2</code>，但仍走同一 fixed-update 代码路径。</li>
+    </ol>
+    <p>验收：2-epoch smoke 的 optimizer step 数严格等于 <code>epochs * iterations_per_epoch</code>；日志中的 <code>global_step</code> 单调递增且无跳号。</p>
+
+    <h3 id="task-2">Task 2. 配置驱动 optimizer profile</h3>
+    <ol>
+      <li>把 optimizer 构造从硬编码 <code>torch.optim.AdamW(... weight_decay=1e-5)</code> 改为配置驱动 factory。</li>
+      <li>paper-aligned profile 使用 <code>torch.optim.SGD</code>，初始 LR 为 <code>1e-4</code>。SGD 的 <code>momentum</code>、<code>weight_decay</code> 必须来自配置并写入日志；如果无论文/官方依据，不应把 AdamW 的 weight decay 直接迁移过来。</li>
+      <li>baseline profile 保留 AdamW，避免无法回退或无法做 ablation。</li>
+      <li>checkpoint 中写入 optimizer 名称、param group 数、各 group 的初始 LR 与当前 LR。</li>
+    </ol>
+    <p>验收：同一训练脚本能通过配置切换 AdamW 与 SGD；paper-aligned profile 启动日志中明确显示 <code>optimizer=sgd</code>、<code>lr=1e-4</code>。</p>
+
+    <h3 id="task-3">Task 3. Polynomial LR schedule</h3>
+    <ol>
+      <li>新增 poly scheduler，按 optimizer update 数计算进度：<code>progress = global_step / total_updates</code>。</li>
+      <li>LR 在每次 optimizer step 后更新，而不是每个 epoch 后更新。</li>
+      <li><code>poly_power</code> 进入配置并写入日志；若采用 nnU-Net 惯例值，应在配置中显式声明，避免隐藏默认。</li>
+      <li>scheduler state 必须能从 checkpoint 恢复；恢复后同一 <code>global_step</code> 的 LR 应与不中断训练完全一致。</li>
+    </ol>
+    <p>验收：scheduler 数值单测覆盖 step 0、半程、末程和 resume 后一步；LR 不应在 epoch 边界出现额外跳变。</p>
+
+    <h3 id="task-4">Task 4. Checkpoint 与精确恢复</h3>
+    <ol>
+      <li>checkpoint 写入 <code>model_state_dict</code>、<code>optimizer_state_dict</code>、<code>scheduler_state_dict</code>、<code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、AMP scaler、配置 hash、<code>architecture</code> 字段。</li>
+      <li>恢复入口必须在 dataloader / sampler / dataset epoch state / scheduler state 全部恢复后继续训练。</li>
+      <li>保存 best checkpoint 和 latest checkpoint；latest 用于 resume，best 用于评估与发布。</li>
+      <li>恢复日志打印 checkpoint 中的 <code>global_step</code>、下一个 <code>epoch</code> / <code>iteration_in_epoch</code>、当前 LR、配置 hash 是否匹配。</li>
+    </ol>
+    <p>验收：构造 interrupted run 与 uninterrupted run，在同一 <code>global_step</code> 比较 LR 和 scheduler state，必须完全一致。</p>
+
+    <h3 id="task-5">Task 5. 启用 5-scale deep supervision loss</h3>
+    <ol>
+      <li>依赖 SP-A P3：模型必须返回 5 个尺度输出，且最高分辨率输出仍与 target mask 的轴语义一致。</li>
+      <li>paper-aligned profile 设置 <code>deep_supervision: true</code> 与权重 <code>[1, 1/2, 1/4, 1/8, 1/16]</code>。</li>
+      <li>loss 层保存原始权重，并在日志中同时报告归一化后的有效权重；避免“论文权重”和“实现归一化”混淆。</li>
+      <li>每个 scale 的 target 使用统一 resize 策略；日志至少记录总 loss、BCE、Dice，以及可选的 per-scale loss。</li>
+      <li>补充反传测试：5 个尺度输出都参与 loss，且每个可训练输出分支都有梯度。</li>
+    </ol>
+    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；SP-A P3 未完成时不得把 paper-aligned 长训标记为通过。</p>
+
+    <h3 id="task-6">Task 6. 评估协议扩展</h3>
+    <ol>
+      <li>保留现有 S2I val foreground mean Dice 与 negative FP，作为本地域内基线。</li>
+      <li>新增 prompt variants 评估：同一 class 用 canonical 与 variant prompt 分组统计 Dice。</li>
+      <li>新增 negative empty-mask 评估：对 patch/case absent prompt 统计 FP voxel、FP rate、empty-mask success rate。</li>
+      <li>新增 held-out class/concept 分组评估；如果当前 split 没有正式 held-out concept，先用配置化列表声明，不在报告中伪造论文级 zero-shot 结论。</li>
+      <li>临床 report-derived prompts 与 ReXGroundingCT fine-tuning 只登记为论文协议缺口；在 Body-Tell 缺少对应数据前，不作为本轮强制验收。</li>
+    </ol>
+    <p>验收：评估报告能按 known concepts、prompt variants、negative prompts、held-out classes/concepts 分组输出 Dice/FP，并记录使用的 prompt records / vocab hash。</p>
+
+    <h3 id="task-7">Task 7. Paper-alignment 测试矩阵</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>测试</th>
+          <th>覆盖风险</th>
+          <th>验收口径</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CPU shape test</td>
+          <td>fixed-update loop、5-scale 输出、非立方输入轴语义。</td>
+          <td>forward 输出 shape 与 target mask 一致；deep supervision 返回 5 个尺度。</td>
+        </tr>
+        <tr>
+          <td>1-batch backward</td>
+          <td>SGD、deep supervision、AMP off 的基础反传。</td>
+          <td>loss finite；optimizer step 后至少一个参数变化。</td>
+        </tr>
+        <tr>
+          <td>2-epoch smoke</td>
+          <td>iterations_per_epoch、日志、checkpoint 写入。</td>
+          <td>step 数等于 <code>epochs * iterations_per_epoch</code>，latest checkpoint 可读取。</td>
+        </tr>
+        <tr>
+          <td>scheduler 数值测试</td>
+          <td>poly decay 按 update 而非 epoch 更新。</td>
+          <td>指定 step 的 LR 与公式一致。</td>
+        </tr>
+        <tr>
+          <td>resume 等价测试</td>
+          <td>checkpoint/scheduler/iteration 恢复。</td>
+          <td>interrupted run 与 uninterrupted run 在同一 step 的 LR 完全一致。</td>
+        </tr>
+        <tr>
+          <td>prompt 采样分布测试</td>
+          <td>SP-B 动态 RNG 与 25/75 采样是否被 train loop 正确驱动。</td>
+          <td>同一 case 跨 epoch prompt 可变化；positive canonical 比例接近配置。</td>
+        </tr>
+        <tr>
+          <td>deep supervision 反传测试</td>
+          <td>5 个尺度是否都参与优化。</td>
+          <td>每个输出分支产生非空梯度或等价可观测信号。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>落地顺序</h2>
+    <ol>
+      <li>先做 Task 0，让 paper-aligned profile 有显式配置入口，但不改变默认训练。</li>
+      <li>随后做 Task 1、Task 2、Task 3，形成 fixed-update + SGD + poly 的最小训练闭环。</li>
+      <li>再做 Task 4，确保中断恢复不会破坏 poly schedule。</li>
+      <li>SP-A P3 完成后做 Task 5；SP-B Step 1/2 完成后补齐 Task 6 的最终验收口径。</li>
+      <li>Task 7 贯穿每个阶段：每完成一项机制，就补对应测试，避免把长训当成唯一验收。</li>
+    </ol>
+    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先做报告框架，但最终指标必须等 SP-B patch-level sampler 和 vocabulary/cache 对齐完成后再定稿。</p>
+  </section>
+
+  <section>
+    <h2>建议验收命令</h2>
+    <pre><code># 1. 训练 loop / scheduler / resume 单元测试
+pytest Body-Tell/tests/test_train_loop.py -q
+
+# 2. paper-aligned profile smoke，示例参数以实现后的 CLI 为准
+python Body-Tell/train.py \
+  --config Body-Tell/configs/phase1_voxtell_paper_aligned.yaml \
+  --smoke \
+  --epochs 2 \
+  --iterations-per-epoch 2 \
+  --batch-size 1
+
+# 3. deep supervision 反传测试，依赖 SP-A P3 后补齐
+pytest Body-Tell/tests/test_deep_supervision.py -q</code></pre>
+    <p class="small">命令名称和参数会随实现落地调整；本节定义的是验收意图，不是当前可立即运行的承诺。</p>
+  </section>
+
+  <section>
+    <h2>最终判定</h2>
+    <p>SP-C 已接管父报告中所有训练机制与评估协议缺口。它不替代 SP-A/SP-B，而是在两者提供 aligned model 和 patch-level sampling 后，把训练节奏、optimizer/scheduler、deep supervision、checkpoint resume 与评估协议接成完整 paper-aligned 训练闭环。</p>
+    <p class="small">本文件仅创建子计划，未修改训练代码。</p>
+  </section>
+</main>
+</body>
+</html>

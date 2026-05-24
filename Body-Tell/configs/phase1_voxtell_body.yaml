@@ -22,7 +22,7 @@ data:
   vocab_path: configs/label_vocab.json
   embedding_cache_path: artifacts/text_embeddings/prompt_embeddings.pt
   strict_embedding_cache: true
-  volume_size: [164, 129, 256]
+  volume_size: [129, 108, 256]
   num_positive: 2
   num_negative: 1
   min_voxels: 1

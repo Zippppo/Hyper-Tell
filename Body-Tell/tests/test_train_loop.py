@@ -183,6 +183,15 @@ def test_build_dataset_forwards_s2i_path_config(monkeypatch) -> None:
     }
 
 
+def test_body_config_targets_cropped_s2i_package() -> None:
+    cfg = train_module.load_config("Body-Tell/configs/phase1_voxtell_body.yaml")
+
+    assert cfg["data"]["voxel_dir"] == "S2I-Dataset-70cls/data"
+    assert cfg["data"]["split_path"] == "S2I-Dataset-70cls/dataset_split.json"
+    assert cfg["data"]["presence_path"] == "S2I-Dataset-70cls/class_presence.json"
+    assert cfg["data"]["volume_size"] == [129, 108, 256]
+
+
 def test_mini_overfit_loss_decreases(tmp_path: Path) -> None:
     """A tiny model trained on 1 sample for several steps must show loss decrease."""
     torch.manual_seed(42)

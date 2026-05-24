@@ -152,9 +152,11 @@
       本版报告只保留 VoxTell 论文/补充材料明确提到的训练数据构造内容：<strong>2 positive + 1 negative prompt、85% foreground patch oversampling、25/75 主名/改写 prompt 采样、训练前预计算 text embeddings、vocabulary expansion / harmonization / expert validation、combined-label alternatives</strong>。此前报告里属于额外工程增强的 class-balanced positive、hard-negative、contrastive co-sampling、exhaustive validation 不再作为实现目标。
     </div>
     <ol>
-      <li><strong>第一优先级是 sampler 对齐</strong>：当前 Body-Tell 虽然配置了 2+1 prompt，但采样单位是整 case，且同一个 case 跨 epoch prompt 固定；VoxTell 的描述是训练 patch 上动态采 2 positive + 1 negative。</li>
-      <li><strong>第二优先级是 patch 对齐</strong>：VoxTell 明确使用 85% foreground patch oversampling；Body-Tell 当前没有 patch sampler，因此 present/absent 判断不在局部 patch 上发生。</li>
-      <li><strong>第三优先级是 prompt/vocabulary 对齐</strong>：VoxTell 明确 25% 默认主名、75% 改写变体，并通过 vocabulary construction 生成至少 5 个 validated variants 和 combined-label alternatives。</li>
+      <li><strong>第一优先级是动态采样基础设施</strong>：当前 Body-Tell 虽然配置了 2+1 prompt，但同一个 case 跨 epoch prompt 固定；必须先让 dataset 随 epoch/iteration 更新随机性。</li>
+      <li><strong>第二优先级是 patch-level 训练样本对齐</strong>：85% foreground patch oversampling 和 patch 内 2 positive + 1 negative 强依赖，应该作为一个不可拆的 milestone 同步实现，避免“裁了 patch 但 prompt 仍按 whole-case presence 抽”的语义错配。</li>
+      <li><strong>第三优先级是 positive prompt 25/75 策略</strong>：在动态 RNG 和 patch-level present/absent 稳定后，再实现 25% 默认主名、75% 改写变体。</li>
+      <li><strong>第四优先级是 aggregate sampler 支持</strong>：扩 vocabulary 前必须先让训练 sampler 能采到 combined-label concepts；当前 embedding cache 包含 aggregates，但训练索引仍排除了 aggregates。</li>
+      <li><strong>第五优先级是 vocabulary 与 embedding 对齐</strong>：先扩充并审校 vocabulary，再重建 text embedding cache；这两个步骤有严格先后关系。</li>
       <li><strong>当前数据口径</strong>：本报告以当前 <code>S2I-Dataset-70cls/class_presence.json</code> 为准，共 11,070 cases，train/val/test 为 10,070/500/500。</li>
     </ol>
   </section>
@@ -232,48 +234,56 @@
   <section>
     <h2>实现顺序</h2>
     <div class="callout warn">
-      顺序很重要：先修训练采样，再扩 vocabulary。否则新增 prompt 仍会被当前 deterministic per-case sampler 固定下来，无法体现 VoxTell 的随机 prompt 训练策略。
+      最优顺序是：动态 RNG → patch crop 与 patch 内 2+1 → 25/75 positive prompt → aggregate sampler 支持 → vocabulary expansion → embedding cache 重建。关键依赖是 patch crop 和 patch 内 present/absent 不能拆开交付，aggregate sampler 支持必须早于 combined-label vocabulary 扩增。
     </div>
 
-    <h3>Step 1. 让训练时 prompt 采样真正随机</h3>
-    <p><strong>对应 VoxTell：</strong>Supplementary A.3 使用 sampled positive/negative prompts，并随机采 synonyms/rephrasings。Body-Tell 当前同一 index 跨 epoch 固定，因此第一步是把随机性从 <code>seed + index</code> 改成训练轮次相关。</p>
+    <h3>Step 1. 建立训练时动态采样基础设施</h3>
+    <p><strong>依赖：</strong>无。<strong>对应 VoxTell：</strong>Supplementary A.3 使用 sampled positive/negative prompts，并随机采 synonyms/rephrasings。Body-Tell 当前同一 index 跨 epoch 固定，因此第一步是把随机性从 <code>seed + index</code> 改成训练轮次相关。</p>
     <ol>
       <li>给 <code>HyperBodyPromptDataset</code> 增加 <code>set_epoch(epoch)</code> 或等价机制。</li>
       <li>采样种子使用 <code>base_seed + epoch * large_prime + index</code>；DDP 时确保各 rank 复现但不冲突。</li>
-      <li>训练循环每个 epoch 调用 dataset 的 epoch setter。</li>
+      <li>训练循环每个 epoch 同时调用 <code>DistributedSampler.set_epoch(epoch)</code> 和 dataset 的 epoch setter。</li>
       <li>验收：同一个 case 在两个 epoch 中采到的 prompt 文本可以变化；不再是固定 prompt-conditioned sample。</li>
     </ol>
 
-    <h3>Step 2. 把训练单位从整 case 改成 patch</h3>
-    <p><strong>对应 VoxTell：</strong>输入训练 patch，并明确 foreground structures 以 85% 概率过采样。Body-Tell 当前在整 case 上统计 present/absent，不符合 VoxTell 的 patch 语境。</p>
+    <h3>Step 2. 同步实现 patch crop 与 patch 内 2 positive + 1 negative</h3>
+    <div class="callout warn">
+      <strong>边界说明：</strong>当前已有的离线 <code>crop129</code> 数据包只是显存与输入尺寸适配，它把整套 S2I 样本中心裁剪/填充到固定 shape；这不等价于 VoxTell 训练时的 <code>85%</code> foreground patch oversampling。VoxTell-aligned sampling 仍需要在训练 <code>__getitem__</code> 内按随机分支采样 crop window，并在裁出的 patch 上重新计算 present/absent，再基于 patch 内语义采样 2 positive + 1 negative。
+    </div>
+    <p><strong>依赖：</strong>Step 1。<strong>对应 VoxTell：</strong>输入训练 patch，85% foreground patch oversampling，并在每个训练 patch 上查询 2 条 present structure prompt 和 1 条 absent structure prompt。这个步骤必须整体实现；如果只先裁 patch、但 prompt 仍按 whole-case presence 抽，会产生 target 语义错配。</p>
     <ol>
       <li>新增训练配置：<code>patch_size</code>、<code>foreground_oversample_prob: 0.85</code>。</li>
-      <li>在 <code>__getitem__</code> 中先读取整 case，再裁出训练 patch，后续 target mask 和 present/absent 都基于这个 patch。</li>
-      <li>85% 概率裁到包含 foreground voxel 的 patch；15% 概率随机裁 patch。</li>
-      <li>验收：训练日志中 foreground crop 比例接近 85%，random crop 比例接近 15%。</li>
-    </ol>
-
-    <h3>Step 3. 在 patch 内采 2 positive + 1 negative</h3>
-    <p><strong>对应 VoxTell：</strong>每个训练 patch 查询 3 条 prompt：2 条来自当前 patch 中 present structures，1 条来自 absent structure。Body-Tell 当前是在整 case presence 上采样。</p>
-    <ol>
+      <li>在 <code>__getitem__</code> 中按顺序执行：读取整 case → 采样 crop window → 裁出 occupancy/labels patch → 后续 target mask 和 present/absent 全部基于 patch。</li>
+      <li>85% 概率裁到包含 foreground voxel 的 patch；15% 概率随机裁 patch；crop 策略和随机分支写入可审计字段。</li>
       <li>对裁出的 patch 重新统计 foreground class voxel counts。</li>
       <li>positive classes 从 patch-present classes 中采 2 个。</li>
       <li>negative class 从 patch-absent trainable classes 中采 1 个。</li>
       <li>negative target 仍为空 mask；positive target 是对应 class mask。</li>
-      <li>验收：完整 3 prompt 样本比例应显著高于当前 train split 的 9,520/10,070；negative 缺失应明显下降。</li>
+      <li>验收：输出 patch shape 与配置一致；foreground/random crop 比例接近 85/15；完整 3 prompt 样本比例高于当前 9,520/10,070；不存在 sampled positive 在 patch 内为空 mask 的样本。</li>
     </ol>
 
-    <h3>Step 4. 对 positive prompt 实现 25/75 主名/改写采样</h3>
-    <p><strong>对应 VoxTell：</strong>positive text prompts 中，默认主名 25%，同义词/改写 75%。这一步只声明 VoxTell 明确写到的 positive prompt 规则，不引入 hard-negative 或额外对比采样。</p>
+    <h3>Step 3. 对 positive prompt 实现 25/75 主名/改写采样</h3>
+    <p><strong>依赖：</strong>Step 1 和 Step 2。<strong>对应 VoxTell：</strong>positive text prompts 中，默认主名 25%，同义词/改写 75%。这一步只声明 VoxTell 明确写到的 positive prompt 规则，不引入 hard-negative 或额外对比采样。</p>
     <ol>
       <li>每个 prompt record 保留 <code>is_canonical</code>。</li>
-      <li>对 positive class：先以 25% 概率选 canonical prompt，否则从非 canonical variants 中随机选。</li>
+      <li>增加配置 <code>canonical_prob: 0.25</code>，只作用于 positive prompt。</li>
+      <li>对 positive class：先以 25% 概率选 canonical prompt，否则从非 canonical variants 中随机选；negative prompt 仍保持普通随机采样。</li>
       <li>如果某个 class 暂时没有非 canonical variant，则回退到 canonical，并在审计中标记。</li>
       <li>验收：positive prompt 的 canonical 比例接近 25%，variant 比例接近 75%。</li>
     </ol>
 
+    <h3>Step 4. 让训练 sampler 支持 aggregate / combined-label concepts</h3>
+    <p><strong>依赖：</strong>Step 2。<strong>对应 VoxTell：</strong>Appendix C 包含 combined-label alternatives。Body-Tell 当前 <code>flatten_prompt_records()</code> 会缓存 aggregates，但 <code>prompt_records_by_class()</code> 使用 <code>include_aggregates=False</code>，因此扩 vocabulary 前必须先让训练 sampler 能采到组合概念。</p>
+    <ol>
+      <li>把 sampler 的采样单位从 class-only 扩展为 concept：base class concept 的 <code>target_class_ids</code> 为单个 class，aggregate concept 的 <code>target_class_ids</code> 为 <code>component_class_ids</code>。</li>
+      <li>对 patch 计算 concept-level present/absent：aggregate 的 union mask 在 patch 内 voxel count ≥ <code>min_voxels</code> 时为 present，否则为 absent。</li>
+      <li>positive 和 negative 都可以从合法 concept 池中采样；aggregate target mask 是 component class union，negative target 仍为空 mask。</li>
+      <li>保留 base class 与 aggregate 的 <code>source_type</code>，避免 combined labels 污染 base class canonical 名称或评估口径。</li>
+      <li>验收：当前已存在的 aggregate prompt 能被训练 sampler 采到；aggregate target mask 等于 component masks 的 union；embedding lookup 与 prompt record index 对齐。</li>
+    </ol>
+
     <h3>Step 5. 按 VoxTell Appendix C 扩 vocabulary</h3>
-    <p><strong>对应 VoxTell：</strong>semantic label expansion、cross-dataset harmonization、human expert validation、每个 concept 至少 5 个 variants、combined-label alternatives。Body-Tell 不需要复制 VoxTell 的 1,087 concepts 规模，但应复制构造原则。</p>
+    <p><strong>依赖：</strong>Step 4。<strong>对应 VoxTell：</strong>semantic label expansion、cross-dataset harmonization、human expert validation、每个 concept 至少 5 个 variants、combined-label alternatives。Body-Tell 不需要复制 VoxTell 的 1,087 concepts 规模，但应复制构造原则。</p>
     <ol>
       <li>对 70 个 base classes 做 semantic label expansion，每类至少 5 条 validated prompts。</li>
       <li>保留 laterality 自包含原则：所有 left/right prompt 必须包含结构名，不能只写方向词。</li>
@@ -283,7 +293,7 @@
     </ol>
 
     <h3>Step 6. 重新预计算 text embeddings</h3>
-    <p><strong>对应 VoxTell：</strong>训练时所有 text embeddings 预计算。Body-Tell 已有 cache 机制，所以 vocabulary 变更后必须重建 cache。</p>
+    <p><strong>依赖：</strong>Step 5。<strong>对应 VoxTell：</strong>训练时所有 text embeddings 预计算。Body-Tell 已有 cache 机制，所以 vocabulary 变更后必须重建 cache。</p>
     <ol>
       <li>使用同一 instruction：<code>Given an anatomical term query, retrieve the precise anatomical entity and location it represents</code>。</li>
       <li>用 Qwen3-Embedding-4B 对所有 class prompts 和 combined-label prompts 重新编码。</li>
@@ -331,40 +341,46 @@
   <section>
     <h2>落地顺序总表</h2>
     <table>
-      <tr><th>顺序</th><th>对应 VoxTell 内容</th><th>Body-Tell 具体改动</th><th>验收</th></tr>
+      <tr><th>顺序</th><th>独立步骤</th><th>依赖</th><th>Body-Tell 具体改动</th><th>验收</th></tr>
       <tr>
         <td><span class="tag green">1</span></td>
-        <td>随机采 prompts</td>
+        <td>动态采样基础设施</td>
+        <td>无</td>
         <td>加入 epoch/iteration 级随机性，修复同一 case 跨 epoch prompt 固定。</td>
         <td>同一 case 不同 epoch 的 prompt 可变化。</td>
       </tr>
       <tr>
         <td><span class="tag green">2</span></td>
-        <td>85% foreground patch oversampling</td>
-        <td>实现 patch crop，85% foreground，15% random。</td>
-        <td>foreground/random crop 比例接近 85/15。</td>
+        <td>Patch crop + patch 内 2 positive + 1 negative</td>
+        <td>Step 1</td>
+        <td>实现 patch crop，85% foreground / 15% random，并基于 patch-present/patch-absent 采 2+1。</td>
+        <td>patch shape 正确；foreground/random 比例接近 85/15；positive mask 非空；完整 3 prompt 比例提升。</td>
       </tr>
       <tr>
         <td><span class="tag green">3</span></td>
-        <td>2 positive + 1 negative</td>
-        <td>在 patch 内统计 present/absent，并按 patch 采 2 positive + 1 negative。</td>
-        <td>完整 3 prompt 样本比例高于当前 9,520/10,070。</td>
-      </tr>
-      <tr>
-        <td><span class="tag amber">4</span></td>
-        <td>25% default name / 75% rephrased variant</td>
-        <td>positive prompt 先按 25/75 决定主名或变体，再查 embedding。</td>
+        <td>Positive prompt 25/75 主名/改写</td>
+        <td>Step 1、Step 2</td>
+        <td>positive prompt 先按 <code>canonical_prob=0.25</code> 决定主名或变体，再查 embedding。</td>
         <td>positive canonical 比例接近 25%。</td>
       </tr>
       <tr>
+        <td><span class="tag amber">4</span></td>
+        <td>Aggregate / combined-label sampler 支持</td>
+        <td>Step 2</td>
+        <td>把训练 sampler 从 class-only 扩展到 concept；aggregate target mask 使用 component class union。</td>
+        <td>已有 aggregate prompt 能被训练采到；union mask 和 prompt index 对齐。</td>
+      </tr>
+      <tr>
         <td><span class="tag amber">5</span></td>
-        <td>vocabulary expansion / harmonization / expert validation</td>
+        <td>Vocabulary expansion / harmonization / expert validation</td>
+        <td>Step 4</td>
         <td>每个 base class 至少 5 条审校 variants；增加合法 combined-label alternatives。</td>
         <td>vocab validation 无错误，combined labels 有 component ids。</td>
       </tr>
       <tr>
         <td><span class="tag amber">6</span></td>
-        <td>precomputed text embeddings</td>
+        <td>Precomputed text embeddings</td>
+        <td>Step 5</td>
         <td>重建 Qwen3-Embedding-4B cache，保持 instruction 和 hash 校验。</td>
         <td>cache prompt_records、shape、vocab_hash 全部匹配。</td>
       </tr>
@@ -374,6 +390,9 @@
   <section>
     <h2>实现注意点</h2>
     <ul>
+      <li><strong>patch crop 和 patch-level 2+1 必须同一阶段完成</strong>：不能先裁 patch 但继续用 whole-case presence 抽 prompt，否则 sampled positive 可能在 patch 内没有 target mask。</li>
+      <li><strong>离线 crop129 不等于 foreground oversampling</strong>：crop129 可以作为输入尺寸/显存 profile，但不能替代训练时 85/15 foreground/random patch sampler，也不能替代 patch-level present/absent 重算。</li>
+      <li><strong>aggregate sampler 支持必须早于扩词</strong>：当前 aggregates 虽然进入 embedding cache，但训练索引排除了 aggregates；直接扩 combined labels 不会改变训练分布。</li>
       <li><strong>扩词必须配套重建 embedding cache</strong>：当前 cache 对 prompt records 做 hash 校验，改 <code>label_vocab.json</code> 后旧 cache 会失效。</li>
       <li><strong>采样比例要进 config</strong>：<code>foreground_oversample_prob=0.85</code>、<code>canonical_prob=0.25</code>、<code>num_positive=2</code>、<code>num_negative=1</code> 应可复现实验。</li>
       <li><strong>combined labels 不能污染 base class</strong>：组合概念是额外 prompt target，不应把 base label 的 canonical 名称改成群组名。</li>
@@ -385,7 +404,7 @@
   <section>
     <h2>最终判断</h2>
     <div class="callout risk">
-      Body-Tell 靠近 VoxTell 的最短路径不是加入更多自定义技巧，而是严格复刻 VoxTell 明确写到的数据构造：训练时动态采 prompt、patch 内 2 positive + 1 negative、85% foreground patch oversampling、positive prompt 25/75 主名/改写、Appendix C 风格 vocabulary expansion 与 combined-label alternatives、训练前预计算 text embeddings。其他增强项应等这些基础对齐后再单独讨论。
+      Body-Tell 靠近 VoxTell 的最短路径不是加入更多自定义技巧，而是严格复刻 VoxTell 明确写到的数据构造，并按依赖顺序落地：先做训练时动态采样；再把 85% foreground patch oversampling 与 patch 内 2 positive + 1 negative 作为同一个 milestone 完成；随后实现 positive prompt 25/75 主名/改写；再让 sampler 支持 aggregate / combined-label concepts；最后扩充审校 vocabulary 并重建预计算 text embeddings。其他增强项应等这些基础对齐后再单独讨论。
     </div>
   </section>
 </main>

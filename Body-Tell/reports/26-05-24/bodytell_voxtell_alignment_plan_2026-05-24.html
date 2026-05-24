@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 对齐 VoxTell v1.1 实施计划</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #5d6875;
+      --line: #d8e0e7;
+      --panel: #f6f8fa;
+      --soft: #eef4f7;
+      --accent: #14677b;
+      --warn: #9a4a17;
+      --bad: #993333;
+      --good: #276749;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font: 15px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 34px 42px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fbfd;
+    }
+
+    main {
+      max-width: 1220px;
+      padding: 28px 42px 56px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 30px 0 12px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    p { margin: 8px 0; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #edf3f7;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #f7fafc;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 22px;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      text-align: left;
+      background: #f1f5f8;
+      color: #24313d;
+    }
+
+    ul, ol { padding-left: 22px; }
+    li { margin: 5px 0; }
+
+    .meta { color: var(--muted); }
+    .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px 16px;
+    }
+
+    .card span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .card strong {
+      color: var(--accent);
+      display: block;
+      font-size: 22px;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+      padding: 12px 14px;
+      margin: 12px 0 18px;
+    }
+
+    .warnbox {
+      border-left-color: var(--warn);
+      background: #fff7ed;
+    }
+
+    .badbox {
+      border-left-color: var(--bad);
+      background: #fff5f5;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .ok { color: var(--good); background: #eaf7ef; }
+    .warn { color: var(--warn); background: #fff2df; }
+    .bad { color: var(--bad); background: #ffe7e7; }
+    .info { color: var(--accent); background: #e7f3f7; }
+
+    @media (max-width: 860px) {
+      header, main {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Body-Tell 对齐 VoxTell v1.1 实施计划</h1>
+    <p class="meta">日期：2026-05-24；目标：让 Body-Tell 在结构和权重语义上尽量对齐 VoxTell v1.1，优先支持 VoxTell checkpoint 复用，而不是只做到 tensor shape 能加载。</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>核验结论</h2>
+      <div class="callout">
+        <p><strong>原差异报告中的核心不一致真实存在。</strong> 其中最影响 VoxTell 权重复用的是两类问题：一类是参数量和模块拓扑明显不同，例如 encoder/decoder；另一类是参数 shape 一致但 forward 语义不同，例如 transformer decoder。</p>
+      </div>
+
+      <div class="cards">
+        <div class="card"><span>Body-Tell 当前参数</span><strong>328.98M</strong></div>
+        <div class="card"><span>VoxTell v1.1 参数</span><strong>440.03M</strong></div>
+        <div class="card"><span>Body encoder</span><strong>8.49M</strong></div>
+        <div class="card"><span>VoxTell encoder</span><strong>90.30M</strong></div>
+        <div class="card"><span>Transformer 参数</span><strong>251.86M</strong></div>
+        <div class="card"><span>最高风险</span><strong>shape 同而语义不同</strong></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>差异点</th><th>核验结果</th><th>对权重复用的影响</th><th>证据位置</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Transformer decoder</td>
+            <td><span class="tag bad">真实存在</span> Body-Tell 使用 <code>activation="gelu"</code>，pre-norm path 执行 self-attention；VoxTell 默认 <code>relu</code>，active <code>forward_pre</code> 跳过 self-attention，只做 cross-attention 和 FFN。</td>
+            <td>参数名和 shape 可 100% 对上，但加载 VoxTell 权重后语义不等价。小模型同权重实验输出最大绝对差为 <code>0.9258</code>。</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:69</code>、<code>Body-Tell/body_tell/models/transformer.py:137</code>、<code>VoxTell/voxtell/model/transformer.py:224</code></td>
+          </tr>
+          <tr>
+            <td>Encoder backbone</td>
+            <td><span class="tag bad">真实存在</span> Body-Tell 是 5-stage 手写 ConvBlock；VoxTell 是 6-stage <code>ResidualEncoder</code>，features 为 <code>[32,64,128,256,320,320]</code>，blocks 为 <code>[1,3,4,6,6,6]</code>。</td>
+            <td>当前 encoder 无法复用 VoxTell encoder 权重，也很可能限制性能上限。这个差异不是“轻量配置”，而是 backbone 类型不同。</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:155</code>、<code>VoxTell/models-weight/voxtell/voxtell_v1.1/plans.json:20</code>、<code>VoxTell/voxtell/model/voxtell_model.py:131</code></td>
+          </tr>
+          <tr>
+            <td>Mask projections</td>
+            <td><span class="tag bad">真实存在</span> Body-Tell 配置写 5，但运行时被 <code>min(num_maskformer_stages, len(encoder_channels)-1)</code> 截成 4 级，输出维度为 <code>[32,2048,4096,8192]</code>。</td>
+            <td>VoxTell 是 5 级，额外最高级为 <code>10240</code>。当前只能加载 VoxTell 前 4 个 projection，缺少一层 decoder fusion。</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:83</code>、<code>VoxTell/voxtell/model/voxtell_model.py:170</code></td>
+          </tr>
+          <tr>
+            <td>Decoder</td>
+            <td><span class="tag bad">真实存在</span> Body-Tell 是 4-stage 手写 decoder，<code>GroupNorm + GELU</code>；VoxTell 是 5-stage <code>VoxTellDecoder</code>，使用 <code>StackedConvBlocks</code> 并继承 encoder 的 <code>InstanceNorm3d + LeakyReLU + conv_bias=true</code>。</td>
+            <td>当前 decoder 无法复用 VoxTell decoder 权重。VoxTell 还总是构造 <code>seg_layers</code>，用于 checkpoint 兼容。</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:174</code>、<code>VoxTell/voxtell/model/voxtell_model.py:280</code></td>
+          </tr>
+          <tr>
+            <td>Position / memory 排列</td>
+            <td><span class="tag warn">真实存在</span> Body-Tell 动态生成 <code>D,H,W</code> 顺序的位置编码；VoxTell 使用 init 时固定的 <code>pos_embed</code> buffer，并用 <code>H,W,D</code> 顺序 flatten。</td>
+            <td>Body-Tell 当前 <code>volume_size=[164,129,256]</code> 不是 192³，直接加载 VoxTell <code>pos_embed</code> 会遇到 shape/语义问题。需要明确动态重建或改成 192³ profile。</td>
+            <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:118</code>、<code>VoxTell/voxtell/model/voxtell_model.py:185</code>、<code>:229</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>目标状态</h2>
+      <p>新增一个 VoxTell-aligned 架构路径，而不是在现有轻量模型上做零散补丁。该路径的 state dict 命名应尽量贴近 VoxTell，降低权重加载映射复杂度。</p>
+
+      <table>
+        <thead>
+          <tr><th>模块</th><th>目标实现</th><th>权重复用要求</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>encoder</code></td>
+            <td>使用 <code>dynamic_network_architectures.building_blocks.residual_encoders.ResidualEncoder</code>，参数与 VoxTell v1.1 plan 一致。</td>
+            <td>加载 VoxTell <code>encoder.*</code> 权重，shape mismatch 必须报错。</td>
+          </tr>
+          <tr>
+            <td><code>decoder</code></td>
+            <td>移植 VoxTell <code>VoxTellDecoder</code>，保留 5 个 stage、<code>StackedConvBlocks</code>、<code>seg_layers</code> always-built 语义。</td>
+            <td>加载 VoxTell <code>decoder.*</code> 权重；为了严格兼容，可保留 <code>self.encoder = encoder</code> 这一共享引用。</td>
+          </tr>
+          <tr>
+            <td><code>transformer_decoder</code></td>
+            <td>与 VoxTell 的 <code>TransformerDecoderLayer</code> 行为一致：默认 <code>relu</code>，pre-norm 不执行 self-attention。</td>
+            <td>同名加载 VoxTell transformer 权重；保留 self-attention 参数，即使 active path 不使用。</td>
+          </tr>
+          <tr>
+            <td><code>project_bottleneck_embed</code></td>
+            <td>使用 VoxTell 命名，替代当前 <code>project_visual_embed</code>；结构仍为 <code>320 -&gt; 2048 -&gt; 2048</code>。</td>
+            <td>直接加载 VoxTell <code>project_bottleneck_embed.*</code>。</td>
+          </tr>
+          <tr>
+            <td><code>project_text_embed</code></td>
+            <td>保持 <code>2560 -&gt; 2048 -&gt; 2048</code>。</td>
+            <td>直接加载 VoxTell <code>project_text_embed.*</code>。</td>
+          </tr>
+          <tr>
+            <td><code>project_to_decoder_channels</code></td>
+            <td>使用 VoxTell 命名，替代当前 <code>mask_projections</code>；5 级输出为 <code>[32,2048,4096,8192,10240]</code>。</td>
+            <td>直接加载 VoxTell <code>project_to_decoder_channels.*</code>。</td>
+          </tr>
+          <tr>
+            <td><code>pos_embed</code></td>
+            <td>提供两种 policy：<code>dynamic_hwd</code> 用于当前非 192³ Body-Tell 输入；<code>fixed_voxtell_192</code> 用于严格复刻 VoxTell patch。</td>
+            <td><code>dynamic_hwd</code> 模式跳过 checkpoint 中 <code>pos_embed</code>；<code>fixed_voxtell_192</code> 模式要求 shape 完全匹配。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>实施阶段</h2>
+
+      <h3>P0：建立兼容性基线</h3>
+      <ol>
+        <li>新增 <code>Body-Tell/scripts/audit_voxtell_alignment.py</code>，实例化 Body-Tell aligned model 和 VoxTell v1.1 model，输出总参数、模块参数、state dict key/shape 覆盖率。</li>
+        <li>新增 transformer golden test：同一小尺寸 state dict、相同输入、dropout=0 时，Body-Tell aligned transformer 输出必须与 VoxTell transformer 完全一致或在 <code>1e-6</code> 内。</li>
+        <li>新增 weight key audit：读取 <code>VoxTell/models-weight/voxtell/voxtell_v1.1/fold_0/checkpoint_final.pth</code> 的 <code>network_weights</code>，检查除 <code>pos_embed</code> 外的目标 key 是否全部可加载。</li>
+      </ol>
+      <p>验收：当前轻量模型仍可跑旧测试；新增审计能明确报告哪些 key 会加载、哪些 key 因 policy 跳过。</p>
+
+      <h3>P1：先修 transformer decoder 语义</h3>
+      <ol>
+        <li>把 <code>Body-Tell/body_tell/models/transformer.py</code> 的 active <code>forward_pre</code> 改为 VoxTell 版本：从 <code>norm2 -&gt; cross_attn -&gt; norm3 -&gt; FFN</code> 开始，不执行 self-attention。</li>
+        <li>构造层时去掉 <code>activation="gelu"</code>，或显式设为 <code>relu</code>，与 VoxTell 默认一致。</li>
+        <li>保留 <code>self_attn</code>、<code>norm1</code> 等参数名和 shape，保证 checkpoint key 不变。</li>
+      </ol>
+      <p>验收：Body-Tell aligned transformer 与 VoxTell transformer 小模型 parity test 通过；加载 VoxTell <code>transformer_decoder.*</code> 后无 missing/unexpected/shape mismatch。</p>
+
+      <h3>P2：替换 encoder 为 VoxTell residual encoder</h3>
+      <ol>
+        <li>新增配置文件 <code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code>，设置 <code>encoder_channels: [32,64,128,256,320,320]</code>、<code>n_blocks_per_stage: [1,3,4,6,6,6]</code>、<code>decoder_layer: 4</code>、<code>num_maskformer_stages: 5</code>。</li>
+        <li>在模型配置中加入 <code>architecture: voxtell_v1_1</code> 或 <code>backbone: residual_encoder</code>，让旧轻量模型和 aligned 模型可并存。</li>
+        <li>使用 VoxTell 相同构造参数：<code>conv_bias=true</code>、<code>InstanceNorm3d(eps=1e-5, affine=True)</code>、<code>LeakyReLU(inplace=True)</code>、<code>BasicBlockD</code>、<code>return_skips=True</code>、<code>disable_default_stem=False</code>。</li>
+        <li>把依赖写入 Body-Tell 环境声明：<code>dynamic-network-architectures&gt;=0.4.1,&lt;0.5</code> 和 <code>einops</code>。若采用 VoxTell 原始位置编码实现，再加入 <code>positional-encodings</code>。</li>
+      </ol>
+      <p>验收：encoder 参数约 <code>90.30M</code>；输出 6 个 skip；<code>encoder.output_channels</code> 和 <code>encoder.strides</code> 与 VoxTell 一致；VoxTell <code>encoder.*</code> 权重可加载。</p>
+
+      <h3>P3：替换 decoder 为 VoxTellDecoder</h3>
+      <ol>
+        <li>移植 <code>VoxTellDecoder</code> 到 Body-Tell 模型代码或独立模块，优先保持源码结构、字段名和 state dict key 兼容。</li>
+        <li>使用 <code>n_conv_per_stage_decoder=[1,1,1,1,1]</code>，并继承 encoder 的 conv/norm/nonlin/dropout/bias。</li>
+        <li>即使 <code>deep_supervision=false</code>，也总是构造 5 个 <code>seg_layers</code>，与 VoxTell checkpoint 兼容。</li>
+        <li>移除 Body-Tell 当前 decoder 中 upconv 后的自动 <code>F.interpolate</code> fallback；如果输入尺寸不能通过转置卷积对齐，应在测试中显式暴露，或在数据裁剪 policy 中解决。</li>
+      </ol>
+      <p>验收：decoder 本体参数约 <code>12.18M</code>；5 个 stage / 5 个 transposed conv / 5 个 seg layer；VoxTell <code>decoder.*</code> 权重可加载。统计 decoder 参数时需扣除共享 encoder，避免误读为 <code>102.47M</code>。</p>
+
+      <h3>P4：对齐 projection、mask head 和 forward 排列</h3>
+      <ol>
+        <li>把当前 <code>project_visual_embed</code> 改为 VoxTell 命名 <code>project_bottleneck_embed</code>；把 <code>mask_projections</code> 改为 <code>project_to_decoder_channels</code>。</li>
+        <li>encoder 变为 6-stage 后，projection stage 自然恢复为 5 级，不再用 <code>len(encoder_channels)-1</code> 隐式截断配置。</li>
+        <li>forward 中使用 VoxTell 的 memory 排列：<code>b c d h w -&gt; b h w d c -&gt; (h w d) b c</code>。</li>
+        <li>decoder 输出仍保持 Body-Tell 训练和推理需要的 <code>(B, N, D, H, W)</code> 语义；如果内部沿用 VoxTell 注释中的 <code>h,w,d</code> 命名，需要在单测里用非立方输入验证轴没有被误换。</li>
+      </ol>
+      <p>验收：5 个 projection 输出维度为 <code>[32,2048,4096,8192,10240]</code>；非立方输入的输出 shape 与 target mask 完全一致。</p>
+
+      <h3>P5：位置编码策略</h3>
+      <table>
+        <thead>
+          <tr><th>策略</th><th>适用场景</th><th>实现方式</th><th>权重加载</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>dynamic_hwd</code></td>
+            <td>推荐用于当前 Body-Tell 数据，因为 <code>[164,129,256]</code> 不是 VoxTell 的 192³ patch。</td>
+            <td>按 selected feature 的实时 <code>H,W,D</code> 生成 deterministic 3D positional encoding，并缓存到 device/dtype。</td>
+            <td>跳过 VoxTell checkpoint 的 <code>pos_embed</code>，其余权重严格加载。</td>
+          </tr>
+          <tr>
+            <td><code>fixed_voxtell_192</code></td>
+            <td>用于做完全复刻实验，或想验证整份 VoxTell state dict 可严格加载。</td>
+            <td>把 Body-Tell 数据裁剪/填充到 <code>[192,192,192]</code>，注册 shape 为 <code>(1728,1,2048)</code> 的 <code>pos_embed</code>。</td>
+            <td>要求 checkpoint 中 <code>pos_embed</code> 直接加载；数据体素尺寸也必须配套调整。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>建议先落地 <code>dynamic_hwd</code>。它牺牲的是固定 buffer 的逐元素复用，不牺牲 transformer 权重语义；对当前非立方 Body-Tell 数据更可实现。</p>
+
+      <h3>P6：权重加载入口</h3>
+      <ol>
+        <li>新增训练参数 <code>--init-from-voxtell VoxTell/models-weight/voxtell/voxtell_v1.1</code>，在 optimizer 构造前加载。</li>
+        <li>新增 loader：读取 <code>fold_0/checkpoint_final.pth</code> 的 <code>network_weights</code>，按当前 aligned 模型 key 直接加载。</li>
+        <li>默认只允许 <code>pos_embed</code> 因 policy 被跳过；其他 shape mismatch 必须抛错。</li>
+        <li>日志记录 loaded tensor 数、loaded 参数数、skipped key、missing key、unexpected key，并写入训练 checkpoint 的 <code>config.init_from_voxtell</code>。</li>
+        <li>不要把旧 Body-Tell checkpoint 与 aligned 模型静默混用。旧 checkpoint 应只用于旧架构；aligned checkpoint 应带 <code>architecture: voxtell_v1_1</code>。</li>
+      </ol>
+      <p>验收：在 CPU 上能完成权重加载审计；在 GPU 上能完成至少 1 个 batch 的 forward/loss/backward smoke。</p>
+
+      <h3>P7：训练实验矩阵</h3>
+      <table>
+        <thead>
+          <tr><th>实验</th><th>初始化</th><th>目的</th><th>建议</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>A：当前基线</td>
+            <td>现有轻量 Body-Tell checkpoint</td>
+            <td>保持可回退基线。</td>
+            <td>记录当前 val foreground Dice 约 <code>0.3257</code>。</td>
+          </tr>
+          <tr>
+            <td>B：aligned random</td>
+            <td>VoxTell-aligned 结构，随机初始化</td>
+            <td>分离“结构变大”与“VoxTell 权重”的收益。</td>
+            <td>先跑短程，确认显存和 loss 曲线。</td>
+          </tr>
+          <tr>
+            <td>C：aligned prompt-only</td>
+            <td>只加载 transformer / text / projection 权重</td>
+            <td>评估 prompt decoder 复用本身的收益。</td>
+            <td>可作为中间回退，因为 encoder 输入域差异最大。</td>
+          </tr>
+          <tr>
+            <td>D：aligned full</td>
+            <td>加载 encoder、decoder、projection、transformer；按 policy 跳过或加载 <code>pos_embed</code></td>
+            <td>完整复用 VoxTell 权重，验证性能上限。</td>
+            <td>使用分组学习率：prompt/transformer 较低，encoder/decoder 可稍高；不要一开始冻结全部 encoder。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>验收命令</h2>
+      <pre><code># 1. Transformer 行为必须与 VoxTell 对齐
+python -m pytest Body-Tell/tests/test_voxtell_transformer_compat.py
+
+# 2. 架构和 state dict key/shape 审计
+python Body-Tell/scripts/audit_voxtell_alignment.py \
+  --config Body-Tell/configs/phase1_voxtell_aligned.yaml \
+  --voxtell-dir VoxTell/models-weight/voxtell/voxtell_v1.1 \
+  --pos-embed-policy dynamic_hwd
+
+# 3. 训练 smoke，验证 forward/loss/backward/checkpoint
+cd Body-Tell
+python train.py \
+  --config configs/phase1_voxtell_aligned.yaml \
+  --init-from-voxtell ../VoxTell/models-weight/voxtell/voxtell_v1.1 \
+  --smoke --epochs 2 --batch-size 1 --num-workers 0 --amp
+
+# 4. 推理 smoke，必须 strict 加载新 checkpoint
+python inference.py \
+  --checkpoint checkpoints/voxtell_aligned_smoke/best.pt \
+  --config configs/phase1_voxtell_aligned.yaml \
+  --case-id S2I_00001 --prompts liver \
+  --output outputs/inference_voxtell_aligned_smoke \
+  --device cuda --gpu 0 --amp --prompt-batch-size 1</code></pre>
+    </section>
+
+    <section>
+      <h2>主要风险</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>影响</th><th>控制方式</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>显存和训练成本上升</td>
+            <td>模型从 <code>328.98M</code> 增至约 <code>440.03M</code>，encoder activation 也明显变大。</td>
+            <td>先用 batch=1、AMP、短程 smoke；必要时加入 gradient checkpointing 或降低 prompt batch。</td>
+          </tr>
+          <tr>
+            <td>VoxTell encoder 输入域是医学影像，Body-Tell 是 occupancy grid</td>
+            <td>完整加载 encoder 不一定优于随机初始化，甚至可能初期收敛慢。</td>
+            <td>保留 random / prompt-only / full 三组 A/B；使用分组学习率，不把 full 权重复用当作唯一方案。</td>
+          </tr>
+          <tr>
+            <td>非 192³ 输入与 fixed <code>pos_embed</code> 冲突</td>
+            <td>严格加载整份 VoxTell state dict 会失败或语义错误。</td>
+            <td>默认 <code>dynamic_hwd</code> 并明确跳过 <code>pos_embed</code>；另建 <code>fixed_voxtell_192</code> profile 做完整复刻。</td>
+          </tr>
+          <tr>
+            <td>旧 Body-Tell checkpoint 与新结构不兼容</td>
+            <td>推理/恢复训练可能 silent mismatch 或 strict load fail。</td>
+            <td>checkpoint 中记录 <code>architecture</code>；inference strict 校验；不给旧 checkpoint 自动迁移到 aligned 结构。</td>
+          </tr>
+          <tr>
+            <td>直接复制 VoxTell decoder 会引入共享 encoder 引用</td>
+            <td>参数统计容易误读，state dict 可能包含共享模块路径。</td>
+            <td>为了权重兼容优先保留 VoxTell 结构；审计脚本单独报告 decoder-own 参数。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>建议优先级</h2>
+      <ol>
+        <li><strong>必须先做 P1 transformer 语义对齐。</strong> 这是当前最危险的不一致，因为 shape 能加载会掩盖语义错误。</li>
+        <li><strong>随后做 P2/P3 encoder 和 decoder。</strong> 当前 encoder 参数差距过大且结构不同，性能问题很可能与此相关；若目标是对齐 VoxTell，不应继续保留轻量自定义 backbone 作为主路线。</li>
+        <li><strong>P5 位置编码要在权重加载前定策略。</strong> 当前 Body-Tell 非立方 volume 不适合直接复用 VoxTell 固定 <code>pos_embed</code>。</li>
+        <li><strong>最后才跑完整训练实验。</strong> 没有 architecture/weight audit 通过前，不建议直接用 VoxTell checkpoint warm-start 长训。</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
