@@ -12,6 +12,7 @@ Body-Tell/outputs/
 S2I-Dataset-70cls/
 nnUNet/
 Body-Tell/S2I-Dataset/
+train-bdtell.sh
 
 # Distribution / packaging
 .Python
