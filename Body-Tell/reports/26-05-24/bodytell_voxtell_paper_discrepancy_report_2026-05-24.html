@@ -173,11 +173,13 @@
     <h1>Body-Tell 与 VoxTell 论文不一致项总控计划</h1>
     <p class="meta">日期：2026-05-24。范围：<code>VoxTell/VoxTell.pdf</code>、<code>VoxTell/</code> 官方实现/权重计划、当前 <code>Body-Tell/</code> 训练相关代码与配置。根目录 <code>train.py</code> 未纳入。</p>
     <div class="cards">
-      <div class="card"><strong>明确不一致</strong><span class="bad">11 项</span></div>
-      <div class="card"><strong>已分发到子计划</strong><span class="ok">11 项</span></div>
+      <div class="card"><strong>明确不一致</strong><span class="bad">13 项</span></div>
+      <div class="card"><strong>已分发到子计划</strong><span class="ok">13 项</span></div>
       <div class="card"><strong>已起草子计划</strong><span class="ok">3 个</span></div>
-      <div class="card"><strong>总体判断</strong><span class="warn">可执行，待实施</span></div>
+      <div class="card"><strong>总体判断</strong><span class="warn">可执行，待实施（2026-05-24 修订）</span></div>
     </div>
+    <p class="note warn">2026-05-24 修订：原 11 项基础上新增 #12 BCE+Dice loss 等价性、#13 <code>num_heads</code> mismatch（Body-Tell=32 vs VoxTell=1）。其中 #13 同时修正了原 SP-A 中"VoxTell projection 输出 <code>[32,2048,4096,8192,10240]</code>"的错误表述（实际为 <code>[32,64,128,256,320]</code> 量级，<code>num_heads</code> 才是根因）。</p>
+    <div class="note warn"><strong>域差异豁免（2026-05-24 重要约束）</strong>：Body-Tell 处理 occupancy grid，VoxTell 处理医学影像（CT/MRI/PET）。任务输入模态、特征统计、噪声特性都不同。<strong>本计划中"对齐"是手段不是目的，目的是支持 VoxTell 权重复用与实现一致性。任何一项不一致，若实现阶段 audit 后发现对齐会损害性能、或对当前任务没有可观察收益、或与权重复用无关，允许显式跳过并在子计划中记录原因。</strong> #12（loss 公式）与 #13（<code>num_heads</code>）尤其适用此豁免。</div>
   </header>
 
   <section>
@@ -222,7 +224,7 @@
 
   <section>
     <h2>直接执行顺序</h2>
-    <p>按下面顺序开工。SP-C 不需要整体等到 SP-A/SP-B 完成；只有 deep supervision、长训通过和最终评估需要等结构与 patch-level sampler 到位。</p>
+    <p>按下面顺序开工。SP-C 不需要整体等到 SP-A/SP-B 完成；只有 deep supervision、长训通过和最终评估需要等结构与 patch-level sampler 到位。<strong>（2026-05-24 修订）阶段 1 新增 SP-A P0 audit 作为首项；阶段 2 P4 内部包含 <code>num_heads</code> 路径决议（路径 A vs 路径 B），决议依赖 P0 audit 输出；阶段 3 Task 5 与 P6 的具体实现内容随 P4 决议变化。</strong></p>
     <table>
       <thead>
         <tr>
@@ -237,43 +239,44 @@
           <td>1</td>
           <td>
             <ul>
-              <li><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P1</a>：Transformer decoder 语义对齐。</li>
+              <li><strong><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0</a>（新增首项）</strong>：建立兼容性基线 audit—— <code>num_heads</code> + projection shape 双侧打印、transformer golden test、weight key audit。产出三份输入材料：(a) 父表 #13 <code>num_heads</code> 路径决议输入，(b) P1 transformer parity 验收测试，(c) P6 权重加载白名单。</li>
+              <li><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P1</a>：Transformer decoder 语义对齐（验收使用 P0 的 transformer golden test）。</li>
               <li><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
-              <li><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop、SGD、poly schedule、checkpoint/resume。</li>
+              <li><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop（含 smoke epoch 反直觉修复）、SGD、poly schedule、checkpoint/resume（含 scaler state 持久化与 <code>latest.pt</code> 周期写入）。</li>
             </ul>
           </td>
-          <td>可以并行。</td>
-          <td>形成可复现训练 loop 骨架；但还不能宣称 paper-aligned 长训通过。</td>
+          <td>可以并行。P0 audit 不修改 Body-Tell 代码，只输出审计材料；P1 transformer 改动可与 P0 同步进行。</td>
+          <td>形成可复现训练 loop 骨架；<strong>完成 P0 后必须显式记录 <code>num_heads</code> 路径决议（默认路径 B：保留 32）</strong>；但还不能宣称 paper-aligned 长训通过。</td>
         </tr>
         <tr>
           <td>2</td>
           <td>
             <ul>
-              <li>SP-A P2-P5：Residual encoder、VoxTellDecoder、projection/forward 排列、位置编码策略。</li>
+              <li>SP-A P2-P5：Residual encoder、VoxTellDecoder、projection/forward 排列、位置编码策略（<code>dynamic_hwd</code> 默认，适配 <code>[129,108,256]</code>）。<strong>P4 内部按 P0 选定的 <code>num_heads</code> 路径执行</strong>——路径 A 改 <code>num_heads=1</code>；路径 B 保留 <code>num_heads=32</code>，把 <code>project_to_decoder_channels.*</code> 与 mask fusion 相关 key 加入 P6 跳过白名单候选。</li>
               <li>SP-B Step 2-Step 4：patch crop + patch 内 2+1、positive prompt 25/75、aggregate sampler。</li>
             </ul>
           </td>
-          <td>SP-A 与 SP-B 可并行；各自内部按步骤顺序做。</td>
-          <td>具备启用 5-scale deep supervision 和 patch-level prompt 监督的前提。</td>
+          <td>SP-A 与 SP-B 可并行；各自内部按步骤顺序做。P4 决议必须在 P5 开始前敲定。</td>
+          <td>具备启用 5-scale deep supervision 和 patch-level prompt 监督的前提；P6 跳过白名单内容由 P4 决议产出。</td>
         </tr>
         <tr>
           <td>3</td>
           <td>
             <ul>
-              <li>SP-C Task 5：启用 5-scale BCE + Dice deep supervision。</li>
+              <li>SP-C Task 5：启用 5-scale BCE + Dice deep supervision<strong>，并同步完成父表 #12 BCE+Dice 公式 audit（域差异豁免，audit 结论可为"保留 Body-Tell 现公式"）</strong>。</li>
               <li>SP-B Step 5-Step 6：扩 vocabulary 并重建 text embedding cache。</li>
-              <li>SP-A P6：VoxTell v1.1 权重加载入口与 smoke。</li>
+              <li>SP-A P6：VoxTell v1.1 权重加载入口与 smoke。<strong>跳过白名单按 P4 决议组装</strong>——路径 A 仅含 <code>pos_embed</code>；路径 B 额外含 <code>project_to_decoder_channels.*</code> 与 mask fusion key。<code>unexpected_keys</code> 必须完全等于白名单，否则抛错。</li>
             </ul>
           </td>
-          <td>SP-C Task 5 依赖 SP-A P3；SP-B Step 5/6 依赖 SP-B Step 4；SP-A P6 依赖 SP-A P2-P5。</td>
-          <td>进入端到端 smoke、评估协议扩展和权重初始化实验。</td>
+          <td>SP-C Task 5 依赖 SP-A P3；SP-B Step 5/6 依赖 SP-B Step 4；SP-A P6 依赖 SP-A P2-P5 全部完成且 P4 路径已敲定。</td>
+          <td>进入端到端 smoke、评估协议扩展和权重初始化实验；<strong>触发"baseline 评估闸门"</strong>的结构闸门与权重加载闸门。</td>
         </tr>
         <tr>
           <td>4</td>
           <td>
             <ul>
-              <li>SP-C Task 6-Task 7：prompt robustness / negative / held-out 评估与测试矩阵。</li>
-              <li>SP-A P7：random / prompt-only / full 三组 warm-start 对照实验。</li>
+              <li>SP-C Task 6-Task 7：prompt robustness / negative / held-out 评估与测试矩阵；<strong>baseline 回归闸门（aligned 任一变体 val Dice ≥ 当前轻量基线 70%）</strong>必须在长训启动前通过。</li>
+              <li>SP-A P7：random / prompt-only / full 三组 warm-start 对照实验。若 P4 选路径 B，<code>full</code> 实际等价于"除 mask fusion 与 projection 外全部加载"，需在实验日志显式区分。</li>
             </ul>
           </td>
           <td>评估与实验可在端到端 smoke 通过后并行推进。</td>
@@ -281,12 +284,13 @@
         </tr>
       </tbody>
     </table>
-    <p class="note">训练预算规则：<code>iterations_per_epoch=250</code> 是机制对齐；<code>epochs</code> 和 <code>total_updates</code> 不复刻论文 2000 / 500000，必须按实际算力预算倒推并写入 profile。</p>
+    <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs ≈ 75</code></strong>，对应 <code>total_updates ≈ 75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、机制验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平</strong>，baseline 回归闸门按此基准设定。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>。</p>
+    <p class="note warn">关键路径串行依赖（2026-05-24 修订后）：<strong>SP-A P0 audit → P4 <code>num_heads</code> 路径决议 → P6 跳过白名单</strong>；<strong>SP-A P3 → SP-C Task 5</strong>；<strong>SP-B Step 1 → Step 2 → Step 3/4 → Step 5 → Step 6</strong>。其余环节可并行。</p>
   </section>
 
   <section>
     <h2>明确不一致项 → 子计划分发表</h2>
-    <p>下表是本文件的核心。每一项不一致都必须被某一个子计划领走；当前 11 项已全部分发，其中结构类由 SP-A 负责，数据构造类由 SP-B 负责，训练机制与评估协议类由 SP-C 负责。</p>
+    <p>下表是本文件的核心。每一项不一致都必须被某一个子计划领走；当前 13 项已全部分发，其中结构类由 SP-A 负责（含 #13 <code>num_heads</code>，标记为条件性对齐），数据构造类由 SP-B 负责，训练机制与评估协议类由 SP-C 负责（含 #12 loss 等价性，标记为 audit 后可跳过）。</p>
     <table>
       <thead>
         <tr>
@@ -363,6 +367,18 @@
           <td>25/75 canonical/variant vs 当前对 prompt records 均匀采样。</td>
           <td><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 3 — 25/75 主名/改写</a></td>
         </tr>
+        <tr>
+          <td>12</td>
+          <td><span class="tag warn">loss 公式等价性<br><span class="small">（可跳过）</span></span></td>
+          <td>VoxTell A.3：BCE + Dice，使用 nnU-Net 默认（含 ignore_label / smooth / batch_dice 等细节）。Body-Tell 已有 <code>PromptSegmentationLoss</code>，但未对照 nnU-Net 默认数值/权重逐项核对。<strong>域差异豁免</strong>：nnU-Net 默认值是为医学影像（强度分布、噪声、稀疏前景）调过的；occupancy grid 数据分布与之不同，强行对齐可能反而劣化。<strong>实现路径：先 audit 偏差，再决定是否对齐</strong>，允许仅记录偏差不修改 Body-Tell 现有 loss。</td>
+          <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-5">SP-C Task 5 — 5-scale deep supervision（含 loss 公式 audit）</a></td>
+        </tr>
+        <tr>
+          <td>13</td>
+          <td><span class="tag warn"><code>num_heads</code> mismatch<br><span class="small">（条件性对齐）</span></span></td>
+          <td>VoxTell <code>num_heads=1</code>（<code>voxtell/model/voxtell_model.py:74</code>）；Body-Tell <code>num_heads=32</code>（<code>body_tell/models/voxtell_body_model.py:29</code>）。projection 输出 = <code>channels × num_heads</code>，因此原 SP-A "VoxTell 输出 <code>10240</code>"的说法错误，实际为 <code>320</code> 量级。<strong>域差异豁免</strong>：<code>num_heads=32</code> 给 Body-Tell mask fusion 提供 32× 容量，是为 occupancy grid 任务设计的；强行降到 1 可能损害 capacity。<strong>对齐前提</strong>：只有在"目标是直接复用 VoxTell <code>project_to_decoder_channels.*</code> 与 mask fusion 权重"的实验中才必要；若仅做结构对齐（不复用这部分权重），可以保留 <code>num_heads=32</code>，但<strong>必须在 SP-A P0 audit 中显式打印 num_heads 并把这些 key 加入跳过白名单</strong>，避免错误判断为权重已加载。</td>
+          <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0 + P4 — num_heads 审计与对齐决议</a></td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -376,7 +392,7 @@
     </ul>
     <div class="note bad"><strong>明确不做项（2026-05-24 决议，不得在 SP-C 中再次提案）：</strong>
       <ol>
-        <li><strong>不严格对齐论文 2,000 × 250 = 500k step 的训练预算</strong>。保留当前 ~epochs=50 量级（总 step ~100k–500k，视 batch_size 而定）。paper_aligned profile 中的 <code>epochs × iterations_per_epoch</code> 由实际算力预算倒推决定，并在 profile 中显式注明 “训练预算 = N step（基于墙钟时间 X，非论文 500k）”。</li>
+        <li><strong>不严格对齐论文 2,000 × 250 = 500k step 的训练预算</strong>。<strong>2026-05-24 锁定实际预算：<code>batch_size=2 per GPU × 2 GPUs</code>（全局 4）、<code>epochs=75</code>、<code>iterations_per_epoch=250</code> → <code>total_updates=18,750</code> step（约论文 500k 的 3.75%）</strong>。paper_aligned profile 中必须以独立字段 <code>compute_budget</code> 记录上述数字，并在训练日志显式注明 "训练预算 = 18,750 step（bz=2×2, ep=75），非论文 500k"，避免误读为复刻。</li>
         <li><strong>不切换到 nnU-Net <code>nnUNetTrainer</code> 框架</strong>。VoxTell 训练侧代码未开源，"切到 nnU-Net"等于自己重写 trainer，收益不及成本。继续使用当前自定义 PyTorch loop 作为 SP-C 改造的载体，只在 loop 内补齐 iteration 语义、SGD、poly schedule、scheduler state checkpoint 等机制级对齐；不引入 nnU-Net 框架依赖、不模仿其 <code>on_train_epoch_start</code> 等钩子结构。</li>
       </ol>
     </div>
@@ -384,7 +400,7 @@
 
   <section>
     <h2>关键依赖</h2>
-    <p class="note">关键串行依赖：<strong>SP-A P1 → 其余 SP-A</strong>；<strong>SP-B Step 1 → Step 2 → Step 3 / Step 4</strong>；<strong>SP-B Step 4 → Step 5 → Step 6</strong>；<strong>SP-A P3 → SP-C deep supervision</strong>；<strong>SP-A P2/P3/P4 → SP-A P6</strong>。SP-A 结构对齐与 SP-B 数据构造可并行，但二者必须早于 deep supervision、权重加载和正式长训。</p>
+    <p class="note">关键串行依赖（2026-05-24 修订后）：<strong>SP-A P0 audit → P4 <code>num_heads</code> 路径决议 → P6 跳过白名单组装</strong>；<strong>SP-A P0 transformer golden test → P1 验收</strong>；<strong>SP-B Step 1 → Step 2 → Step 3 / Step 4</strong>；<strong>SP-B Step 4 → Step 5 → Step 6</strong>；<strong>SP-A P3 → SP-C Task 5 deep supervision</strong>；<strong>SP-A P2/P3/P4 → SP-A P6</strong>。SP-A 结构对齐与 SP-B 数据构造可并行，但二者必须早于 deep supervision、权重加载和正式长训。</p>
   </section>
 
   <section>
@@ -394,13 +410,23 @@
       <li>当某条不一致被子计划完成验收后，对应表格行的“归属子计划”单元改为 <span class="tag ok">已完成</span> 并附上子计划中验收命令的实际输出位置（log / checkpoint / 测试名）。</li>
       <li>如果新增不一致项，先登记到“明确不一致项”表，再分发给 SP-A、SP-B 或 SP-C。</li>
     </ul>
+    <h3>Baseline 评估闸门（2026-05-24 新增）</h3>
+    <div class="note warn">
+      在进入"paper-aligned 长训"之前，必须先通过下列 baseline 闸门，避免结构对齐与权重加载在 silent regression 下被误判为收益：
+      <ol>
+        <li><strong>结构闸门</strong>（SP-A P0 完成后）：<code>audit_voxtell_alignment.py</code> 报告 transformer parity test 通过（输出差异 &lt; <code>1e-6</code>，dropout=0）；<code>num_heads</code> 与每级 projection 实际 shape 已显式打印。</li>
+        <li><strong>权重加载闸门</strong>（SP-A P6 完成后）：<code>strict=False</code> 加载 VoxTell <code>checkpoint_final.pth</code> 时，<code>unexpected_keys</code> 集合等于 P4 决议产出的<strong>显式白名单</strong>——路径 A 为 <code>{"pos_embed"}</code>，路径 B 为 <code>{"pos_embed"} ∪ {project_to_decoder_channels.*, mask_fusion.*}</code>；<code>missing_keys</code> 为空；任何 shape mismatch 必须抛错。</li>
+        <li><strong>数值闸门</strong>（aligned random 训练 2 epoch smoke 后）：val foreground Dice 不得低于当前 baseline（约 <code>0.3257</code>）的 70%，否则回退 SP-A / SP-B 已落地改动，不进入长训。该阈值仅用于"明显回归"识别，不是性能目标。</li>
+        <li><strong>评估闸门</strong>（SP-C Task 6 完成后）：known concepts / prompt variants / negative empty-mask / held-out 四组评估全部能输出指标（即使分数不理想），且 prompt records / vocab hash 与 checkpoint 一致。</li>
+      </ol>
+    </div>
   </section>
 
   <section>
     <h2>当前结论</h2>
-    <p><strong>可以按本文件开始执行。</strong> 11 项明确不一致已全部分发：SP-A 覆盖结构类，SP-B 覆盖数据构造类，SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵。</p>
-    <p>短期优先顺序是：SP-A P1、SP-B Step 1、SP-C Task 0-4 并行启动；随后推进 SP-A P2-P5 和 SP-B Step 2-Step 4；最后启用 SP-C Task 5、权重加载、评估与训练实验。</p>
-    <p class="small">本报告仅维护审计与索引，未修改训练代码。</p>
+    <p><strong>可以按本文件开始执行。</strong> 13 项明确不一致已全部分发：SP-A 覆盖结构类（含 #13 <code>num_heads</code>），SP-B 覆盖数据构造类，SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。<strong>#12 和 #13 适用域差异豁免</strong>：audit 后允许在保留 Body-Tell 当前实现并显式记录偏差的前提下跳过对齐。</p>
+    <p>短期优先顺序是：SP-A P0（含 <code>num_heads</code> + projection 实际 shape 审计）、SP-B Step 1、SP-C Task 0-4 并行启动；随后推进 SP-A P1-P5 和 SP-B Step 2-Step 4；最后启用 SP-C Task 5（含 BCE+Dice 等价性 audit，可仅记录偏差）、权重加载、评估与训练实验。</p>
+    <p class="small">本报告仅维护审计与索引，未修改训练代码。2026-05-24 修订：增列 #12 loss 等价性、#13 <code>num_heads</code>（带域差异豁免），新增 baseline 评估闸门。</p>
   </section>
 </main>
 </body>

@@ -177,8 +177,8 @@
     <h1>Body-Tell 训练机制与评估协议对齐计划</h1>
     <p class="meta">日期：2026-05-24。编号：SP-C。父级来源：<a class="child-link" href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">Body-Tell 与 VoxTell 论文不一致项总控计划</a>。范围：训练 loop、optimizer/scheduler、deep supervision loss、checkpoint/resume、评估协议、测试矩阵与 paper-aligned 配置 profile。</p>
     <div class="cards">
-      <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9</span></div>
-      <div class="card"><strong>状态</strong><span class="tag ok">已起草</span></div>
+      <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9 #12</span></div>
+      <div class="card"><strong>状态</strong><span class="tag ok">已起草（2026-05-24 修订）</span></div>
       <div class="card"><strong>硬依赖</strong><span class="tag warn">SP-A P3 / SP-B Step 2</span></div>
       <div class="card"><strong>目标</strong><span class="tag info">paper-aligned 训练闭环</span></div>
     </div>
@@ -228,6 +228,11 @@
           <td><a class="child-link" href="#task-5">Task 5</a>，依赖 SP-A P3</td>
         </tr>
         <tr>
+          <td>#12 loss 公式等价性（2026-05-24 新增，可跳过）</td>
+          <td>VoxTell：BCE + Dice，nnU-Net 默认（含 ignore_label / smooth / batch_dice 等）。Body-Tell <code>PromptSegmentationLoss</code> 公式与默认值未对照。<strong>域差异豁免</strong>：occupancy grid 与医学影像在前景占比、噪声特性上差异显著，nnU-Net 默认值未必更优。</td>
+          <td><a class="child-link" href="#task-5">Task 5</a>（仅做 audit，是否对齐取决于 audit 结论）</td>
+        </tr>
+        <tr>
           <td>checkpoint / 评估 / 测试矩阵</td>
           <td>父报告登记为训练机制同源缺口。</td>
           <td><a class="child-link" href="#task-4">Task 4</a>、<a class="child-link" href="#task-6">Task 6</a>、<a class="child-link" href="#task-7">Task 7</a></td>
@@ -273,11 +278,20 @@
     <ol>
       <li>新增 <code>Body-Tell/configs/phase1_voxtell_paper_aligned.yaml</code>，显式声明 <code>profile: paper_aligned</code> 或等价字段。</li>
       <li>集中写入训练语义：<code>iterations_per_epoch: 250</code>（机制对齐，固定每 epoch 的 update 数）、<code>optimizer: sgd</code>、<code>lr: 1e-4</code>、<code>lr_schedule: poly</code>、<code>deep_supervision: true</code>、<code>deep_supervision_weights: [1, 0.5, 0.25, 0.125, 0.0625]</code>。</li>
-      <li><strong>训练预算字段 <code>epochs</code> 与 <code>total_updates</code> 不写死论文 2000 / 500000</strong>。这两个字段由实际算力倒推决定：先估单 step 墙钟时间 <code>t_step</code> 和可承受训练时长 <code>T_budget</code>，再令 <code>total_updates = floor(T_budget / t_step)</code>、<code>epochs = ceil(total_updates / iterations_per_epoch)</code>。profile 中必须以注释或独立字段（如 <code>budget_source: "wall_clock=Xh, t_step=Ys"</code>）显式注明此预算来源，避免被误读为复刻论文。详见父文档 <a href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">总控计划</a> 中 2026-05-24 决议。</li>
+      <li><strong>训练预算字段 2026-05-24 锁定，不写论文 2000 / 500000</strong>。profile 必须直接写入下列具体数字：
+        <ul>
+          <li><code>batch_size: 2</code>（per GPU）</li>
+          <li><code>num_gpus: 2</code></li>
+          <li><code>epochs: 75</code></li>
+          <li><code>iterations_per_epoch: 250</code>（机制对齐保留）</li>
+          <li>派生：<code>global_batch: 4</code>、<code>total_updates: 18750</code>、<code>paper_step_ratio: 0.0375</code></li>
+        </ul>
+        必须以独立字段 <code>compute_budget</code> 块写入这些值（不要散落在 dataloader / optimizer 子段），便于日志和 W&amp;B 一次性打印。<strong>不允许把 <code>epochs</code> 或 <code>total_updates</code> 隐式从其他字段倒推</strong>——值就是 75 和 18,750，写死即可。详见父文档 <a href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">总控计划</a> 中 2026-05-24 决议。
+      </li>
       <li>模型字段应引用 SP-A aligned 架构：<code>architecture: voxtell_v1_1</code>、<code>num_maskformer_stages: 5</code>。在 SP-A 未完成前，该 profile 可以存在但不作为默认训练入口。</li>
-      <li>训练启动日志和 W&amp;B config 中打印 <code>paper_aligned profile</code>、总 update 数、optimizer/scheduler、deep supervision 权重。</li>
+      <li>训练启动日志和 W&amp;B config 中打印 <code>paper_aligned profile</code>、<code>compute_budget</code> 全字段（含 <code>total_updates=18750</code> 与 <code>paper_step_ratio=0.0375</code>）、optimizer/scheduler、deep supervision 权重。日志一行 banner 显式提示："训练预算 18,750 step（bz=2×2, ep=75），约论文 500k 的 3.75%，非论文复刻"。</li>
     </ol>
-    <p>验收：读取配置时能区分当前 baseline profile 与 paper-aligned profile；未启用 SP-A aligned 架构时，长训入口不能静默落回旧轻量模型。</p>
+    <p>验收：读取配置时能区分当前 baseline profile 与 paper-aligned profile；<code>compute_budget</code> 字段值与父文档锁定一致（<code>epochs=75</code>、<code>total_updates=18750</code>）；未启用 SP-A aligned 架构时，长训入口不能静默落回旧轻量模型。</p>
 
     <h3 id="task-1">Task 1. 固定 update-count 训练 loop</h3>
     <ol>
@@ -285,9 +299,9 @@
       <li>实现可复用的无限 dataloader iterator；迭代耗尽后重建 iterator，但 <code>epoch</code> 和 <code>global_step</code> 语义保持连续。</li>
       <li>日志同时记录 <code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、<code>samples_seen</code>。</li>
       <li>每个 epoch 调用 <code>DistributedSampler.set_epoch(epoch)</code>；如果 dataset 提供 <code>set_epoch(epoch)</code>，同步调用它，保证 SP-B 动态 prompt RNG 能随 epoch 更新。</li>
-      <li>smoke 模式允许覆盖为小数值，例如 <code>epochs=2</code>、<code>iterations_per_epoch=2</code>，但仍走同一 fixed-update 代码路径。</li>
+      <li><strong>（2026-05-24 修订）smoke 模式语义修正</strong>：当前 <code>train.py:365</code> 是 <code>epochs = 200 if smoke else 50</code>（反直觉，smoke 反而跑更多）。重写为 <code>epochs = 2 if smoke else profile.epochs</code>，并允许 <code>--iterations-per-epoch</code> CLI 覆盖；smoke 走同一 fixed-update 代码路径。</li>
     </ol>
-    <p>验收：2-epoch smoke 的 optimizer step 数严格等于 <code>epochs * iterations_per_epoch</code>；日志中的 <code>global_step</code> 单调递增且无跳号。</p>
+    <p>验收：2-epoch smoke 的 optimizer step 数严格等于 <code>epochs * iterations_per_epoch</code>；日志中的 <code>global_step</code> 单调递增且无跳号；smoke 默认 epoch 数 ≤ 2（修复反直觉默认）。</p>
 
     <h3 id="task-2">Task 2. 配置驱动 optimizer profile</h3>
     <ol>
@@ -308,33 +322,41 @@
     <p>验收：scheduler 数值单测覆盖 step 0、半程、末程和 resume 后一步；LR 不应在 epoch 边界出现额外跳变。</p>
 
     <h3 id="task-4">Task 4. Checkpoint 与精确恢复</h3>
+    <div class="note warn"><strong>（2026-05-24 修订）当前现状交底，避免误读：</strong>
+      <ul>
+        <li><code>train.py:464-473</code> 当前 checkpoint 只写 <code>{epoch, model_state_dict, optimizer_state_dict, metrics, config}</code>；<strong>不包含</strong> scheduler state（因为根本没有 scheduler）、<strong>不包含</strong> AMP scaler state（虽然 <code>train.py:25, 361, 444</code> 已使用 <code>GradScaler</code>，但 scaler.state_dict() 未持久化）、<strong>不包含</strong> <code>global_step</code> / <code>iteration_in_epoch</code> / <code>architecture</code> tag。</li>
+        <li>当前只在 best Dice 提升时保存 <code>best.pt</code>，<strong>没有任何周期性 <code>latest.pt</code></strong>。意味着训练中断后无法续训，只能从 best 重新开始（且 LR 与 epoch counter 都会错位）。</li>
+      </ul>
+    </div>
     <ol>
-      <li>checkpoint 写入 <code>model_state_dict</code>、<code>optimizer_state_dict</code>、<code>scheduler_state_dict</code>、<code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、AMP scaler、配置 hash、<code>architecture</code> 字段。</li>
-      <li>恢复入口必须在 dataloader / sampler / dataset epoch state / scheduler state 全部恢复后继续训练。</li>
-      <li>保存 best checkpoint 和 latest checkpoint；latest 用于 resume，best 用于评估与发布。</li>
+      <li>checkpoint 写入 <code>model_state_dict</code>、<code>optimizer_state_dict</code>、<code>scheduler_state_dict</code>、<code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、<strong><code>scaler.state_dict()</code>（新增，对应已存在但未持久化的 <code>GradScaler</code>）</strong>、配置 hash、<code>architecture</code> 字段。</li>
+      <li><strong>每 N 次 update（默认 N = <code>iterations_per_epoch</code>）写入 <code>latest.pt</code></strong>；<code>best.pt</code> 保留现有"Dice 提升时写入"语义。两者共存，不互相覆盖。</li>
+      <li>恢复入口必须在 dataloader / sampler / dataset epoch state / scheduler state / scaler state 全部恢复后继续训练。</li>
       <li>恢复日志打印 checkpoint 中的 <code>global_step</code>、下一个 <code>epoch</code> / <code>iteration_in_epoch</code>、当前 LR、配置 hash 是否匹配。</li>
     </ol>
-    <p>验收：构造 interrupted run 与 uninterrupted run，在同一 <code>global_step</code> 比较 LR 和 scheduler state，必须完全一致。</p>
+    <p>验收：构造 interrupted run 与 uninterrupted run，在同一 <code>global_step</code> 比较 LR、scheduler state、scaler scale 值，必须完全一致；<code>latest.pt</code> 能在任意中断点恢复并继续单调 <code>global_step</code>。</p>
 
-    <h3 id="task-5">Task 5. 启用 5-scale deep supervision loss</h3>
+    <h3 id="task-5">Task 5. 启用 5-scale deep supervision loss + BCE/Dice 公式 audit（含 #12）</h3>
     <ol>
       <li>依赖 SP-A P3：模型必须返回 5 个尺度输出，且最高分辨率输出仍与 target mask 的轴语义一致。</li>
       <li>paper-aligned profile 设置 <code>deep_supervision: true</code> 与权重 <code>[1, 1/2, 1/4, 1/8, 1/16]</code>。</li>
       <li>loss 层保存原始权重，并在日志中同时报告归一化后的有效权重；避免“论文权重”和“实现归一化”混淆。</li>
       <li>每个 scale 的 target 使用统一 resize 策略；日志至少记录总 loss、BCE、Dice，以及可选的 per-scale loss。</li>
       <li>补充反传测试：5 个尺度输出都参与 loss，且每个可训练输出分支都有梯度。</li>
+      <li><strong>（2026-05-24 新增，覆盖 #12，域差异豁免）BCE+Dice 公式 audit（不强制对齐）</strong>：对照 nnU-Net <code>DC_and_BCE_loss</code>（或 VoxTell 引用的等价实现）的关键字段——BCE 与 Dice 权重比、<code>smooth</code> 常数、<code>batch_dice</code>、<code>do_bg</code>、<code>ignore_label</code> 处理、reduce 策略——在 <code>PromptSegmentationLoss</code> 内逐项 audit 并列出偏差表。<strong>对齐不是强制目标</strong>：nnU-Net 默认值是为医学影像（强度分布、噪声、稀疏前景）调过的；occupancy grid 任务下，Body-Tell 当前公式可能已经更合适。<strong>处理策略</strong>：(a) audit 后偏差小且对齐成本低 → 对齐；(b) 偏差大或对齐后 smoke 指标下降 → 保留 Body-Tell 现公式并把偏差表写入 audit 记录；(c) 不能仅因"和论文不一样"就改公式。</li>
     </ol>
-    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；SP-A P3 未完成时不得把 paper-aligned 长训标记为通过。</p>
+    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；SP-A P3 未完成时不得把 paper-aligned 长训标记为通过；BCE+Dice 公式 audit 报告（即使结论是"保留现状"）写入 SP-C 子目录，所有偏差项均有显式记录与处理判断（对齐 / 保留 / 待定）。</p>
 
-    <h3 id="task-6">Task 6. 评估协议扩展</h3>
+    <h3 id="task-6">Task 6. 评估协议扩展（含 baseline 回归闸门）</h3>
     <ol>
       <li>保留现有 S2I val foreground mean Dice 与 negative FP，作为本地域内基线。</li>
       <li>新增 prompt variants 评估：同一 class 用 canonical 与 variant prompt 分组统计 Dice。</li>
       <li>新增 negative empty-mask 评估：对 patch/case absent prompt 统计 FP voxel、FP rate、empty-mask success rate。</li>
       <li>新增 held-out class/concept 分组评估；如果当前 split 没有正式 held-out concept，先用配置化列表声明，不在报告中伪造论文级 zero-shot 结论。</li>
       <li>临床 report-derived prompts 与 ReXGroundingCT fine-tuning 只登记为论文协议缺口；在 Body-Tell 缺少对应数据前，不作为本轮强制验收。</li>
+      <li><strong>（2026-05-24 新增）Baseline 回归闸门</strong>：aligned random / aligned full 任一变体在 2 epoch smoke 后，<code>val_foreground_mean_dice</code> 必须 ≥ 当前轻量 baseline 的 70%（约 <code>0.3257 × 0.7 = 0.228</code>），否则触发回退并复盘 SP-A / SP-B 已落地改动。该阈值仅用于"明显回归"识别，不是性能目标。</li>
     </ol>
-    <p>验收：评估报告能按 known concepts、prompt variants、negative prompts、held-out classes/concepts 分组输出 Dice/FP，并记录使用的 prompt records / vocab hash。</p>
+    <p>验收：评估报告能按 known concepts、prompt variants、negative prompts、held-out classes/concepts 分组输出 Dice/FP，并记录使用的 prompt records / vocab hash；baseline 回归闸门必须在 paper-aligned 长训启动前完成评估。</p>
 
     <h3 id="task-7">Task 7. Paper-alignment 测试矩阵</h3>
     <table>
