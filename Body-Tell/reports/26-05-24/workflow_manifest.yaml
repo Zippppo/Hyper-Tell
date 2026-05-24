@@ -1,0 +1,405 @@
+schema_version: 1
+project: Body-Tell VoxTell alignment
+created_at: "2026-05-24"
+lead_plan: lead.html
+status_model:
+  todo: Task is defined but not currently runnable.
+  ready: Task dependencies are accepted and the task can be assigned.
+  assigned: A worker run has been started.
+  submitted: Worker produced a result and is waiting for manager review.
+  needs_fix: Review failed; rerun the same worker with the review notes.
+  blocked: Task cannot move without human input or an external artifact.
+  accepted: Manager accepted the result and appended progress to lead.html.
+global_rules:
+  - Use conda environment voxtell for verification commands.
+  - Reports and run results must be written as HTML.
+  - lead.html is owned only by the manager.
+  - Workers must not edit lead.html or workflow_manifest.yaml.
+  - Workers must keep changes limited to the assigned task and plan file.
+agents:
+  manager:
+    role: Owns lead.html, selects runnable tasks, reviews worker outputs, and records accepted progress.
+    writable:
+      - Body-Tell/reports/26-05-24/lead.html
+      - Body-Tell/reports/26-05-24/workflow_manifest.yaml
+      - Body-Tell/reports/26-05-24/runs/**
+  reviewer:
+    role: Reviews a submitted worker result against the plan, git diff, tests, and acceptance criteria.
+    writable:
+      - Body-Tell/reports/26-05-24/runs/**/REVIEW.html
+  sp_a_architecture_worker:
+    role: Implements SP-A model architecture, VoxTell compatibility, weight loading, and experiment matrix work.
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    writable:
+      - Body-Tell/body_tell/models/**
+      - Body-Tell/body_tell/losses/**
+      - Body-Tell/configs/**
+      - Body-Tell/scripts/**
+      - Body-Tell/tests/**
+      - Body-Tell/reports/26-05-24/runs/**
+  sp_b_sampling_vocab_worker:
+    role: Implements SP-B sampling, prompt/vocabulary, aggregate concept, and embedding-cache work.
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    writable:
+      - Body-Tell/body_tell/data/**
+      - Body-Tell/configs/**
+      - Body-Tell/scripts/**
+      - Body-Tell/tests/**
+      - Body-Tell/reports/26-05-24/runs/**
+  sp_c_training_eval_worker:
+    role: Implements SP-C training loop, optimizer/scheduler, checkpoint, deep supervision, and evaluation work.
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    writable:
+      - Body-Tell/train.py
+      - Body-Tell/body_tell/losses/**
+      - Body-Tell/body_tell/metrics/**
+      - Body-Tell/configs/**
+      - Body-Tell/tests/**
+      - Body-Tell/reports/26-05-24/runs/**
+tasks:
+  SP-A.P0:
+    title: Establish VoxTell compatibility baseline audit
+    owner: sp_a_architecture_worker
+    phase: 1
+    status: ready
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on: []
+    result_file: runs/SP-A.P0/RESULT.html
+    scope: "SP-A P0: num_heads/projection shape audit, transformer golden test material, weight-key audit input."
+    acceptance:
+      - num_heads and projection shapes are printed for VoxTell and Body-Tell.
+      - Transformer golden test material is produced for SP-A P1 acceptance.
+      - Weight-loading whitelist input is produced for SP-A P6.
+    verification:
+      - "conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --help"
+  SP-A.P1:
+    title: Align transformer decoder semantics
+    owner: sp_a_architecture_worker
+    phase: 1
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P0
+    result_file: runs/SP-A.P1/RESULT.html
+    scope: "SP-A P1: transformer decoder behavior parity using P0 golden-test material."
+    acceptance:
+      - Transformer compatibility tests pass with dropout disabled.
+      - No unrelated model refactor is introduced.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_voxtell_transformer_compat.py"
+  SP-A.P2:
+    title: Replace encoder with VoxTell residual encoder
+    owner: sp_a_architecture_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P1
+    result_file: runs/SP-A.P2/RESULT.html
+    scope: "SP-A P2: residual encoder channels, blocks, norm, activation, and bias policy."
+    acceptance:
+      - Encoder channel/block structure matches the SP-A plan or records an explicit domain-exemption decision.
+      - Existing model shape tests are updated and passing.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py"
+  SP-A.P3:
+    title: Replace decoder with VoxTellDecoder
+    owner: sp_a_architecture_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P2
+    result_file: runs/SP-A.P3/RESULT.html
+    scope: "SP-A P3: 5-stage decoder outputs needed by SP-C deep supervision."
+    acceptance:
+      - Model can return the planned decoder outputs.
+      - SP-C Task5 precondition is satisfied or the remaining blocker is explicit.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_prompt_loss_backward.py"
+  SP-A.P4:
+    title: Align projection, mask head, num_heads decision, and forward layout
+    owner: sp_a_architecture_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P0
+      - SP-A.P3
+    result_file: runs/SP-A.P4/RESULT.html
+    scope: "SP-A P4: execute path A or path B for num_heads, projection shape, mask fusion, and axis layout."
+    acceptance:
+      - num_heads path decision is recorded in RESULT.html.
+      - Non-cubic input shape tests prove axes are not swapped.
+      - P6 skip whitelist candidate is explicit.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py"
+  SP-A.P5:
+    title: Implement position encoding strategy
+    owner: sp_a_architecture_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P4
+    result_file: runs/SP-A.P5/RESULT.html
+    scope: "SP-A P5: dynamic_hwd default positional encoding and optional fixed_voxtell_192 profile boundary."
+    acceptance:
+      - dynamic_hwd works with current Body-Tell crop shape.
+      - pos_embed loading/skip policy is unambiguous.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py"
+  SP-A.P6:
+    title: Add VoxTell weight loading entrypoint
+    owner: sp_a_architecture_worker
+    phase: 3
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P5
+      - SP-A.P4
+    result_file: runs/SP-A.P6/RESULT.html
+    scope: "SP-A P6: --init-from-voxtell, strict whitelist audit, checkpoint metadata, smoke."
+    acceptance:
+      - unexpected_keys are exactly the P4 policy whitelist.
+      - Shape mismatch fails hard.
+      - At least one forward/loss/backward smoke passes if GPU is available; otherwise CPU audit is recorded.
+    verification:
+      - "conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml"
+  SP-A.P7:
+    title: Run architecture warm-start experiment matrix
+    owner: sp_a_architecture_worker
+    phase: 4
+    status: todo
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P6
+      - SP-C.Task6
+    result_file: runs/SP-A.P7/RESULT.html
+    scope: "SP-A P7: random, prompt-only, and full warm-start comparison plan/results."
+    acceptance:
+      - Experiment matrix records initialization mode, skipped keys, and comparable metrics.
+      - Long-run recommendation is explicit.
+    verification:
+      - "conda run -n voxtell python Body-Tell/train.py --help"
+  SP-B.Step1:
+    title: Add dynamic sampling RNG infrastructure
+    owner: sp_b_sampling_vocab_worker
+    phase: 1
+    status: ready
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    depends_on: []
+    result_file: runs/SP-B.Step1/RESULT.html
+    scope: "SP-B Step 1: dataset epoch/iteration-aware prompt RNG instead of fixed seed+index."
+    acceptance:
+      - Dataset exposes set_epoch(epoch) or equivalent.
+      - Same case can sample different prompt text across epochs.
+      - DDP-compatible deterministic behavior is documented.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py"
+  SP-B.Step2:
+    title: Implement patch crop and patch-level 2 positive plus 1 negative prompts
+    owner: sp_b_sampling_vocab_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    depends_on:
+      - SP-B.Step1
+    result_file: runs/SP-B.Step2/RESULT.html
+    scope: "SP-B Step 2: 85/15 foreground/random crop, patch-local present/absent, full 2+1 sampling."
+    acceptance:
+      - Output patch shape matches config.
+      - Foreground/random crop ratio is auditable.
+      - Positive masks are not empty inside the sampled patch.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_crop_s2i_dataset.py"
+  SP-B.Step3:
+    title: Implement 25/75 canonical versus variant positive prompt sampling
+    owner: sp_b_sampling_vocab_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    depends_on:
+      - SP-B.Step2
+    result_file: runs/SP-B.Step3/RESULT.html
+    scope: "SP-B Step 3: canonical_prob=0.25 for positive prompts, variants otherwise."
+    acceptance:
+      - Positive prompt canonical/variant ratio is tested or audited.
+      - Classes without variants fall back explicitly and are counted.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py"
+  SP-B.Step4:
+    title: Support aggregate and combined-label concepts in sampler
+    owner: sp_b_sampling_vocab_worker
+    phase: 2
+    status: todo
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    depends_on:
+      - SP-B.Step2
+    result_file: runs/SP-B.Step4/RESULT.html
+    scope: "SP-B Step 4: concept-level present/absent, aggregate union masks, embedding lookup alignment."
+    acceptance:
+      - Existing aggregate prompts can be sampled during training.
+      - Aggregate target masks equal union of component masks.
+      - Base class evaluation semantics remain separate from aggregates.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py"
+  SP-B.Step5:
+    title: Expand vocabulary under VoxTell Appendix C principles
+    owner: sp_b_sampling_vocab_worker
+    phase: 3
+    status: todo
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    depends_on:
+      - SP-B.Step4
+    result_file: runs/SP-B.Step5/RESULT.html
+    scope: "SP-B Step 5: at least five validated prompts per trainable base class plus supported combined labels."
+    acceptance:
+      - Every trainable base class has at least five validated prompts.
+      - Combined labels have explicit component_class_ids.
+      - Static vocabulary validation passes.
+    verification:
+      - "conda run -n voxtell python Body-Tell/scripts/audit_vocabulary.py"
+  SP-B.Step6:
+    title: Rebuild text embedding cache
+    owner: sp_b_sampling_vocab_worker
+    phase: 3
+    status: todo
+    plan_file: bodytell_sampling_vocabulary_optimization_report.html
+    depends_on:
+      - SP-B.Step5
+    result_file: runs/SP-B.Step6/RESULT.html
+    scope: "SP-B Step 6: regenerate prompt_embeddings.pt with hash/count validation."
+    acceptance:
+      - Embedding row count equals prompt record count.
+      - Vocabulary hash matches label_vocab.json.
+      - Cache generation command and model/instruction are recorded.
+    verification:
+      - "conda run -n voxtell python Body-Tell/scripts/build_prompt_embedding_cache.py --help"
+  SP-C.Task0:
+    title: Add paper-aligned profile skeleton
+    owner: sp_c_training_eval_worker
+    phase: 1
+    status: ready
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on: []
+    result_file: runs/SP-C.Task0/RESULT.html
+    scope: "SP-C Task 0: paper_aligned config skeleton and compute_budget block."
+    acceptance:
+      - phase1_voxtell_paper_aligned.yaml exists.
+      - compute_budget has batch_size=2, num_gpus=2, epochs=75, iterations_per_epoch=250, total_updates=18750, paper_step_ratio=0.0375.
+      - Startup logging/W&B config path can print the profile fields.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py"
+  SP-C.Task1:
+    title: Add fixed update-count training loop
+    owner: sp_c_training_eval_worker
+    phase: 1
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-C.Task0
+    result_file: runs/SP-C.Task1/RESULT.html
+    scope: "SP-C Task 1: iterations_per_epoch semantics, infinite dataloader, smoke epoch fix, dataset/sampler epoch setters."
+    acceptance:
+      - Optimizer steps equal epochs * iterations_per_epoch in smoke.
+      - global_step is monotonic and gap-free.
+      - smoke defaults to at most 2 epochs.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py"
+  SP-C.Task2:
+    title: Make optimizer profile config-driven
+    owner: sp_c_training_eval_worker
+    phase: 1
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-C.Task0
+    result_file: runs/SP-C.Task2/RESULT.html
+    scope: "SP-C Task 2: optimizer factory supporting baseline AdamW and paper-aligned SGD lr=1e-4."
+    acceptance:
+      - Config can switch between AdamW and SGD.
+      - Optimizer name, groups, and LR are logged/checkpointed.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py"
+  SP-C.Task3:
+    title: Add polynomial LR scheduler
+    owner: sp_c_training_eval_worker
+    phase: 1
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-C.Task1
+      - SP-C.Task2
+    result_file: runs/SP-C.Task3/RESULT.html
+    scope: "SP-C Task 3: update-step-based polynomial scheduler with resumable state."
+    acceptance:
+      - Scheduler updates after each optimizer step.
+      - Step 0, midpoint, and final LR values are covered by tests.
+      - Resume LR equals uninterrupted LR at the same global_step.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py"
+  SP-C.Task4:
+    title: Make checkpoint and resume exact
+    owner: sp_c_training_eval_worker
+    phase: 1
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-C.Task3
+    result_file: runs/SP-C.Task4/RESULT.html
+    scope: "SP-C Task 4: model, optimizer, scheduler, scaler, global step, epoch, RNG, and latest.pt persistence."
+    acceptance:
+      - Resume test proves scheduler/scaler/global_step continuity.
+      - latest.pt behavior is documented and tested.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py"
+  SP-C.Task5:
+    title: Enable 5-scale deep supervision and BCE/Dice formula audit
+    owner: sp_c_training_eval_worker
+    phase: 3
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-A.P3
+      - SP-C.Task4
+    result_file: runs/SP-C.Task5/RESULT.html
+    scope: "SP-C Task 5: deep supervision weights plus #12 BCE/Dice audit with domain-exemption option."
+    acceptance:
+      - 5-scale loss path works when SP-A decoder outputs are available.
+      - #12 audit either aligns formulas or records explicit exemption.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_train_loop.py"
+  SP-C.Task6:
+    title: Extend evaluation protocol and baseline gates
+    owner: sp_c_training_eval_worker
+    phase: 4
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-B.Step6
+      - SP-A.P6
+      - SP-C.Task5
+    result_file: runs/SP-C.Task6/RESULT.html
+    scope: "SP-C Task 6: known concepts, variants, negative empty-mask, held-out prompts, and baseline regression gates."
+    acceptance:
+      - All four evaluation groups can output metrics.
+      - Vocab hash and prompt records are linked to checkpoint metadata.
+      - Baseline gate output is recorded.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests"
+  SP-C.Task7:
+    title: Build paper-alignment test matrix
+    owner: sp_c_training_eval_worker
+    phase: 4
+    status: todo
+    plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+    depends_on:
+      - SP-C.Task6
+    result_file: runs/SP-C.Task7/RESULT.html
+    scope: "SP-C Task 7: test matrix covering fixed updates, scheduler, resume, deep supervision, and evaluation protocol."
+    acceptance:
+      - Test matrix is runnable in smoke mode.
+      - Missing long-run-only checks are explicitly marked.
+    verification:
+      - "conda run -n voxtell python -m pytest Body-Tell/tests"

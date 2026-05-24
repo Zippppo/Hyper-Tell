@@ -1,0 +1,44 @@
+You are {{owner}}.
+
+Assigned task: {{task_id}} - {{title}}
+
+Repository root:
+{{repo_root}}
+
+Lead plan:
+{{lead_file}}
+
+Your source-of-truth sub-plan:
+{{plan_file}}
+
+Task scope:
+{{scope}}
+
+Dependencies already accepted:
+{{dependencies}}
+
+Acceptance criteria:
+{{acceptance}}
+
+Suggested verification commands:
+{{verification}}
+
+Global rules:
+- Use conda environment `voxtell` for verification. Prefer commands like `conda run -n voxtell python -m pytest ...`.
+- Keep all reports and run logs in HTML.
+- Do not edit `{{lead_file}}`.
+- Do not edit `{{manifest_file}}`.
+- Do not modify unrelated code or perform adjacent refactors.
+- If the assigned task is impossible, write the blocker clearly in the result report instead of expanding scope.
+
+Required output:
+Write `{{result_file}}` as an HTML report containing:
+1. Task id and summary.
+2. Files changed.
+3. Verification commands run and important output.
+4. Acceptance criteria checklist.
+5. Blockers or residual risks.
+6. Recommendation: `ready_for_review`, `needs_fix`, or `blocked`.
+
+Start by reading the lead plan and the source-of-truth sub-plan. Then complete only the assigned task.
+
