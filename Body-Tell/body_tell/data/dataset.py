@@ -36,6 +36,7 @@ class HyperBodyPromptDataset(Dataset):
         vocab_path: str | Path | None = None,
         split_path: str | Path | None = None,
         presence_path: str | Path | None = None,
+        voxel_dir: str | Path | None = None,
         embedding_cache_path: str | Path | None = None,
         strict_embedding_cache: bool = True,
     ) -> None:
@@ -47,28 +48,38 @@ class HyperBodyPromptDataset(Dataset):
         self.min_voxels = int(min_voxels)
         self.seed = int(seed)
 
-        self.vocab_path = Path(vocab_path) if vocab_path else self.root / "configs" / "label_vocab.json"
+        self.vocab_path = (
+            self._resolve_root_path(vocab_path)
+            if vocab_path
+            else self.root / "configs" / "label_vocab.json"
+        )
         self.split_path = (
-            Path(split_path) if split_path else self.root / "Dataset" / "dataset_split.json"
+            self._resolve_root_path(split_path)
+            if split_path
+            else self.root / "Dataset" / "dataset_split.json"
         )
         self.presence_path = (
-            Path(presence_path)
+            self._resolve_root_path(presence_path)
             if presence_path
             else self.root / "artifacts" / "data_stats" / "class_presence.json"
         )
         self.embedding_cache_path = (
-            Path(embedding_cache_path)
+            self._resolve_root_path(embedding_cache_path)
             if embedding_cache_path
             else self.root / "artifacts" / "text_embeddings" / "prompt_embeddings.pt"
         )
-        self.voxel_dir = self.root / "Dataset" / "voxel_data"
+        self.voxel_dir = (
+            self._resolve_root_path(voxel_dir)
+            if voxel_dir
+            else self.root / "Dataset" / "voxel_data"
+        )
 
         self.vocab = load_label_vocab(self.vocab_path)
         self.presence = load_class_presence(self.presence_path)
         split_data = read_json(self.split_path)
         if split not in split_data:
             raise ValueError(f"Unknown split {split!r}; expected one of train, val, test")
-        self.case_files = [self.voxel_dir / str(name) for name in split_data[split]]
+        self.case_files = [self._resolve_case_path(name) for name in split_data[split]]
         if not self.case_files:
             raise ValueError(f"Split {split!r} contains no cases")
 
@@ -81,6 +92,20 @@ class HyperBodyPromptDataset(Dataset):
         self.embedding_cache = validation["cache"]
         self.prompt_embeddings = self.embedding_cache["embeddings"].float().contiguous()
         self._prompt_records_by_class = prompt_records_by_class(self.vocab)
+
+    def _resolve_root_path(self, path: str | Path) -> Path:
+        path = Path(path)
+        if path.is_absolute():
+            return path
+        return self.root / path
+
+    def _resolve_case_path(self, split_entry: str | Path) -> Path:
+        path = Path(split_entry)
+        if path.is_absolute():
+            return path
+        if path.parent == Path("."):
+            return self.voxel_dir / path
+        return self.root / path
 
     def __len__(self) -> int:
         return len(self.case_files)

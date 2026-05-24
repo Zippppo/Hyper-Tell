@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+import train as train_module
 from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
 from body_tell.data.vocabulary import EMBEDDING_DIM, file_sha256, flatten_prompt_records
 from body_tell.losses.prompt_losses import PromptSegmentationLoss
@@ -133,6 +134,53 @@ def _make_tiny_body_tell_root(tmp_path: Path) -> Path:
     cache_path.parent.mkdir(parents=True)
     torch.save(cache, cache_path)
     return root
+
+
+def test_build_dataset_forwards_s2i_path_config(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class DummyDataset:
+        pass
+
+    def fake_dataset(**kwargs):
+        captured.update(kwargs)
+        return DummyDataset()
+
+    monkeypatch.setattr(train_module, "HyperBodyPromptDataset", fake_dataset)
+
+    cfg = {
+        "data": {
+            "root": "Body-Tell",
+            "voxel_dir": "S2I-Dataset-70cls/data",
+            "split_path": "S2I-Dataset-70cls/dataset_split.json",
+            "presence_path": "S2I-Dataset-70cls/class_presence.json",
+            "vocab_path": "configs/label_vocab.json",
+            "embedding_cache_path": "artifacts/text_embeddings/prompt_embeddings.pt",
+            "strict_embedding_cache": False,
+            "volume_size": [4, 5, 6],
+            "num_positive": 2,
+            "num_negative": 1,
+            "min_voxels": 1,
+        }
+    }
+
+    dataset = train_module.build_dataset(cfg, split="train")
+
+    assert isinstance(dataset, DummyDataset)
+    assert captured == {
+        "root": "Body-Tell",
+        "split": "train",
+        "volume_size": (4, 5, 6),
+        "num_positive": 2,
+        "num_negative": 1,
+        "min_voxels": 1,
+        "voxel_dir": "S2I-Dataset-70cls/data",
+        "split_path": "S2I-Dataset-70cls/dataset_split.json",
+        "presence_path": "S2I-Dataset-70cls/class_presence.json",
+        "vocab_path": "configs/label_vocab.json",
+        "embedding_cache_path": "artifacts/text_embeddings/prompt_embeddings.pt",
+        "strict_embedding_cache": False,
+    }
 
 
 def test_mini_overfit_loss_decreases(tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ Body-Tell/artifacts/
 run_train.sh
 Body-Tell/outputs/
 S2I-Dataset-70cls/
+nnUNet/
 
 # Distribution / packaging
 .Python

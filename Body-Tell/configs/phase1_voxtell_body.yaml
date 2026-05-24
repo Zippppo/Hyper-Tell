@@ -16,11 +16,16 @@ model:
   deep_supervision: false
 data:
   root: Body-Tell
-  volume_size: [144, 129, 256]
+  voxel_dir: S2I-Dataset-70cls/data
+  split_path: S2I-Dataset-70cls/dataset_split.json
+  presence_path: S2I-Dataset-70cls/class_presence.json
+  vocab_path: configs/label_vocab.json
+  embedding_cache_path: artifacts/text_embeddings/prompt_embeddings.pt
+  strict_embedding_cache: true
+  volume_size: [164, 129, 256]
   num_positive: 2
   num_negative: 1
   min_voxels: 1
 loss:
   bce_weight: 0.5
   dice_weight: 0.5
-

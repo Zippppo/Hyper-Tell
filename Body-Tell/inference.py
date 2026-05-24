@@ -2,12 +2,13 @@
 """Run Body-Tell prompt-conditioned inference on HyperBody ``.npz`` cases.
 
 python Body-Tell/inference.py \
---checkpoint Body-Tell/checkpoints/phase1_bz2/best.pt \
---case-id BDMAP_00000001 \
---prompts liver spleen kidney_left \
---output Body-Tell/outputs/inference_demo \
---device cuda --amp \
---save-combined --evaluate
+--checkpoint Body-Tell/checkpoints/test-S2I/best.pt \
+--case-id S2I_00001 \
+--prompts liver \
+--output Body-Tell/outputs/inference_s2i_smoke \
+--device cuda --gpu 0 --amp \
+--prompt-batch-size 1 \
+--evaluate --save-combined
 
 """
 
@@ -72,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         "--case-id",
         nargs="*",
         default=None,
-        help="Case ids or filenames under <root>/Dataset/voxel_data, e.g. BDMAP_00000001.",
+        help="Case ids or filenames under the configured data.voxel_dir, e.g. S2I_00001.",
     )
     parser.add_argument(
         "--split",
@@ -121,13 +122,13 @@ def parse_args() -> argparse.Namespace:
         "--embedding-cache",
         type=Path,
         default=None,
-        help="Path to prompt_embeddings.pt. Defaults to <root>/artifacts/text_embeddings/prompt_embeddings.pt.",
+        help="Path to prompt_embeddings.pt. Defaults to data.embedding_cache_path or <root>/artifacts/text_embeddings/prompt_embeddings.pt.",
     )
     parser.add_argument(
         "--vocab",
         type=Path,
         default=None,
-        help="Path to label_vocab.json. Defaults to <root>/configs/label_vocab.json.",
+        help="Path to label_vocab.json. Defaults to data.vocab_path or <root>/configs/label_vocab.json.",
     )
     parser.add_argument(
         "--encode-missing",
@@ -194,6 +195,22 @@ def resolve_body_root(root_value: str | Path) -> Path:
     if candidate.name == ROOT.name:
         return ROOT
     return candidate
+
+
+def resolve_data_path(
+    body_root: Path,
+    configured_path: str | Path | None,
+    default_relative_path: str | Path,
+) -> Path:
+    path = Path(configured_path) if configured_path is not None else Path(default_relative_path)
+    if path.is_absolute():
+        return path
+    if path.exists():
+        return path
+    repo_relative = ROOT.parent / path
+    if repo_relative.exists():
+        return repo_relative
+    return body_root / path
 
 
 def resolve_device(device_arg: str | None, gpu: int) -> torch.device:
@@ -475,12 +492,41 @@ def load_prompt_embeddings(
     return torch.stack(embeddings, dim=0), prompt_records
 
 
-def resolve_case_paths(args: argparse.Namespace, body_root: Path) -> list[Path]:
+def resolve_split_entry(body_root: Path, voxel_dir: Path, split_entry: str | Path) -> Path:
+    path = Path(split_entry)
+    if path.is_absolute():
+        return path
+    if path.parent == Path("."):
+        return voxel_dir / path
+    if path.exists():
+        return path
+    repo_relative = ROOT.parent / path
+    if repo_relative.exists():
+        return repo_relative
+    return body_root / path
+
+
+def resolve_input_path(body_root: Path, path: str | Path) -> Path:
+    path = Path(path)
+    if path.is_absolute() or path.exists():
+        return path
+    repo_relative = ROOT.parent / path
+    if repo_relative.exists():
+        return repo_relative
+    return body_root / path
+
+
+def resolve_case_paths(
+    args: argparse.Namespace,
+    body_root: Path,
+    data_cfg: Mapping[str, Any] | None = None,
+) -> list[Path]:
     paths: list[Path] = []
-    voxel_dir = body_root / "Dataset" / "voxel_data"
+    data_cfg = data_cfg or {}
+    voxel_dir = resolve_data_path(body_root, data_cfg.get("voxel_dir"), "Dataset/voxel_data")
 
     if args.input:
-        paths.extend(Path(path) for path in args.input)
+        paths.extend(resolve_input_path(body_root, path) for path in args.input)
 
     if args.case_id:
         for case_id in args.case_id:
@@ -490,9 +536,13 @@ def resolve_case_paths(args: argparse.Namespace, body_root: Path) -> list[Path]:
             paths.append(voxel_dir / name)
 
     if args.split:
-        split_path = body_root / "Dataset" / "dataset_split.json"
+        split_path = resolve_data_path(
+            body_root,
+            data_cfg.get("split_path"),
+            "Dataset/dataset_split.json",
+        )
         split_data = read_json(split_path)
-        paths.extend(voxel_dir / str(name) for name in split_data[args.split])
+        paths.extend(resolve_split_entry(body_root, voxel_dir, name) for name in split_data[args.split])
 
     if not paths:
         raise ValueError("No input cases selected. Use --input, --case-id, or --split.")
@@ -500,10 +550,9 @@ def resolve_case_paths(args: argparse.Namespace, body_root: Path) -> list[Path]:
     deduped: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
-        resolved = path if path.exists() else (body_root / path)
-        if resolved not in seen:
-            seen.add(resolved)
-            deduped.append(resolved)
+        if path not in seen:
+            seen.add(path)
+            deduped.append(path)
 
     if args.limit is not None:
         deduped = deduped[: args.limit]
@@ -639,6 +688,15 @@ def combined_label_volume(masks: np.ndarray) -> np.ndarray:
     return combined
 
 
+def padded_target_class_ids(targets: Sequence[Sequence[int]]) -> np.ndarray:
+    width = max((len(ids) for ids in targets), default=0)
+    encoded = np.full((len(targets), width), -1, dtype=np.int64)
+    for row, ids in enumerate(targets):
+        if ids:
+            encoded[row, : len(ids)] = [int(x) for x in ids]
+    return encoded
+
+
 def json_ready(value: Any) -> Any:
     if isinstance(value, np.ndarray):
         return value.tolist()
@@ -662,12 +720,19 @@ def save_case_outputs(
     case_dir.mkdir(parents=True, exist_ok=True)
 
     masks_original = restore_to_original_shape(masks_model, case["original_shape"])
+    prompt_target_ids = [target_class_ids(record, vocab) for record in prompt_records]
     payload: dict[str, Any] = {
         "pred_masks": masks_original.astype(np.uint8, copy=False),
         "prompt_texts": np.asarray([str(record["text"]) for record in prompt_records]),
         "prompt_ids": np.asarray([str(record["prompt_id"]) for record in prompt_records]),
+        "prompt_class_ids": np.asarray(
+            [int(record["class_id"]) if record.get("class_id") is not None else -1 for record in prompt_records],
+            dtype=np.int64,
+        ),
+        "prompt_target_class_ids": padded_target_class_ids(prompt_target_ids),
         "prompt_cache_indices": np.asarray([int(record["index"]) for record in prompt_records], dtype=np.int64),
         "threshold": np.asarray(args.threshold, dtype=np.float32),
+        "case_path": np.asarray(str(Path(case["case_path"]).resolve())),
         "original_shape": np.asarray(case["original_shape"], dtype=np.int64),
         "model_volume_size": np.asarray(masks_model.shape[-3:], dtype=np.int64),
     }
@@ -693,7 +758,7 @@ def save_case_outputs(
             "aggregate_id": record.get("aggregate_id"),
             "positive_voxels": int(masks_original[index].sum()),
         }
-        ids = target_class_ids(record, vocab)
+        ids = prompt_target_ids[index]
         if ids:
             summary["target_class_ids"] = ids
         if args.evaluate and case["labels"] is not None and ids:
@@ -731,8 +796,17 @@ def main() -> None:
 
     body_root = resolve_body_root(cfg["data"]["root"])
     volume_size = tuple(int(x) for x in cfg["data"]["volume_size"])
-    vocab_path = args.vocab or (body_root / "configs" / "label_vocab.json")
-    cache_path = args.embedding_cache or (body_root / "artifacts" / "text_embeddings" / "prompt_embeddings.pt")
+    data_cfg = cfg.get("data", {})
+    vocab_path = args.vocab or resolve_data_path(
+        body_root,
+        data_cfg.get("vocab_path"),
+        "configs/label_vocab.json",
+    )
+    cache_path = args.embedding_cache or resolve_data_path(
+        body_root,
+        data_cfg.get("embedding_cache_path"),
+        "artifacts/text_embeddings/prompt_embeddings.pt",
+    )
     vocab = load_label_vocab(vocab_path)
     cache_records = flatten_prompt_records(vocab)
     selected_records, missing_texts = select_prompt_records(args, vocab, cache_records)
@@ -743,7 +817,7 @@ def main() -> None:
         raise RuntimeError("CUDA device requested but torch.cuda.is_available() is false")
     torch.backends.cudnn.benchmark = device.type == "cuda"
 
-    case_paths = resolve_case_paths(args, body_root)
+    case_paths = resolve_case_paths(args, body_root, data_cfg)
     args.output.mkdir(parents=True, exist_ok=True)
 
     print(f"device={device}")

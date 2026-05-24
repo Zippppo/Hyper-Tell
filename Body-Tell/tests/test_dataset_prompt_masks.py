@@ -201,6 +201,75 @@ def test_prompt_dataset_loads_embedding_cache_once(tmp_path: Path, monkeypatch) 
     assert load_paths == [cache_path]
 
 
+def test_prompt_dataset_accepts_s2i_layout_with_explicit_paths(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    s2i_dir = root / "S2I-Dataset-70cls"
+    s2i_voxel_dir = s2i_dir / "data"
+    s2i_voxel_dir.mkdir(parents=True)
+
+    source_case = root / "Dataset" / "voxel_data" / "CASE_0001.npz"
+    with np.load(source_case) as data:
+        np.savez(
+            s2i_voxel_dir / "S2I_00001.npz",
+            **{key: data[key] for key in data.files},
+            format_version=np.array("1.0"),
+            label_schema_version=np.array("1.0"),
+        )
+
+    _write_json(
+        s2i_dir / "dataset_split.json",
+        {
+            "split_info": {
+                "seed": 7,
+                "data_directory": "S2I-Dataset-70cls/data",
+            },
+            "train": ["S2I_00001.npz"],
+            "val": [],
+            "test": [],
+        },
+    )
+    _write_json(
+        s2i_dir / "class_presence.json",
+        {
+            "version": "phase0-2026-05-20",
+            "num_cases": 1,
+            "num_classes": 4,
+            "shape_summary": {"recommended_volume_size": [4, 5, 6]},
+            "cases": {
+                "S2I_00001": {
+                    "filename": "S2I_00001.npz",
+                    "split": "train",
+                    "shape": [4, 5, 6],
+                    "present_class_ids": [0, 1, 2],
+                    "foreground_present_class_ids": [1, 2],
+                    "voxel_counts": {"0": 102, "1": 12, "2": 6},
+                }
+            },
+            "classes": {},
+        },
+    )
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+        voxel_dir="S2I-Dataset-70cls/data",
+        split_path="S2I-Dataset-70cls/dataset_split.json",
+        presence_path="S2I-Dataset-70cls/class_presence.json",
+    )
+
+    sample = dataset[0]
+
+    assert dataset.voxel_dir == s2i_voxel_dir
+    assert sample["case_id"] == "S2I_00001"
+    assert sample["case_path"].endswith("S2I-Dataset-70cls/data/S2I_00001.npz")
+    assert sample["prompt_ids"].tolist() == [1, 2, 3]
+    assert sample["target_empty"].tolist() == [False, False, True]
+
+
 def test_precomputed_prompt_index_preserves_sampling_order(tmp_path: Path) -> None:
     root = _make_tiny_body_tell_root(tmp_path)
     vocab = json.loads((root / "configs" / "label_vocab.json").read_text(encoding="utf-8"))

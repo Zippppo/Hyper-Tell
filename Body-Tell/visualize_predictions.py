@@ -1,37 +1,128 @@
 #!/usr/bin/env python3
 """
 Interactive visualization for Body-Tell predictions using Plotly.
-Generates an HTML file with 3D volume rendering and 2D slice views.
+Generates an HTML file with 3D volume rendering comparing predictions with ground truth.
 
 Usage:
 python Body-Tell/visualize_predictions.py \
---input Body-Tell/outputs/inference_demo/BDMAP_00000001/BDMAP_00000001_predictions.npz \
---original Body-Tell/Dataset/voxel_data/BDMAP_00000001.npz \
+--input Body-Tell/outputs/inference_s2i_smoke/S2I_00001/S2I_00001_predictions.npz \
+--original Body-Tell/S2I-Dataset-70cls/data/S2I_00001.npz \
 --opacity 0.4 \
---downsample-3d 3 \
---max-slices 40
+--downsample-3d 3
 
-Note: Higher downsample-3d and lower max-slices reduce file size significantly.
+Note: Higher downsample-3d reduces file size significantly.
 """
 
 import argparse
-import numpy as np
-from pathlib import Path
-import plotly.graph_objects as go
 import json
+import re
+from pathlib import Path
+
+import numpy as np
+import plotly.graph_objects as go
+
+
+ROOT = Path(__file__).resolve().parent
+
+
+def _to_python_str(value):
+    array = np.asarray(value)
+    if array.shape == ():
+        return str(array.item())
+    return str(value)
+
+
+def load_default_aggregate_targets():
+    """Load aggregate prompt target ids from the default vocabulary when available."""
+    vocab_path = ROOT / 'configs' / 'label_vocab.json'
+    if not vocab_path.exists():
+        return {}
+
+    with vocab_path.open('r', encoding='utf-8') as f:
+        vocab = json.load(f)
+
+    return {
+        str(aggregate['id']): [int(x) for x in aggregate.get('component_class_ids', [])]
+        for aggregate in vocab.get('aggregates', [])
+    }
+
+
+def normalize_target_class_ids(value):
+    """Convert stored target id arrays into a list of per-prompt class id lists."""
+    array = np.asarray(value)
+    if array.ndim == 0:
+        return [[int(array.item())]] if int(array.item()) >= 0 else [[]]
+    if array.ndim == 1:
+        return [[int(x)] if int(x) >= 0 else [] for x in array]
+
+    target_ids = []
+    for row in array:
+        target_ids.append([int(x) for x in np.ravel(row) if int(x) >= 0])
+    return target_ids
+
+
+def infer_target_class_ids(prompt_ids, aggregate_targets=None):
+    """Infer GT label ids for older prediction files that only stored prompt ids."""
+    aggregate_targets = aggregate_targets or load_default_aggregate_targets()
+    inferred = []
+
+    for prompt_id in prompt_ids:
+        text = _to_python_str(prompt_id)
+        class_match = re.match(r'^class_(\d+)_prompt_\d+$', text)
+        if class_match:
+            inferred.append([int(class_match.group(1))])
+            continue
+
+        if text.isdigit():
+            inferred.append([int(text)])
+            continue
+
+        aggregate_match = re.match(r'^(.+)_prompt_\d+$', text)
+        aggregate_id = aggregate_match.group(1) if aggregate_match else text
+        inferred.append(list(aggregate_targets.get(aggregate_id, [])))
+
+    return inferred
+
+
+def build_gt_mask(voxel_labels, target_ids):
+    """Build a GT mask from one or more integer voxel label ids."""
+    ids = [int(x) for x in target_ids if int(x) >= 0]
+    if not ids:
+        return np.zeros(voxel_labels.shape, dtype=np.float32)
+    if len(ids) == 1:
+        return (voxel_labels == ids[0]).astype(np.float32)
+    return np.isin(voxel_labels, ids).astype(np.float32)
 
 
 def load_predictions(npz_path):
     """Load prediction data from npz file."""
     data = np.load(npz_path)
+    prompt_ids = data['prompt_ids']
+    if 'prompt_target_class_ids' in data.files:
+        target_class_ids = normalize_target_class_ids(data['prompt_target_class_ids'])
+    elif 'target_class_ids' in data.files:
+        target_class_ids = normalize_target_class_ids(data['target_class_ids'])
+    elif 'prompt_class_ids' in data.files:
+        target_class_ids = normalize_target_class_ids(data['prompt_class_ids'])
+    else:
+        target_class_ids = infer_target_class_ids(prompt_ids)
+
+    pred_combined = (
+        data['pred_combined']
+        if 'pred_combined' in data.files
+        else np.zeros(data['pred_masks'].shape[1:], dtype=np.uint16)
+    )
+    case_path = _to_python_str(data['case_path']) if 'case_path' in data.files else None
     return {
         'pred_masks': data['pred_masks'],
-        'pred_combined': data['pred_combined'],
+        'pred_combined': pred_combined,
         'prompt_texts': data['prompt_texts'],
-        'prompt_ids': data['prompt_ids'],
+        'prompt_ids': prompt_ids,
+        'target_class_ids': target_class_ids,
         'threshold': float(data['threshold']),
         'voxel_size': data['grid_voxel_size'],
         'grid_world_min': data.get('grid_world_min', np.array([0., 0., 0.])),
+        'case_path': case_path,
     }
 
 
@@ -47,47 +138,81 @@ def load_original_data(original_npz_path):
     }
 
 
-def create_3d_visualization(pred_masks, prompt_texts, voxel_size, grid_world_min, original_data=None, opacity=0.3, downsample_factor=2):
-    """Create 3D isosurface visualization for each organ with optional body surface.
+def infer_case_id(input_path):
+    stem = input_path.stem
+    if stem.endswith('_predictions'):
+        return stem[:-len('_predictions')]
+    return input_path.parent.name
+
+
+def _candidate_roots(input_path):
+    roots = []
+    resolved = input_path.resolve()
+    for parent in resolved.parents:
+        if parent.name == ROOT.name or (parent / 'S2I-Dataset-70cls').exists() or (parent / 'Dataset').exists():
+            roots.append(parent)
+    roots.append(ROOT)
+
+    unique_roots = []
+    seen = set()
+    for root in roots:
+        if root not in seen:
+            seen.add(root)
+            unique_roots.append(root)
+    return unique_roots
+
+
+def find_original_data_path(input_path, pred_data):
+    """Find the original voxel file for GT overlays."""
+    case_path = pred_data.get('case_path')
+    if case_path:
+        for path in (Path(case_path), ROOT.parent / case_path, ROOT / case_path):
+            if path.exists():
+                return path
+
+    case_id = infer_case_id(input_path)
+    data_dirs = (
+        Path('S2I-Dataset-70cls') / 'data',
+        Path('Dataset') / 'voxel_data',
+    )
+    for root in _candidate_roots(input_path):
+        for data_dir in data_dirs:
+            candidate = root / data_dir / f'{case_id}.npz'
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def create_prediction_only_view(pred_masks, prompt_texts, voxel_size, grid_world_min, original_data=None, opacity=0.3, downsample_factor=2):
+    """Create 3D visualization showing only predictions.
 
     Args:
         downsample_factor: Factor to downsample 3D data (2 = 8x fewer points, 3 = 27x fewer)
     """
-    # Color palette for different organs (bright colors)
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
+    pred_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
 
     fig = go.Figure()
 
-    # Add body surface point cloud if available (light gray, semi-transparent)
-    # Downsample point cloud to reduce file size
+    # Add body surface point cloud if available
     if original_data is not None and 'sensor_pc' in original_data:
         sensor_pc = original_data['sensor_pc']
-        # Downsample to every Nth point
-        pc_downsample = max(1, len(sensor_pc) // 20000)  # Keep ~20k points max
+        pc_downsample = max(1, len(sensor_pc) // 20000)
         sensor_pc_sampled = sensor_pc[::pc_downsample]
         fig.add_trace(go.Scatter3d(
             x=sensor_pc_sampled[:, 0],
             y=sensor_pc_sampled[:, 1],
             z=sensor_pc_sampled[:, 2],
             mode='markers',
-            marker=dict(
-                size=1,
-                color='lightgray',
-                opacity=0.15,
-            ),
+            marker=dict(size=1, color='lightgray', opacity=0.15),
             name='Body Surface',
             hoverinfo='skip',
         ))
 
-    # Skip ground truth 3D visualization to save space
-    # (Ground truth is still shown in 2D slice viewers)
-
-    # Add predicted organ masks (bright, more opaque)
+    # Add predicted organ masks
     for i, (mask, organ_name) in enumerate(zip(pred_masks, prompt_texts)):
         if mask.sum() == 0:
             continue
 
-        # Downsample the mask to reduce data size
         if downsample_factor > 1:
             mask_downsampled = mask[::downsample_factor, ::downsample_factor, ::downsample_factor]
             voxel_size_downsampled = voxel_size * downsample_factor
@@ -95,7 +220,6 @@ def create_3d_visualization(pred_masks, prompt_texts, voxel_size, grid_world_min
             mask_downsampled = mask
             voxel_size_downsampled = voxel_size
 
-        # Convert voxel indices to real-world coordinates with proper origin offset
         X, Y, Z = np.mgrid[0:mask_downsampled.shape[0], 0:mask_downsampled.shape[1], 0:mask_downsampled.shape[2]]
         X = X * voxel_size_downsampled[0] + grid_world_min[0]
         Y = Y * voxel_size_downsampled[1] + grid_world_min[1]
@@ -110,176 +234,245 @@ def create_3d_visualization(pred_masks, prompt_texts, voxel_size, grid_world_min
             isomax=1.0,
             opacity=opacity,
             surface_count=1,
-            colorscale=[[0, colors[i % len(colors)]], [1, colors[i % len(colors)]]],
+            colorscale=[[0, pred_colors[i % len(pred_colors)]], [1, pred_colors[i % len(pred_colors)]]],
             showscale=False,
-            name=f'{organ_name} (predicted)',
+            name=organ_name,
             caps=dict(x_show=False, y_show=False, z_show=False),
         ))
 
     fig.update_layout(
-        title='3D Organ Segmentation (Predictions in Color)',
+        title='Predictions',
         scene=dict(
             xaxis_title='X (mm)',
             yaxis_title='Y (mm)',
             zaxis_title='Z (mm)',
             aspectmode='data',
-            camera=dict(
-                eye=dict(x=1.5, y=1.5, z=1.5)
-            )
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
         ),
         showlegend=True,
-        height=800,
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01
-        )
+        height=700,
+        margin=dict(l=0, r=0, t=40, b=0),
     )
 
     return fig
 
 
-def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None, axis='axial', organ_idx=0, max_slices=50):
-    """Create an interactive slice viewer for a single organ with slider for a specific axis.
+def create_gt_only_view(prompt_texts, target_class_ids, voxel_size, grid_world_min, original_data, opacity=0.3, downsample_factor=2):
+    """Create 3D visualization showing only ground truth.
 
     Args:
-        max_slices: Maximum number of slices to include (reduces file size)
+        downsample_factor: Factor to downsample 3D data (2 = 8x fewer points, 3 = 27x fewer)
     """
-    # Get the specific organ mask
-    organ_mask = pred_masks[organ_idx]
-    organ_name = prompt_texts[organ_idx]
+    gt_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
 
-    # Color for target organ (bright) and gray for others
-    target_color = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'][organ_idx % 5]
+    fig = go.Figure()
 
-    # Get ground truth if available
-    voxel_labels = original_data['voxel_labels'] if original_data is not None else None
+    if original_data is None or 'voxel_labels' not in original_data:
+        # No GT available
+        fig.add_annotation(
+            text="Ground Truth not available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=20, color="gray")
+        )
+        fig.update_layout(title='Ground Truth')
+        return fig
 
-    # Determine axis configuration
-    if axis == 'axial':
-        num_slices = organ_mask.shape[0]
-        axis_labels = ('Y (Coronal)', 'Z (Sagittal)')
-        title_prefix = 'Axial'
-    elif axis == 'sagittal':
-        num_slices = organ_mask.shape[1]
-        axis_labels = ('X (Axial)', 'Z (Sagittal)')
-        title_prefix = 'Sagittal'
-    else:  # coronal
-        num_slices = organ_mask.shape[2]
-        axis_labels = ('X (Axial)', 'Y (Coronal)')
-        title_prefix = 'Coronal'
+    voxel_labels = original_data['voxel_labels']
 
-    # Downsample slices if too many
-    slice_step = max(1, num_slices // max_slices)
-    slice_indices = list(range(0, num_slices, slice_step))
-
-    # Create frames for selected slices only
-    frames = []
-    for i in slice_indices:
-        if axis == 'axial':
-            organ_slice = organ_mask[i, :, :]
-            gt_slice = voxel_labels[i, :, :] if voxel_labels is not None else None
-        elif axis == 'sagittal':
-            organ_slice = organ_mask[:, i, :]
-            gt_slice = voxel_labels[:, i, :] if voxel_labels is not None else None
-        else:  # coronal
-            organ_slice = organ_mask[:, :, i]
-            gt_slice = voxel_labels[:, :, i] if voxel_labels is not None else None
-
-        # Create RGB image: target organ in color, GT in gray
-        h, w = organ_slice.shape
-        rgb_image = np.zeros((h, w, 3), dtype=np.uint8)
-
-        # Add ground truth in gray (background)
-        if gt_slice is not None:
-            gray_mask = (gt_slice > 0) & (organ_slice == 0)
-            rgb_image[gray_mask] = [128, 128, 128]
-
-        # Add target organ in bright color (foreground)
-        if target_color == '#FF6B6B':  # Red
-            rgb_image[organ_slice > 0] = [255, 107, 107]
-        elif target_color == '#4ECDC4':  # Cyan
-            rgb_image[organ_slice > 0] = [78, 205, 196]
-        elif target_color == '#45B7D1':  # Blue
-            rgb_image[organ_slice > 0] = [69, 183, 209]
-        elif target_color == '#FFA07A':  # Orange
-            rgb_image[organ_slice > 0] = [255, 160, 122]
-        else:  # Yellow
-            rgb_image[organ_slice > 0] = [152, 216, 200]
-
-        frames.append(go.Frame(
-            data=[go.Image(z=rgb_image)],
-            name=str(i)
+    # Add body surface point cloud if available
+    if 'sensor_pc' in original_data:
+        sensor_pc = original_data['sensor_pc']
+        pc_downsample = max(1, len(sensor_pc) // 20000)
+        sensor_pc_sampled = sensor_pc[::pc_downsample]
+        fig.add_trace(go.Scatter3d(
+            x=sensor_pc_sampled[:, 0],
+            y=sensor_pc_sampled[:, 1],
+            z=sensor_pc_sampled[:, 2],
+            mode='markers',
+            marker=dict(size=1, color='lightgray', opacity=0.15),
+            name='Body Surface',
+            hoverinfo='skip',
         ))
 
-    # Create initial figure with middle slice
-    mid_idx = len(slice_indices) // 2
-    initial_slice_idx = slice_indices[mid_idx]
-    if axis == 'axial':
-        initial_organ = organ_mask[initial_slice_idx, :, :]
-        initial_gt = voxel_labels[initial_slice_idx, :, :] if voxel_labels is not None else None
-    elif axis == 'sagittal':
-        initial_organ = organ_mask[:, initial_slice_idx, :]
-        initial_gt = voxel_labels[:, initial_slice_idx, :] if voxel_labels is not None else None
-    else:
-        initial_organ = organ_mask[:, :, initial_slice_idx]
-        initial_gt = voxel_labels[:, :, initial_slice_idx] if voxel_labels is not None else None
+    # Add GT organ masks
+    for i, (organ_name, target_ids) in enumerate(zip(prompt_texts, target_class_ids)):
+        gt_mask = build_gt_mask(voxel_labels, target_ids)
 
-    h, w = initial_organ.shape
-    initial_rgb = np.zeros((h, w, 3), dtype=np.uint8)
-    if initial_gt is not None:
-        gray_mask = (initial_gt > 0) & (initial_organ == 0)
-        initial_rgb[gray_mask] = [128, 128, 128]
+        if gt_mask.sum() == 0:
+            continue
 
-    if target_color == '#FF6B6B':
-        initial_rgb[initial_organ > 0] = [255, 107, 107]
-    elif target_color == '#4ECDC4':
-        initial_rgb[initial_organ > 0] = [78, 205, 196]
-    elif target_color == '#45B7D1':
-        initial_rgb[initial_organ > 0] = [69, 183, 209]
-    elif target_color == '#FFA07A':
-        initial_rgb[initial_organ > 0] = [255, 160, 122]
-    else:
-        initial_rgb[initial_organ > 0] = [152, 216, 200]
+        if downsample_factor > 1:
+            gt_mask_downsampled = gt_mask[::downsample_factor, ::downsample_factor, ::downsample_factor]
+            voxel_size_downsampled = voxel_size * downsample_factor
+        else:
+            gt_mask_downsampled = gt_mask
+            voxel_size_downsampled = voxel_size
 
-    fig = go.Figure(
-        data=[go.Image(z=initial_rgb)],
-        frames=frames
-    )
+        X, Y, Z = np.mgrid[0:gt_mask_downsampled.shape[0], 0:gt_mask_downsampled.shape[1], 0:gt_mask_downsampled.shape[2]]
+        X = X * voxel_size_downsampled[0] + grid_world_min[0]
+        Y = Y * voxel_size_downsampled[1] + grid_world_min[1]
+        Z = Z * voxel_size_downsampled[2] + grid_world_min[2]
 
-    # Add slider
-    sliders = [dict(
-        active=mid_idx,
-        yanchor="top",
-        y=0,
-        xanchor="left",
-        x=0.1,
-        currentvalue=dict(
-            prefix=f"{title_prefix} Slice: ",
-            visible=True,
-            xanchor="right"
-        ),
-        transition=dict(duration=0),
-        pad=dict(b=10, t=50),
-        len=0.8,
-        steps=[dict(
-            args=[[f.name], dict(
-                frame=dict(duration=0, redraw=True),
-                mode="immediate",
-                transition=dict(duration=0)
-            )],
-            method="animate",
-            label=str(slice_indices[k])
-        ) for k, f in enumerate(frames)]
-    )]
+        fig.add_trace(go.Isosurface(
+            x=X.flatten(),
+            y=Y.flatten(),
+            z=Z.flatten(),
+            value=gt_mask_downsampled.flatten(),
+            isomin=0.5,
+            isomax=1.0,
+            opacity=opacity,
+            surface_count=1,
+            colorscale=[[0, gt_colors[i % len(gt_colors)]], [1, gt_colors[i % len(gt_colors)]]],
+            showscale=False,
+            name=organ_name,
+            caps=dict(x_show=False, y_show=False, z_show=False),
+        ))
 
     fig.update_layout(
-        title=f'{organ_name} - {title_prefix} View (Target in color, others in gray)',
-        xaxis=dict(showticklabels=False, title=axis_labels[0]),
-        yaxis=dict(showticklabels=False, title=axis_labels[1], scaleanchor='x', scaleratio=1),
-        sliders=sliders,
-        height=600,
+        title='Ground Truth',
+        scene=dict(
+            xaxis_title='X (mm)',
+            yaxis_title='Y (mm)',
+            zaxis_title='Z (mm)',
+            aspectmode='data',
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+        ),
+        showlegend=True,
+        height=700,
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+
+    return fig
+
+
+def create_difference_view(pred_masks, prompt_texts, target_class_ids, voxel_size, grid_world_min, original_data, opacity=0.3, downsample_factor=2):
+    """Create 3D visualization showing prediction vs GT differences.
+
+    Shows three types of regions:
+    - Green: Correct predictions (TP - True Positive)
+    - Red: False positives (predicted but not in GT)
+    - Blue: False negatives (in GT but not predicted)
+    """
+    fig = go.Figure()
+
+    if original_data is None or 'voxel_labels' not in original_data:
+        # No GT available, just show a message
+        fig.add_annotation(
+            text="Ground Truth not available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=20, color="gray")
+        )
+        fig.update_layout(title='Prediction vs Ground Truth Difference')
+        return fig
+
+    voxel_labels = original_data['voxel_labels']
+
+    # Add body surface point cloud if available
+    if 'sensor_pc' in original_data:
+        sensor_pc = original_data['sensor_pc']
+        pc_downsample = max(1, len(sensor_pc) // 20000)
+        sensor_pc_sampled = sensor_pc[::pc_downsample]
+        fig.add_trace(go.Scatter3d(
+            x=sensor_pc_sampled[:, 0],
+            y=sensor_pc_sampled[:, 1],
+            z=sensor_pc_sampled[:, 2],
+            mode='markers',
+            marker=dict(size=1, color='lightgray', opacity=0.15),
+            name='Body Surface',
+            hoverinfo='skip',
+        ))
+
+    # Process each organ
+    for i, (pred_mask, organ_name, target_ids) in enumerate(zip(pred_masks, prompt_texts, target_class_ids)):
+        gt_mask = build_gt_mask(voxel_labels, target_ids)
+
+        # Calculate differences
+        tp_mask = (pred_mask > 0) & (gt_mask > 0)  # True Positive (correct)
+        fp_mask = (pred_mask > 0) & (gt_mask == 0)  # False Positive (over-segmentation)
+        fn_mask = (pred_mask == 0) & (gt_mask > 0)  # False Negative (under-segmentation)
+
+        # Downsample
+        if downsample_factor > 1:
+            tp_downsampled = tp_mask[::downsample_factor, ::downsample_factor, ::downsample_factor].astype(np.float32)
+            fp_downsampled = fp_mask[::downsample_factor, ::downsample_factor, ::downsample_factor].astype(np.float32)
+            fn_downsampled = fn_mask[::downsample_factor, ::downsample_factor, ::downsample_factor].astype(np.float32)
+            voxel_size_downsampled = voxel_size * downsample_factor
+        else:
+            tp_downsampled = tp_mask.astype(np.float32)
+            fp_downsampled = fp_mask.astype(np.float32)
+            fn_downsampled = fn_mask.astype(np.float32)
+            voxel_size_downsampled = voxel_size
+
+        X, Y, Z = np.mgrid[0:tp_downsampled.shape[0], 0:tp_downsampled.shape[1], 0:tp_downsampled.shape[2]]
+        X = X * voxel_size_downsampled[0] + grid_world_min[0]
+        Y = Y * voxel_size_downsampled[1] + grid_world_min[1]
+        Z = Z * voxel_size_downsampled[2] + grid_world_min[2]
+
+        # Add True Positives (green - correct predictions)
+        if tp_downsampled.sum() > 0:
+            fig.add_trace(go.Isosurface(
+                x=X.flatten(),
+                y=Y.flatten(),
+                z=Z.flatten(),
+                value=tp_downsampled.flatten(),
+                isomin=0.5,
+                isomax=1.0,
+                opacity=opacity * 0.7,
+                surface_count=1,
+                colorscale=[[0, '#00CC00'], [1, '#00CC00']],  # Green
+                showscale=False,
+                name=f'{organ_name} (Correct)',
+                caps=dict(x_show=False, y_show=False, z_show=False),
+            ))
+
+        # Add False Positives (red - over-segmentation)
+        if fp_downsampled.sum() > 0:
+            fig.add_trace(go.Isosurface(
+                x=X.flatten(),
+                y=Y.flatten(),
+                z=Z.flatten(),
+                value=fp_downsampled.flatten(),
+                isomin=0.5,
+                isomax=1.0,
+                opacity=opacity,
+                surface_count=1,
+                colorscale=[[0, '#FF0000'], [1, '#FF0000']],  # Red
+                showscale=False,
+                name=f'{organ_name} (False Pos)',
+                caps=dict(x_show=False, y_show=False, z_show=False),
+            ))
+
+        # Add False Negatives (blue - under-segmentation)
+        if fn_downsampled.sum() > 0:
+            fig.add_trace(go.Isosurface(
+                x=X.flatten(),
+                y=Y.flatten(),
+                z=Z.flatten(),
+                value=fn_downsampled.flatten(),
+                isomin=0.5,
+                isomax=1.0,
+                opacity=opacity,
+                surface_count=1,
+                colorscale=[[0, '#0000FF'], [1, '#0000FF']],  # Blue
+                showscale=False,
+                name=f'{organ_name} (False Neg)',
+                caps=dict(x_show=False, y_show=False, z_show=False),
+            ))
+
+    fig.update_layout(
+        title='Prediction vs GT Difference',
+        scene=dict(
+            xaxis_title='X (mm)',
+            yaxis_title='Y (mm)',
+            zaxis_title='Z (mm)',
+            aspectmode='data',
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+        ),
+        showlegend=True,
+        height=700,
+        margin=dict(l=0, r=0, t=40, b=0),
     )
 
     return fig
@@ -287,47 +480,36 @@ def create_interactive_slice_viewer(pred_masks, prompt_texts, original_data=None
 
 
 
-def create_combined_html(pred_data, original_data, output_path, opacity=0.3, downsample_3d=2, max_slices=50):
-    """Create a comprehensive HTML report with all visualizations."""
+
+
+def create_combined_html(pred_data, original_data, output_path, opacity=0.3, downsample_3d=2):
+    """Create HTML report with three side-by-side 3D visualizations."""
     pred_masks = pred_data['pred_masks']
     pred_combined = pred_data['pred_combined']
     prompt_texts = pred_data['prompt_texts']
+    target_class_ids = pred_data['target_class_ids']
     voxel_size = pred_data['voxel_size']
     grid_world_min = pred_data['grid_world_min']
 
-    # Create 3D visualization
-    fig_3d = create_3d_visualization(pred_masks, prompt_texts, voxel_size, grid_world_min, original_data, opacity, downsample_3d)
+    # Create all three visualizations
+    fig_pred = create_prediction_only_view(pred_masks, prompt_texts, voxel_size, grid_world_min, original_data, opacity, downsample_3d)
+    fig_gt = create_gt_only_view(prompt_texts, target_class_ids, voxel_size, grid_world_min, original_data, opacity, downsample_3d)
+    fig_diff = create_difference_view(pred_masks, prompt_texts, target_class_ids, voxel_size, grid_world_min, original_data, opacity, downsample_3d)
 
-    # Create interactive slice viewers for each organ and each axis
-    slice_viewers_html = []
-    for organ_idx, organ_name in enumerate(prompt_texts):
-        slice_viewers_html.append(f'<h3>{organ_name}</h3>')
-        slice_viewers_html.append('<div class="organ-slices">')
-
-        fig_axial = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='axial', organ_idx=organ_idx, max_slices=max_slices)
-        slice_viewers_html.append(fig_axial.to_html(full_html=False, include_plotlyjs='cdn'))
-
-        fig_sagittal = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='sagittal', organ_idx=organ_idx, max_slices=max_slices)
-        slice_viewers_html.append(fig_sagittal.to_html(full_html=False, include_plotlyjs='cdn'))
-
-        fig_coronal = create_interactive_slice_viewer(pred_masks, prompt_texts, original_data, axis='coronal', organ_idx=organ_idx, max_slices=max_slices)
-        slice_viewers_html.append(fig_coronal.to_html(full_html=False, include_plotlyjs='cdn'))
-
-        slice_viewers_html.append('</div>')
-
-    # Combine into single HTML
+    # Combine into single HTML with three-column layout
     html_parts = [
         '<html><head><title>Body-Tell Visualization</title>',
         '<meta charset="utf-8">',
         '<style>',
         'body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }',
         'h1 { color: #333; text-align: center; }',
-        'h2 { color: #555; border-bottom: 2px solid #4ECDC4; padding-bottom: 10px; }',
-        'h3 { color: #666; margin-top: 30px; }',
         '.info-box { background: white; padding: 15px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
-        '.viz-container { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
+        '.viz-container { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin: 20px 0; }',
+        '.viz-panel { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
         '.note { color: #666; font-style: italic; margin-top: 10px; }',
-        '.organ-slices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }',
+        '.legend-box { background: #f9f9f9; padding: 10px; margin: 10px 0; border-left: 4px solid #4ECDC4; }',
+        '.legend-item { margin: 5px 0; }',
+        '.color-indicator { display: inline-block; width: 15px; height: 15px; margin-right: 8px; vertical-align: middle; border: 1px solid #ccc; }',
         '</style>',
         '</head><body>',
         '<h1>Body-Tell Segmentation Results</h1>',
@@ -336,24 +518,27 @@ def create_combined_html(pred_data, original_data, output_path, opacity=0.3, dow
         f'<p><strong>Volume Shape:</strong> {pred_combined.shape}</p>',
         f'<p><strong>Threshold:</strong> {pred_data["threshold"]:.2f}</p>',
         f'<p><strong>Voxel Size:</strong> {voxel_size} mm</p>',
-        '<p class="note">Note: Target organ shown in color, other organs in gray. Ground truth (if available) also shown in gray.</p>',
+        '<div class="legend-box">',
+        '<p><strong>Difference View Legend:</strong></p>',
+        '<div class="legend-item"><span class="color-indicator" style="background-color: #00CC00;"></span>Green = Correct predictions (True Positive)</div>',
+        '<div class="legend-item"><span class="color-indicator" style="background-color: #FF0000;"></span>Red = False positives (over-segmentation)</div>',
+        '<div class="legend-item"><span class="color-indicator" style="background-color: #0000FF;"></span>Blue = False negatives (under-segmentation)</div>',
+        '</div>',
+        '<p class="note">Tip: Use mouse to rotate, zoom, and pan. Click legend items to show/hide specific organs.</p>',
         '</div>',
         '<div class="viz-container">',
-        '<h2>3D Volume Rendering</h2>',
-        f'<p>Interactive 3D view - use mouse to rotate, zoom, and pan. Downsampled by {downsample_3d}x for performance.</p>',
-        fig_3d.to_html(full_html=False, include_plotlyjs='cdn'),
+        '<div class="viz-panel">',
+        fig_pred.to_html(full_html=False, include_plotlyjs='cdn'),
         '</div>',
-        '<div class="viz-container">',
-        '<h2>Interactive Slice Viewers</h2>',
-        f'<p>Use the sliders to navigate through each plane (showing up to {max_slices} slices per axis). Each organ is shown separately with target organ in color and others in gray.</p>',
-    ]
-
-    html_parts.extend(slice_viewers_html)
-
-    html_parts.extend([
+        '<div class="viz-panel">',
+        fig_gt.to_html(full_html=False, include_plotlyjs='cdn'),
+        '</div>',
+        '<div class="viz-panel">',
+        fig_diff.to_html(full_html=False, include_plotlyjs='cdn'),
+        '</div>',
         '</div>',
         '</body></html>',
-    ])
+    ]
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(html_parts))
@@ -373,8 +558,6 @@ def main():
                         help='3D visualization opacity (0-1)')
     parser.add_argument('--downsample-3d', type=int, default=3,
                         help='Downsample factor for 3D view (2=8x smaller, 3=27x smaller, default=3)')
-    parser.add_argument('--max-slices', type=int, default=40,
-                        help='Maximum slices per axis in slice viewer (default=40)')
 
     args = parser.parse_args()
 
@@ -394,14 +577,8 @@ def main():
             print(f"Loading original data from: {original_path}")
             original_data = load_original_data(original_path)
     else:
-        # Try to auto-detect original data file
-        # Assume structure: Body-Tell/outputs/.../CASE_ID/CASE_ID_predictions.npz
-        # Original should be at: Body-Tell/Dataset/voxel_data/CASE_ID.npz
-        case_id = input_path.parent.name
-        body_tell_root = input_path.parents[2]  # Go up from outputs/inference_demo/CASE_ID
-        auto_original_path = body_tell_root / 'Dataset' / 'voxel_data' / f'{case_id}.npz'
-
-        if auto_original_path.exists():
+        auto_original_path = find_original_data_path(input_path, pred_data)
+        if auto_original_path is not None:
             print(f"Auto-detected original data: {auto_original_path}")
             original_data = load_original_data(auto_original_path)
         else:
@@ -415,7 +592,7 @@ def main():
 
     # Create visualization
     print("Creating visualizations...")
-    create_combined_html(pred_data, original_data, output_path, args.opacity, args.downsample_3d, args.max_slices)
+    create_combined_html(pred_data, original_data, output_path, args.opacity, args.downsample_3d)
 
     print(f"\n[DONE] Open the file in your browser:")
     print(f"   file://{output_path.absolute()}")

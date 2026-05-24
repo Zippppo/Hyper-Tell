@@ -133,14 +133,25 @@ def build_dataset(
 ) -> HyperBodyPromptDataset:
     dc = cfg["data"]
     volume_size = volume_size_override or tuple(dc["volume_size"])
-    return HyperBodyPromptDataset(
-        root=dc["root"],
-        split=split,
-        volume_size=volume_size,
-        num_positive=dc["num_positive"],
-        num_negative=dc["num_negative"],
-        min_voxels=dc.get("min_voxels", 1),
-    )
+    dataset_kwargs: dict[str, Any] = {
+        "root": dc["root"],
+        "split": split,
+        "volume_size": volume_size,
+        "num_positive": dc["num_positive"],
+        "num_negative": dc["num_negative"],
+        "min_voxels": dc.get("min_voxels", 1),
+    }
+    for key in (
+        "vocab_path",
+        "split_path",
+        "presence_path",
+        "voxel_dir",
+        "embedding_cache_path",
+        "strict_embedding_cache",
+    ):
+        if key in dc:
+            dataset_kwargs[key] = dc[key]
+    return HyperBodyPromptDataset(**dataset_kwargs)
 
 
 def build_loss(cfg: dict[str, Any]) -> PromptSegmentationLoss:

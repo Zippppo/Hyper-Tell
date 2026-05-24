@@ -174,10 +174,10 @@ def build_presence(args: argparse.Namespace) -> Dict[str, Any]:
 
     return {
         "version": VOCAB_VERSION,
-        "source_dataset_info": "Body-Tell/Dataset/dataset_info.json",
-        "source_split_file": "Body-Tell/Dataset/dataset_split.json",
-        "source_voxel_dir": "Body-Tell/Dataset/voxel_data",
-        "label_vocab": "Body-Tell/configs/label_vocab.json",
+        "source_dataset_info": str(args.dataset_info),
+        "source_split_file": str(args.split_file),
+        "source_voxel_dir": str(args.voxel_dir),
+        "label_vocab": str(args.vocab),
         "num_cases": num_cases,
         "num_classes": num_classes,
         "min_positive_voxels": int(args.min_positive_voxels),
@@ -236,4 +236,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
