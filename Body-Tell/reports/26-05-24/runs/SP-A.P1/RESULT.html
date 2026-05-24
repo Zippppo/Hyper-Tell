@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SP-A.P1 Result - Transformer Decoder Semantics</title>
+  <style>
+    body {
+      margin: 0;
+      color: #172033;
+      background: #f6f7f9;
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+    section {
+      background: #fff;
+      border: 1px solid #d9dee8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    p { margin: 8px 0; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 5px 0; }
+    code {
+      background: #f1f4f8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .meta { color: #5c6678; }
+    .ok { color: #187044; font-weight: 700; }
+    .warn { color: #8a5a00; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SP-A.P1 - Align transformer decoder semantics</h1>
+  <p class="meta">Date: 2026-05-24. Scope: transformer decoder behavior parity using SP-A.P0 golden-test material.</p>
+
+  <section>
+    <h2>Summary</h2>
+    <p>Aligned Body-Tell's active pre-norm transformer decoder path with VoxTell v1.1: the path now starts from <code>norm2</code> cross-attention and then runs <code>norm3</code> FFN, without executing self-attention. The self-attention module and <code>norm1</code> parameters remain present so checkpoint keys and shapes are preserved.</p>
+    <p>Changed Body-Tell model construction to use <code>activation="relu"</code> for the transformer decoder layer, matching VoxTell's default decoder activation.</p>
+  </section>
+
+  <section>
+    <h2>Files Changed</h2>
+    <ul>
+      <li><code>Body-Tell/body_tell/models/transformer.py</code> - removed self-attention execution from <code>TransformerDecoderLayer.forward_pre</code>.</li>
+      <li><code>Body-Tell/body_tell/models/voxtell_body_model.py</code> - switched transformer decoder layer activation from GELU to ReLU.</li>
+      <li><code>Body-Tell/tests/test_voxtell_transformer_compat.py</code> - converted the SP-A.P0 golden parity test from expected-fail to active pass/fail validation.</li>
+      <li><code>Body-Tell/reports/26-05-24/runs/SP-A.P1/RESULT.html</code> - this result report.</li>
+    </ul>
+    <p class="meta">Protected files <code>lead.html</code> and <code>workflow_manifest.yaml</code> were not edited for this task.</p>
+  </section>
+
+  <section>
+    <h2>Verification</h2>
+    <p>Command run:</p>
+    <pre><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_voxtell_transformer_compat.py</code></pre>
+    <p>Important output:</p>
+    <pre><code>platform linux -- Python 3.12.13, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/comp/csrkzhu/code/Hyper-Tell
+collected 1 item
+
+Body-Tell/tests/test_voxtell_transformer_compat.py .                     [100%]
+
+============================== 1 passed in 13.90s ==============================</code></pre>
+    <p>The golden test constructs both decoders with <code>dropout=0.0</code>, loads the VoxTell reference state dict into the Body-Tell decoder, and asserts output parity at <code>atol=1e-6</code>, <code>rtol=0.0</code>.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance Criteria</h2>
+    <ul>
+      <li><span class="ok">Pass</span> - Transformer compatibility tests pass with dropout disabled.</li>
+      <li><span class="ok">Pass</span> - No unrelated model refactor introduced; changes are limited to transformer decoder semantics and the decoder activation setting required by P1.</li>
+      <li><span class="ok">Pass</span> - <code>self_attn</code>, <code>norm1</code>, and their parameter names/shapes remain in the decoder layer for checkpoint compatibility.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Blockers And Risks</h2>
+    <p>No blockers.</p>
+    <p class="warn">Residual risk:</p>
+    <ul>
+      <li>The verification covers the transformer parity surface only. Encoder, decoder, projection, position encoding, and full VoxTell checkpoint loading remain assigned to later SP-A tasks.</li>
+      <li>The worktree already contained pre-existing changes in <code>lead.html</code>, <code>workflow_manifest.yaml</code>, and SP-A.P0 artifacts. They were left untouched.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Recommendation</h2>
+    <p><strong>ready_for_review</strong></p>
+  </section>
+</main>
+</body>
+</html>

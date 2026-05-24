@@ -1,0 +1,4751 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-A.P0 VoxTell Alignment Audit</title>
+  <style>
+    body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #17202a; background: #f6f8fa; }
+    main { max-width: 1160px; margin: 0 auto; padding: 32px 24px 56px; }
+    section { background: #fff; border: 1px solid #d8e0e7; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    h2 { margin: 0 0 10px; font-size: 20px; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+    th, td { border: 1px solid #d8e0e7; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef3f7; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { background: #edf3f7; border-radius: 4px; padding: 1px 4px; }
+    pre { overflow-x: auto; background: #111827; color: #f8fafc; border-radius: 8px; padding: 14px; }
+    .meta { color: #5d6875; }
+    .warn { border-left: 4px solid #9a4a17; background: #fff7ed; padding: 10px 12px; }
+    .ok { border-left: 4px solid #276749; background: #eef9f0; padding: 10px 12px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SP-A.P0 VoxTell Compatibility Baseline Audit</h1>
+    <p class="meta">Body config: <code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code>; VoxTell profile: <code>/home/comp/csrkzhu/code/Hyper-Tell/VoxTell/models-weight/voxtell/voxtell_v1.1</code>.</p>
+  </header>
+
+  <section>
+    <h2>Projection Shape Baseline</h2>
+    <p><strong>Body-Tell current</strong>: <code>num_heads=32</code>, actual fused projection stages <code>5</code> from configured <code>5</code>; prefix is <code>project_to_decoder_channels</code>.</p>
+    <table><thead><tr><th>Stage</th><th>Channels</th><th>Output dim</th><th>Final linear weight</th><th>Key</th></tr></thead><tbody><tr><td>0</td><td>32</td><td>32</td><td>(32, 2048)</td><td>project_to_decoder_channels.0.2</td></tr>
+<tr><td>1</td><td>64</td><td>2048</td><td>(2048, 2048)</td><td>project_to_decoder_channels.1.2</td></tr>
+<tr><td>2</td><td>128</td><td>4096</td><td>(4096, 2048)</td><td>project_to_decoder_channels.2.2</td></tr>
+<tr><td>3</td><td>256</td><td>8192</td><td>(8192, 2048)</td><td>project_to_decoder_channels.3.2</td></tr>
+<tr><td>4</td><td>320</td><td>10240</td><td>(10240, 2048)</td><td>project_to_decoder_channels.4.2</td></tr></tbody></table>
+    <p><strong>VoxTell source default</strong>: <code>num_heads=1</code>. This is the class default in <code>voxtell_model.py</code>, not necessarily the shipped v1.1 checkpoint profile.</p>
+    <table><thead><tr><th>Stage</th><th>Channels</th><th>Output dim</th><th>Final linear weight</th><th>Key</th></tr></thead><tbody><tr><td>0</td><td>32</td><td>32</td><td>(32, 432)</td><td>project_to_decoder_channels.0.2</td></tr>
+<tr><td>1</td><td>64</td><td>64</td><td>(64, 432)</td><td>project_to_decoder_channels.1.2</td></tr>
+<tr><td>2</td><td>128</td><td>128</td><td>(128, 432)</td><td>project_to_decoder_channels.2.2</td></tr>
+<tr><td>3</td><td>256</td><td>256</td><td>(256, 432)</td><td>project_to_decoder_channels.3.2</td></tr>
+<tr><td>4</td><td>320</td><td>320</td><td>(320, 432)</td><td>project_to_decoder_channels.4.2</td></tr></tbody></table>
+    <p><strong>VoxTell v1.1 checkpoint-derived</strong>: predictor override <code>num_heads=32</code>; checkpoint inferred <code>num_heads=32</code>; pos_embed shape <code>(1728, 1, 2048)</code>.</p>
+    <table><thead><tr><th>Stage</th><th>Channels</th><th>Output dim</th><th>Final linear weight</th><th>Key</th></tr></thead><tbody><tr><td>0</td><td>32</td><td>32</td><td>(32, 2048)</td><td>project_to_decoder_channels.0.2</td></tr>
+<tr><td>1</td><td>64</td><td>2048</td><td>(2048, 2048)</td><td>project_to_decoder_channels.1.2</td></tr>
+<tr><td>2</td><td>128</td><td>4096</td><td>(4096, 2048)</td><td>project_to_decoder_channels.2.2</td></tr>
+<tr><td>3</td><td>256</td><td>8192</td><td>(8192, 2048)</td><td>project_to_decoder_channels.3.2</td></tr>
+<tr><td>4</td><td>320</td><td>10240</td><td>(10240, 2048)</td><td>project_to_decoder_channels.4.2</td></tr></tbody></table>
+    <p class="warn">Audit finding: the model class default is <code>num_heads=1</code>, but the v1.1 predictor and checkpoint metadata use <code>num_heads=32</code>. P4/P6 should key off the actual checkpoint being loaded.</p>
+  </section>
+
+  <section>
+    <h2>Weight-Key Audit Input</h2>
+    <p>Current Body-Tell can only directly reuse same-name/same-shape subsets before SP-A architecture work. This table is a baseline input for P6, not a claim that current Body-Tell is already checkpoint-compatible.</p>
+    
+    <p>Same-name compatible current Body-Tell keys: <code>n/a</code>; shape mismatches: <code>n/a</code>; checkpoint keys unexpected to current Body-Tell: <code>n/a</code>.</p>
+  </section>
+
+  <section>
+    <h2>P6 Whitelist Input</h2>
+    <h3>Required exact skips</h3>
+    <table><thead><tr><th>Pattern</th><th>Reason</th></tr></thead><tbody><tr><td><code>pos_embed</code></td><td>Body-Tell current non-192^3 crop uses dynamic positional encoding.</td></tr></tbody></table>
+    <h3>Conditional skips</h3>
+    <table><thead><tr><th>Pattern</th><th>Reason</th></tr></thead><tbody><tr><td><code>project_to_decoder_channels.[1-4].*, decoder.transpconvs.[1-4].*, decoder.seg_layers.*</code></td><td>only apply if loading a checkpoint generated from the VoxTellModel source default num_heads=1 into a Body-Tell num_heads=32 model</td></tr></tbody></table>
+    <ul><li>checkpoint-derived num_heads matches Body-Tell current num_heads; do not skip project_to_decoder_channels.* or decoder mask-fusion keys for this reason</li></ul>
+  </section>
+
+  <section>
+    <h2>Machine-Readable Audit Payload</h2>
+    <pre>{
+  &quot;body&quot;: {
+    &quot;config_path&quot;: &quot;Body-Tell/configs/phase1_voxtell_aligned.yaml&quot;,
+    &quot;encoder_channels&quot;: [
+      32,
+      64,
+      128,
+      256,
+      320,
+      320
+    ],
+    &quot;fused_stage_count_actual&quot;: 5,
+    &quot;num_heads&quot;: 32,
+    &quot;num_maskformer_stages_config&quot;: 5,
+    &quot;projection_prefix&quot;: &quot;project_to_decoder_channels&quot;,
+    &quot;projection_rows&quot;: [
+      {
+        &quot;bias_shape&quot;: [
+          32
+        ],
+        &quot;channels&quot;: 32,
+        &quot;key&quot;: &quot;project_to_decoder_channels.0.2&quot;,
+        &quot;output_dim&quot;: 32,
+        &quot;stage&quot;: 0,
+        &quot;target_key&quot;: &quot;project_to_decoder_channels.0.2&quot;,
+        &quot;weight_shape&quot;: [
+          32,
+          2048
+        ]
+      },
+      {
+        &quot;bias_shape&quot;: [
+          2048
+        ],
+        &quot;channels&quot;: 64,
+        &quot;key&quot;: &quot;project_to_decoder_channels.1.2&quot;,
+        &quot;output_dim&quot;: 2048,
+        &quot;stage&quot;: 1,
+        &quot;target_key&quot;: &quot;project_to_decoder_channels.1.2&quot;,
+        &quot;weight_shape&quot;: [
+          2048,
+          2048
+        ]
+      },
+      {
+        &quot;bias_shape&quot;: [
+          4096
+        ],
+        &quot;channels&quot;: 128,
+        &quot;key&quot;: &quot;project_to_decoder_channels.2.2&quot;,
+        &quot;output_dim&quot;: 4096,
+        &quot;stage&quot;: 2,
+        &quot;target_key&quot;: &quot;project_to_decoder_channels.2.2&quot;,
+        &quot;weight_shape&quot;: [
+          4096,
+          2048
+        ]
+      },
+      {
+        &quot;bias_shape&quot;: [
+          8192
+        ],
+        &quot;channels&quot;: 256,
+        &quot;key&quot;: &quot;project_to_decoder_channels.3.2&quot;,
+        &quot;output_dim&quot;: 8192,
+        &quot;stage&quot;: 3,
+        &quot;target_key&quot;: &quot;project_to_decoder_channels.3.2&quot;,
+        &quot;weight_shape&quot;: [
+          8192,
+          2048
+        ]
+      },
+      {
+        &quot;bias_shape&quot;: [
+          10240
+        ],
+        &quot;channels&quot;: 320,
+        &quot;key&quot;: &quot;project_to_decoder_channels.4.2&quot;,
+        &quot;output_dim&quot;: 10240,
+        &quot;stage&quot;: 4,
+        &quot;target_key&quot;: &quot;project_to_decoder_channels.4.2&quot;,
+        &quot;weight_shape&quot;: [
+          10240,
+          2048
+        ]
+      }
+    ],
+    &quot;target_projection_prefix&quot;: &quot;project_to_decoder_channels&quot;
+  },
+  &quot;state_compare_current_body_vs_checkpoint&quot;: {
+    &quot;available&quot;: false
+  },
+  &quot;voxtell&quot;: {
+    &quot;checkpoint&quot;: {
+      &quot;available&quot;: true,
+      &quot;checkpoint_path&quot;: &quot;/home/comp/csrkzhu/code/Hyper-Tell/VoxTell/models-weight/voxtell/voxtell_v1.1/fold_0/checkpoint_final.pth&quot;,
+      &quot;key_count&quot;: 1095,
+      &quot;pos_embed_shape&quot;: [
+        1728,
+        1,
+        2048
+      ],
+      &quot;projection_rows&quot;: [
+        {
+          &quot;bias_shape&quot;: [
+            32
+          ],
+          &quot;channels&quot;: 32,
+          &quot;key&quot;: &quot;project_to_decoder_channels.0.2&quot;,
+          &quot;output_dim&quot;: 32,
+          &quot;stage&quot;: 0,
+          &quot;weight_shape&quot;: [
+            32,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            2048
+          ],
+          &quot;channels&quot;: 64,
+          &quot;key&quot;: &quot;project_to_decoder_channels.1.2&quot;,
+          &quot;output_dim&quot;: 2048,
+          &quot;stage&quot;: 1,
+          &quot;weight_shape&quot;: [
+            2048,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            4096
+          ],
+          &quot;channels&quot;: 128,
+          &quot;key&quot;: &quot;project_to_decoder_channels.2.2&quot;,
+          &quot;output_dim&quot;: 4096,
+          &quot;stage&quot;: 2,
+          &quot;weight_shape&quot;: [
+            4096,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            8192
+          ],
+          &quot;channels&quot;: 256,
+          &quot;key&quot;: &quot;project_to_decoder_channels.3.2&quot;,
+          &quot;output_dim&quot;: 8192,
+          &quot;stage&quot;: 3,
+          &quot;weight_shape&quot;: [
+            8192,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            10240
+          ],
+          &quot;channels&quot;: 320,
+          &quot;key&quot;: &quot;project_to_decoder_channels.4.2&quot;,
+          &quot;output_dim&quot;: 10240,
+          &quot;stage&quot;: 4,
+          &quot;weight_shape&quot;: [
+            10240,
+            2048
+          ]
+        }
+      ],
+      &quot;state_shapes&quot;: {
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.all_modules.0.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.conv.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.conv.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.norm.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv1.norm.weight&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.all_modules.0.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.conv.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.conv.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.norm.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.0.blocks.0.conv2.norm.weight&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.all_modules.0.weight&quot;: [
+          64,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.conv.weight&quot;: [
+          64,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv1.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.conv2.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          64,
+          32,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.skip.1.conv.weight&quot;: [
+          64,
+          32,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.skip.1.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.0.skip.1.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv1.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.1.conv2.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv1.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.1.blocks.2.conv2.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.all_modules.0.weight&quot;: [
+          128,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.conv.weight&quot;: [
+          128,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          128,
+          64,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.skip.1.conv.weight&quot;: [
+          128,
+          64,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.skip.1.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.0.skip.1.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.1.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.2.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.2.blocks.3.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.all_modules.0.weight&quot;: [
+          256,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.conv.weight&quot;: [
+          256,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          256,
+          128,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.skip.1.conv.weight&quot;: [
+          256,
+          128,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.skip.1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.0.skip.1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.1.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.2.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.3.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.4.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.3.blocks.5.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.all_modules.0.weight&quot;: [
+          320,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.conv.weight&quot;: [
+          320,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          320,
+          256,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.skip.1.conv.weight&quot;: [
+          320,
+          256,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.skip.1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.0.skip.1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.1.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.2.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.3.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.4.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.4.blocks.5.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.0.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.1.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.2.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.3.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.4.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stages.5.blocks.5.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.encoder.stem.convs.0.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stem.convs.0.all_modules.0.weight&quot;: [
+          32,
+          1,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stem.convs.0.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stem.convs.0.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stem.convs.0.conv.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stem.convs.0.conv.weight&quot;: [
+          32,
+          1,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.encoder.stem.convs.0.norm.bias&quot;: [
+          32
+        ],
+        &quot;decoder.encoder.stem.convs.0.norm.weight&quot;: [
+          32
+        ],
+        &quot;decoder.seg_layers.0.bias&quot;: [
+          1
+        ],
+        &quot;decoder.seg_layers.0.weight&quot;: [
+          1,
+          352,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.seg_layers.1.bias&quot;: [
+          1
+        ],
+        &quot;decoder.seg_layers.1.weight&quot;: [
+          1,
+          288,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.seg_layers.2.bias&quot;: [
+          1
+        ],
+        &quot;decoder.seg_layers.2.weight&quot;: [
+          1,
+          160,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.seg_layers.3.bias&quot;: [
+          1
+        ],
+        &quot;decoder.seg_layers.3.weight&quot;: [
+          1,
+          96,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.seg_layers.4.bias&quot;: [
+          1
+        ],
+        &quot;decoder.seg_layers.4.weight&quot;: [
+          1,
+          64,
+          1,
+          1,
+          1
+        ],
+        &quot;decoder.stages.0.convs.0.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.stages.0.convs.0.all_modules.0.weight&quot;: [
+          320,
+          640,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.0.convs.0.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;decoder.stages.0.convs.0.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;decoder.stages.0.convs.0.conv.bias&quot;: [
+          320
+        ],
+        &quot;decoder.stages.0.convs.0.conv.weight&quot;: [
+          320,
+          640,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.0.convs.0.norm.bias&quot;: [
+          320
+        ],
+        &quot;decoder.stages.0.convs.0.norm.weight&quot;: [
+          320
+        ],
+        &quot;decoder.stages.1.convs.0.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;decoder.stages.1.convs.0.all_modules.0.weight&quot;: [
+          256,
+          512,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.1.convs.0.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.stages.1.convs.0.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;decoder.stages.1.convs.0.conv.bias&quot;: [
+          256
+        ],
+        &quot;decoder.stages.1.convs.0.conv.weight&quot;: [
+          256,
+          512,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.1.convs.0.norm.bias&quot;: [
+          256
+        ],
+        &quot;decoder.stages.1.convs.0.norm.weight&quot;: [
+          256
+        ],
+        &quot;decoder.stages.2.convs.0.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;decoder.stages.2.convs.0.all_modules.0.weight&quot;: [
+          128,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.2.convs.0.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;decoder.stages.2.convs.0.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;decoder.stages.2.convs.0.conv.bias&quot;: [
+          128
+        ],
+        &quot;decoder.stages.2.convs.0.conv.weight&quot;: [
+          128,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.2.convs.0.norm.bias&quot;: [
+          128
+        ],
+        &quot;decoder.stages.2.convs.0.norm.weight&quot;: [
+          128
+        ],
+        &quot;decoder.stages.3.convs.0.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;decoder.stages.3.convs.0.all_modules.0.weight&quot;: [
+          64,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.3.convs.0.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;decoder.stages.3.convs.0.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;decoder.stages.3.convs.0.conv.bias&quot;: [
+          64
+        ],
+        &quot;decoder.stages.3.convs.0.conv.weight&quot;: [
+          64,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.3.convs.0.norm.bias&quot;: [
+          64
+        ],
+        &quot;decoder.stages.3.convs.0.norm.weight&quot;: [
+          64
+        ],
+        &quot;decoder.stages.4.convs.0.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;decoder.stages.4.convs.0.all_modules.0.weight&quot;: [
+          32,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.4.convs.0.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;decoder.stages.4.convs.0.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;decoder.stages.4.convs.0.conv.bias&quot;: [
+          32
+        ],
+        &quot;decoder.stages.4.convs.0.conv.weight&quot;: [
+          32,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;decoder.stages.4.convs.0.norm.bias&quot;: [
+          32
+        ],
+        &quot;decoder.stages.4.convs.0.norm.weight&quot;: [
+          32
+        ],
+        &quot;decoder.transpconvs.0.bias&quot;: [
+          320
+        ],
+        &quot;decoder.transpconvs.0.weight&quot;: [
+          320,
+          320,
+          2,
+          2,
+          2
+        ],
+        &quot;decoder.transpconvs.1.bias&quot;: [
+          256
+        ],
+        &quot;decoder.transpconvs.1.weight&quot;: [
+          352,
+          256,
+          2,
+          2,
+          2
+        ],
+        &quot;decoder.transpconvs.2.bias&quot;: [
+          128
+        ],
+        &quot;decoder.transpconvs.2.weight&quot;: [
+          288,
+          128,
+          2,
+          2,
+          2
+        ],
+        &quot;decoder.transpconvs.3.bias&quot;: [
+          64
+        ],
+        &quot;decoder.transpconvs.3.weight&quot;: [
+          160,
+          64,
+          2,
+          2,
+          2
+        ],
+        &quot;decoder.transpconvs.4.bias&quot;: [
+          32
+        ],
+        &quot;decoder.transpconvs.4.weight&quot;: [
+          96,
+          32,
+          2,
+          2,
+          2
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.all_modules.0.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.conv.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.conv.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.norm.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv1.norm.weight&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.all_modules.0.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.conv.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.conv.weight&quot;: [
+          32,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.norm.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stages.0.blocks.0.conv2.norm.weight&quot;: [
+          32
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.all_modules.0.weight&quot;: [
+          64,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.conv.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.conv.weight&quot;: [
+          64,
+          32,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv1.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.conv.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.conv2.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          64,
+          32,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.1.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.skip.1.conv.weight&quot;: [
+          64,
+          32,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.1.blocks.0.skip.1.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.0.skip.1.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.conv.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv1.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.conv.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.1.conv2.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.conv.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv1.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.all_modules.0.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.all_modules.0.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.all_modules.1.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.all_modules.1.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.conv.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.conv.weight&quot;: [
+          64,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.norm.bias&quot;: [
+          64
+        ],
+        &quot;encoder.stages.1.blocks.2.conv2.norm.weight&quot;: [
+          64
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.all_modules.0.weight&quot;: [
+          128,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.conv.weight&quot;: [
+          128,
+          64,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          128,
+          64,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.2.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.skip.1.conv.weight&quot;: [
+          128,
+          64,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.2.blocks.0.skip.1.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.0.skip.1.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.1.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.2.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv1.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.all_modules.0.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.all_modules.0.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.all_modules.1.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.all_modules.1.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.conv.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.conv.weight&quot;: [
+          128,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.norm.bias&quot;: [
+          128
+        ],
+        &quot;encoder.stages.2.blocks.3.conv2.norm.weight&quot;: [
+          128
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.all_modules.0.weight&quot;: [
+          256,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.conv.weight&quot;: [
+          256,
+          128,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          256,
+          128,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.3.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.skip.1.conv.weight&quot;: [
+          256,
+          128,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.3.blocks.0.skip.1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.0.skip.1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.1.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.2.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.3.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.4.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv1.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.all_modules.0.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.all_modules.0.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.all_modules.1.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.all_modules.1.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.conv.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.conv.weight&quot;: [
+          256,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.norm.bias&quot;: [
+          256
+        ],
+        &quot;encoder.stages.3.blocks.5.conv2.norm.weight&quot;: [
+          256
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.all_modules.0.weight&quot;: [
+          320,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.conv.weight&quot;: [
+          320,
+          256,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.skip.1.all_modules.0.weight&quot;: [
+          320,
+          256,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.4.blocks.0.skip.1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.skip.1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.skip.1.conv.weight&quot;: [
+          320,
+          256,
+          1,
+          1,
+          1
+        ],
+        &quot;encoder.stages.4.blocks.0.skip.1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.0.skip.1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.1.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.2.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.3.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.4.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.4.blocks.5.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.0.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.1.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.2.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.3.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.4.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv1.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.all_modules.0.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.all_modules.0.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.all_modules.1.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.all_modules.1.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.conv.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.conv.weight&quot;: [
+          320,
+          320,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.norm.bias&quot;: [
+          320
+        ],
+        &quot;encoder.stages.5.blocks.5.conv2.norm.weight&quot;: [
+          320
+        ],
+        &quot;encoder.stem.convs.0.all_modules.0.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stem.convs.0.all_modules.0.weight&quot;: [
+          32,
+          1,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stem.convs.0.all_modules.1.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stem.convs.0.all_modules.1.weight&quot;: [
+          32
+        ],
+        &quot;encoder.stem.convs.0.conv.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stem.convs.0.conv.weight&quot;: [
+          32,
+          1,
+          3,
+          3,
+          3
+        ],
+        &quot;encoder.stem.convs.0.norm.bias&quot;: [
+          32
+        ],
+        &quot;encoder.stem.convs.0.norm.weight&quot;: [
+          32
+        ],
+        &quot;pos_embed&quot;: [
+          1728,
+          1,
+          2048
+        ],
+        &quot;project_bottleneck_embed.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_bottleneck_embed.0.weight&quot;: [
+          2048,
+          320
+        ],
+        &quot;project_bottleneck_embed.2.bias&quot;: [
+          2048
+        ],
+        &quot;project_bottleneck_embed.2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_text_embed.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_text_embed.0.weight&quot;: [
+          2048,
+          2560
+        ],
+        &quot;project_text_embed.2.bias&quot;: [
+          2048
+        ],
+        &quot;project_text_embed.2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.0.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_to_decoder_channels.0.0.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.0.2.bias&quot;: [
+          32
+        ],
+        &quot;project_to_decoder_channels.0.2.weight&quot;: [
+          32,
+          2048
+        ],
+        &quot;project_to_decoder_channels.1.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_to_decoder_channels.1.0.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.1.2.bias&quot;: [
+          2048
+        ],
+        &quot;project_to_decoder_channels.1.2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.2.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_to_decoder_channels.2.0.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.2.2.bias&quot;: [
+          4096
+        ],
+        &quot;project_to_decoder_channels.2.2.weight&quot;: [
+          4096,
+          2048
+        ],
+        &quot;project_to_decoder_channels.3.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_to_decoder_channels.3.0.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.3.2.bias&quot;: [
+          8192
+        ],
+        &quot;project_to_decoder_channels.3.2.weight&quot;: [
+          8192,
+          2048
+        ],
+        &quot;project_to_decoder_channels.4.0.bias&quot;: [
+          2048
+        ],
+        &quot;project_to_decoder_channels.4.0.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;project_to_decoder_channels.4.2.bias&quot;: [
+          10240
+        ],
+        &quot;project_to_decoder_channels.4.2.weight&quot;: [
+          10240,
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.linear1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.linear1.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.linear2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.linear2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.multihead_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.0.multihead_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.multihead_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.multihead_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.norm1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.norm1.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.norm2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.norm2.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.norm3.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.norm3.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.self_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.0.self_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.self_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.0.self_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.linear1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.linear1.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.linear2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.linear2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.multihead_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.1.multihead_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.multihead_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.multihead_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.norm1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.norm1.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.norm2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.norm2.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.norm3.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.norm3.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.self_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.1.self_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.self_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.1.self_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.linear1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.linear1.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.linear2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.linear2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.multihead_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.2.multihead_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.multihead_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.multihead_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.norm1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.norm1.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.norm2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.norm2.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.norm3.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.norm3.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.self_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.2.self_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.self_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.2.self_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.linear1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.linear1.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.linear2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.linear2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.multihead_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.3.multihead_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.multihead_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.multihead_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.norm1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.norm1.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.norm2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.norm2.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.norm3.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.norm3.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.self_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.3.self_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.self_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.3.self_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.linear1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.linear1.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.linear2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.linear2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.multihead_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.4.multihead_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.multihead_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.multihead_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.norm1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.norm1.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.norm2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.norm2.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.norm3.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.norm3.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.self_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.4.self_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.self_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.4.self_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.linear1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.linear1.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.linear2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.linear2.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.multihead_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.5.multihead_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.multihead_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.multihead_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.norm1.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.norm1.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.norm2.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.norm2.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.norm3.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.norm3.weight&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.self_attn.in_proj_bias&quot;: [
+          6144
+        ],
+        &quot;transformer_decoder.layers.5.self_attn.in_proj_weight&quot;: [
+          6144,
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.self_attn.out_proj.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.layers.5.self_attn.out_proj.weight&quot;: [
+          2048,
+          2048
+        ],
+        &quot;transformer_decoder.norm.bias&quot;: [
+          2048
+        ],
+        &quot;transformer_decoder.norm.weight&quot;: [
+          2048
+        ]
+      }
+    },
+    &quot;checkpoint_num_heads&quot;: 32,
+    &quot;predictor_v1_1&quot;: {
+      &quot;hidden_dim&quot;: 2048,
+      &quot;num_heads&quot;: 32,
+      &quot;overrides&quot;: {
+        &quot;decoder_layer&quot;: 4,
+        &quot;deep_supervision&quot;: false,
+        &quot;input_channels&quot;: 1,
+        &quot;num_heads&quot;: 32,
+        &quot;num_maskformer_stages&quot;: 5,
+        &quot;project_to_decoder_hidden_dim&quot;: 2048,
+        &quot;query_dim&quot;: 2048,
+        &quot;text_embedding_dim&quot;: 2560
+      },
+      &quot;projection_rows&quot;: [
+        {
+          &quot;bias_shape&quot;: [
+            32
+          ],
+          &quot;channels&quot;: 32,
+          &quot;key&quot;: &quot;project_to_decoder_channels.0.2&quot;,
+          &quot;output_dim&quot;: 32,
+          &quot;stage&quot;: 0,
+          &quot;weight_shape&quot;: [
+            32,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            2048
+          ],
+          &quot;channels&quot;: 64,
+          &quot;key&quot;: &quot;project_to_decoder_channels.1.2&quot;,
+          &quot;output_dim&quot;: 2048,
+          &quot;stage&quot;: 1,
+          &quot;weight_shape&quot;: [
+            2048,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            4096
+          ],
+          &quot;channels&quot;: 128,
+          &quot;key&quot;: &quot;project_to_decoder_channels.2.2&quot;,
+          &quot;output_dim&quot;: 4096,
+          &quot;stage&quot;: 2,
+          &quot;weight_shape&quot;: [
+            4096,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            8192
+          ],
+          &quot;channels&quot;: 256,
+          &quot;key&quot;: &quot;project_to_decoder_channels.3.2&quot;,
+          &quot;output_dim&quot;: 8192,
+          &quot;stage&quot;: 3,
+          &quot;weight_shape&quot;: [
+            8192,
+            2048
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            10240
+          ],
+          &quot;channels&quot;: 320,
+          &quot;key&quot;: &quot;project_to_decoder_channels.4.2&quot;,
+          &quot;output_dim&quot;: 10240,
+          &quot;stage&quot;: 4,
+          &quot;weight_shape&quot;: [
+            10240,
+            2048
+          ]
+        }
+      ]
+    },
+    &quot;source_default&quot;: {
+      &quot;hidden_dim&quot;: 432,
+      &quot;num_heads&quot;: 1,
+      &quot;projection_rows&quot;: [
+        {
+          &quot;bias_shape&quot;: [
+            32
+          ],
+          &quot;channels&quot;: 32,
+          &quot;key&quot;: &quot;project_to_decoder_channels.0.2&quot;,
+          &quot;output_dim&quot;: 32,
+          &quot;stage&quot;: 0,
+          &quot;weight_shape&quot;: [
+            32,
+            432
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            64
+          ],
+          &quot;channels&quot;: 64,
+          &quot;key&quot;: &quot;project_to_decoder_channels.1.2&quot;,
+          &quot;output_dim&quot;: 64,
+          &quot;stage&quot;: 1,
+          &quot;weight_shape&quot;: [
+            64,
+            432
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            128
+          ],
+          &quot;channels&quot;: 128,
+          &quot;key&quot;: &quot;project_to_decoder_channels.2.2&quot;,
+          &quot;output_dim&quot;: 128,
+          &quot;stage&quot;: 2,
+          &quot;weight_shape&quot;: [
+            128,
+            432
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            256
+          ],
+          &quot;channels&quot;: 256,
+          &quot;key&quot;: &quot;project_to_decoder_channels.3.2&quot;,
+          &quot;output_dim&quot;: 256,
+          &quot;stage&quot;: 3,
+          &quot;weight_shape&quot;: [
+            256,
+            432
+          ]
+        },
+        {
+          &quot;bias_shape&quot;: [
+            320
+          ],
+          &quot;channels&quot;: 320,
+          &quot;key&quot;: &quot;project_to_decoder_channels.4.2&quot;,
+          &quot;output_dim&quot;: 320,
+          &quot;stage&quot;: 4,
+          &quot;weight_shape&quot;: [
+            320,
+            432
+          ]
+        }
+      ]
+    }
+  },
+  &quot;whitelist_input&quot;: {
+    &quot;body_num_heads&quot;: 32,
+    &quot;conditional_skip_patterns&quot;: [
+      {
+        &quot;pattern&quot;: &quot;project_to_decoder_channels.[1-4].*, decoder.transpconvs.[1-4].*, decoder.seg_layers.*&quot;,
+        &quot;reason&quot;: &quot;only apply if loading a checkpoint generated from the VoxTellModel source default num_heads=1 into a Body-Tell num_heads=32 model&quot;
+      }
+    ],
+    &quot;no_skip_notes&quot;: [
+      &quot;checkpoint-derived num_heads matches Body-Tell current num_heads; do not skip project_to_decoder_channels.* or decoder mask-fusion keys for this reason&quot;
+    ],
+    &quot;pos_embed_policy&quot;: &quot;dynamic_hwd&quot;,
+    &quot;required_exact_skip_patterns&quot;: [
+      {
+        &quot;pattern&quot;: &quot;pos_embed&quot;,
+        &quot;reason&quot;: &quot;Body-Tell current non-192^3 crop uses dynamic positional encoding.&quot;
+      }
+    ],
+    &quot;voxtell_checkpoint_num_heads&quot;: 32,
+    &quot;voxtell_source_default_num_heads&quot;: 1
+  }
+}</pre>
+  </section>
+</main>
+</body>
+</html>

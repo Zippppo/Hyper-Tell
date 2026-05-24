@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SP-A.P1 Review - Transformer Decoder Semantics</title>
+  <style>
+    body {
+      margin: 0;
+      color: #172033;
+      background: #f6f7f9;
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+    section {
+      background: #fff;
+      border: 1px solid #d9dee8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    p { margin: 8px 0; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 5px 0; }
+    code {
+      background: #f1f4f8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .meta { color: #5c6678; }
+    .verdict {
+      display: inline-block;
+      color: #fff;
+      background: #187044;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-weight: 700;
+    }
+    .ok { color: #187044; font-weight: 700; }
+    .risk { color: #8a5a00; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SP-A.P1 Review - Align Transformer Decoder Semantics</h1>
+  <p class="meta">Reviewer date: 2026-05-24. Reviewed worker result, source plan, relevant diff, and local verification output.</p>
+
+  <section>
+    <h2>Verdict</h2>
+    <p><span class="verdict">accept</span></p>
+    <p>The implementation satisfies the requested P1 acceptance criteria.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance Evidence</h2>
+    <ul>
+      <li><span class="ok">Pass</span> - Transformer compatibility tests pass with dropout disabled. The test constructs both the VoxTell reference decoder and Body-Tell decoder with <code>dropout=0.0</code>, <code>activation="relu"</code>, and <code>normalize_before=True</code>, loads the reference state dict into Body-Tell, and asserts output parity at <code>atol=1e-6</code>. Local verification passed.</li>
+      <li><span class="ok">Pass</span> - The active Body-Tell pre-norm path now starts at <code>norm2</code> cross-attention and then runs the <code>norm3</code> FFN, matching the VoxTell reference path. The removed execution is limited to the old self-attention block in <code>TransformerDecoderLayer.forward_pre</code>.</li>
+      <li><span class="ok">Pass</span> - No unrelated model refactor was introduced. <code>git diff --name-only -- Body-Tell/body_tell/models</code> lists only <code>Body-Tell/body_tell/models/transformer.py</code> and <code>Body-Tell/body_tell/models/voxtell_body_model.py</code>. The model diff is limited to dropping self-attention execution from the active pre-norm path and changing the model constructor activation from GELU to ReLU.</li>
+      <li><span class="ok">Pass</span> - Checkpoint-facing decoder parameters are preserved: <code>self_attn</code>, <code>norm1</code>, <code>norm2</code>, and <code>norm3</code> remain declared in the decoder layer, so the key surface is not narrowed by this patch.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Commands Run</h2>
+    <pre><code>sed -n '1,220p' Body-Tell/reports/26-05-24/runs/SP-A.P1/RESULT.html
+sed -n '286,322p' Body-Tell/reports/26-05-24/bodytell_voxtell_alignment_plan_2026-05-24.html
+git status --short
+git diff -- Body-Tell/body_tell/models/transformer.py Body-Tell/body_tell/models/voxtell_body_model.py
+git diff --name-only -- Body-Tell/body_tell/models
+git diff --check -- Body-Tell/body_tell/models/transformer.py Body-Tell/body_tell/models/voxtell_body_model.py Body-Tell/tests/test_voxtell_transformer_compat.py
+conda run -n voxtell python -m pytest Body-Tell/tests/test_voxtell_transformer_compat.py</code></pre>
+    <p>Important pytest output:</p>
+    <pre><code>platform linux -- Python 3.12.13, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/comp/csrkzhu/code/Hyper-Tell
+collected 1 item
+
+Body-Tell/tests/test_voxtell_transformer_compat.py .                     [100%]
+
+============================== 1 passed in 13.82s ==============================</code></pre>
+    <p>Important diff-scope output:</p>
+    <pre><code>git diff --name-only -- Body-Tell/body_tell/models
+Body-Tell/body_tell/models/transformer.py
+Body-Tell/body_tell/models/voxtell_body_model.py</code></pre>
+    <p><code>git diff --check</code> returned successfully with no whitespace errors.</p>
+  </section>
+
+  <section>
+    <h2>Required Fixes</h2>
+    <p>None.</p>
+  </section>
+
+  <section>
+    <h2>Residual Risk</h2>
+    <ul>
+      <li><span class="risk">Record</span> - This review confirms the requested small-decoder transformer parity test. It does not independently validate full VoxTell production checkpoint loading for every <code>transformer_decoder.*</code> key.</li>
+      <li><span class="risk">Record</span> - The worktree contains pre-existing dirty protected files and SP-A.P0 artifacts outside this review scope. They were not modified by this review.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
