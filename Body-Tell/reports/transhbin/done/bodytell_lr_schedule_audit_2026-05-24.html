@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell LR Schedule 审计报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #5d6678;
+      --line: #d9dee8;
+      --blue: #2159b6;
+      --red: #b3261e;
+      --amber: #8a5a00;
+      --green: #187044;
+      --code: #f0f3f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.62;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 36px 24px 56px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 22px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    p { margin: 8px 0; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      margin: 18px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 2px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #eef2f7;
+      font-weight: 650;
+    }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow: auto;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0; }
+    li { margin: 5px 0; }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .verdict {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+    .metric strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .metric span {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .bad { color: var(--red); }
+    .warn { color: var(--amber); }
+    .ok { color: var(--green); }
+    .note {
+      border-left: 4px solid var(--blue);
+      padding: 10px 12px;
+      background: #eef5ff;
+      border-radius: 4px;
+      margin-top: 12px;
+    }
+    .small { font-size: 13px; color: var(--muted); }
+    @media (max-width: 760px) {
+      main { padding: 24px 14px 40px; }
+      .verdict { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+      th, td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Body-Tell 训练 LR Schedule 审计报告</h1>
+      <p class="meta">日期：2026-05-24。范围：<code>Body-Tell/train.py</code>、<code>VoxTell/VoxTell.pdf</code>、<code>VoxTell/</code> 目录。根目录 <code>train.py</code> 已按要求忽略。</p>
+      <div class="verdict">
+        <div class="metric">
+          <strong>当前 Body-Tell LR 行为</strong>
+          <span class="bad">恒定</span>
+        </div>
+        <div class="metric">
+          <strong>VoxTell 论文要求</strong>
+          <span class="ok">Polynomial decay</span>
+        </div>
+        <div class="metric">
+          <strong>一致性判断</strong>
+          <span class="bad">不一致</span>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <h2>结论</h2>
+      <p>你看到训练过程中 LR 一直不变是当前实现的真实行为，不是 W&amp;B 或日志显示问题。<code>Body-Tell/train.py</code> 只创建了一个 <code>AdamW</code> optimizer，并在每个 epoch 记录 <code>optimizer.param_groups[0]["lr"]</code>，但没有创建任何 scheduler，也没有调用 <code>scheduler.step()</code>。</p>
+      <p>VoxTell 论文和补充材料写明训练使用 <code>SGD</code>、初始学习率 <code>1e-4</code>，并按 polynomial schedule 衰减。因此当前 Body-Tell 的训练设置与 VoxTell 原文存在两个差异：optimizer 不同，LR schedule 缺失。</p>
+    </section>
+
+    <section>
+      <h2>Body-Tell 代码证据</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>位置</th>
+            <th>发现</th>
+            <th>影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Body-Tell/train.py:314</code></td>
+            <td>CLI 参数 <code>--lr</code> 默认值为 <code>1e-4</code>。</td>
+            <td>只定义初始 LR，未定义衰减策略。</td>
+          </tr>
+          <tr>
+            <td><code>Body-Tell/train.py:428</code></td>
+            <td>optimizer 为 <code>torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)</code>。</td>
+            <td>与论文中的 <code>SGD</code> 不一致。</td>
+          </tr>
+          <tr>
+            <td><code>Body-Tell/train.py:438-445</code></td>
+            <td>epoch 循环只调用 <code>train_one_epoch(...)</code>。</td>
+            <td>训练阶段没有更新 LR 的调度器入口。</td>
+          </tr>
+          <tr>
+            <td><code>Body-Tell/train.py:448-452</code></td>
+            <td>W&amp;B payload 记录当前 <code>optimizer.param_groups[0]["lr"]</code>。</td>
+            <td>因为 optimizer 的 LR 从未被改写，日志中自然一直是同一个值。</td>
+          </tr>
+          <tr>
+            <td><code>Body-Tell/train.py</code> 全文件搜索</td>
+            <td>没有 <code>lr_scheduler</code>、<code>scheduler</code>、<code>PolynomialLR</code>、<code>LambdaLR</code> 或 <code>scheduler.step()</code>。</td>
+            <td>确认当前脚本没有 polynomial decay 实现。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>VoxTell 论文证据</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>来源</th>
+            <th>原文要点</th>
+            <th>对 Body-Tell 的含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>VoxTell/VoxTell.pdf</code> 第 5 页</td>
+            <td>正文训练设置写明：final model 使用 64 张 A100，batch size 128；优化器为 SGD，初始 LR 为 <code>1e-4</code>，并使用 polynomial decay。</td>
+            <td>LR 应随训练推进衰减，而不是固定在 <code>1e-4</code>。</td>
+          </tr>
+          <tr>
+            <td><code>VoxTell/VoxTell.pdf</code> 第 21 页，Supplementary A.1</td>
+            <td>补充材料进一步写明：每个模型训练 <code>2,000</code> epochs，约定每个 epoch <code>250</code> iterations，使用 SGD，初始 LR <code>1e-4</code>，按 polynomial schedule 衰减。</td>
+            <td>如果目标是复现 VoxTell 训练配置，Body-Tell 还缺少 nnU-Net 风格训练长度、iteration 约定、SGD 和 poly LR。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">PDF 文本没有在已检查段落中给出 polynomial 的指数参数。通常形式是 <code>lr = lr0 * (1 - progress / total_progress) ** power</code>，但具体 <code>power</code> 需要以原训练代码或 nnU-Net trainer 配置为准。</p>
+    </section>
+
+    <section>
+      <h2>VoxTell 目录检查</h2>
+      <p><code>VoxTell/</code> 当前仓库内容主要是推理包、模型定义和测试代码。没有发现训练入口、trainer、optimizer 构造或 LR scheduler 实现。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>位置</th>
+            <th>发现</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>VoxTell/pyproject.toml:61-62</code></td>
+            <td>只暴露 <code>voxtell-predict</code> 命令，没有训练命令。</td>
+          </tr>
+          <tr>
+            <td><code>VoxTell/readme.md:238-245</code></td>
+            <td>Roadmap 中 <code>Fine-Tuning</code> 仍是待办项，说明公开包未提供完整训练/微调脚本。</td>
+          </tr>
+          <tr>
+            <td><code>VoxTell/voxtell/model/voxtell_model.py</code></td>
+            <td>包含 VoxTell 模型和 decoder 实现，但没有 optimizer 或 scheduler。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>为什么 LR 会一直不变</h2>
+      <p>当前训练循环的有效逻辑可以简化为：</p>
+      <pre><code>optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
+
+for epoch in range(1, epochs + 1):
+    train_metrics = train_one_epoch(...)
+    payload["lr"] = optimizer.param_groups[0]["lr"]
+    wb_run.log(payload)</code></pre>
+      <p>其中 <code>train_one_epoch</code> 只执行 <code>optimizer.step()</code>，不会自动修改参数组里的 LR。PyTorch optimizer 的 <code>step()</code> 只按当前 LR 更新权重，除非外部 scheduler 或代码显式改写 <code>param_group["lr"]</code>，否则 LR 会保持初始化值。</p>
+    </section>
+
+    <section>
+      <h2>对齐建议</h2>
+      <ol>
+        <li>如果目标是严格靠近 VoxTell 论文：将 optimizer 从 <code>AdamW</code> 改为 <code>SGD</code>，初始 LR 保持 <code>1e-4</code>，并添加 polynomial decay。</li>
+        <li>如果目标是最小改动验证 schedule：可以先保留 <code>AdamW</code>，只添加 poly scheduler。但这只能解决 LR 恒定问题，仍不是论文同款优化器。</li>
+        <li>如果按论文的 nnU-Net 训练约定实现，schedule 的 <code>total_progress</code> 应按总 iteration 或等价的总 epoch 处理，并明确是否每个 batch 调一次 <code>scheduler.step()</code>。</li>
+        <li>新增 W&amp;B 记录时，建议同时记录 <code>lr</code> 和 <code>optimizer</code>/<code>scheduler</code> 配置，避免后续只看到曲线而不清楚训练策略。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>最终判定</h2>
+      <p><strong>当前 <code>Body-Tell/train.py</code> 没有实现 VoxTell 论文中描述的 polynomial learning-rate decay。</strong> 你观察到 LR 不变，原因是训练脚本没有 scheduler；同时当前使用 <code>AdamW</code> 也与论文里的 <code>SGD</code> 不一致。</p>
+      <p class="small">本报告仅新增审计文档，未修改训练代码。</p>
+    </section>
+  </main>
+</body>
+</html>

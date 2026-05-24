@@ -1,0 +1,492 @@
+{
+  "source_voxel_dir": "Body-Tell/S2I-Dataset-70cls/data",
+  "selection": {
+    "split_file": "Body-Tell/S2I-Dataset-70cls/dataset_split.json",
+    "selected_splits": [
+      "train"
+    ],
+    "declared_count": 10070,
+    "missing_count": 0,
+    "missing_files_preview": []
+  },
+  "array_key": "voxel_labels",
+  "measurement_scope": {
+    "shape_source": "voxel_labels.npy header inside each .npz",
+    "measures": "native stored voxel grid extents used as the shared grid for labels and sensor-point occupancy",
+    "training_semantics": "Body-Tell voxelizes sensor_pc into voxel_labels.shape, then applies the same volume_size crop/pad to voxel_labels and occupancy.",
+    "does_not_measure": [
+      "tight bounding box of nonzero anatomical label voxels",
+      "tight bounding box of sensor_pc/body-surface points",
+      "union tight bounding box of labels and body surface points"
+    ]
+  },
+  "num_cases": 10070,
+  "quantiles": [
+    0.9,
+    0.95,
+    0.975,
+    0.99,
+    1.0
+  ],
+  "joint_coverages": [
+    0.95,
+    0.99,
+    1.0
+  ],
+  "axis_summary": {
+    "D": {
+      "min": 22,
+      "max": 164,
+      "mean": 100.87636544190666,
+      "median": 101.0,
+      "quantiles": {
+        "0.9": 119,
+        "0.95": 125,
+        "0.975": 128,
+        "0.99": 129,
+        "1.0": 164
+      }
+    },
+    "H": {
+      "min": 31,
+      "max": 129,
+      "mean": 74.91787487586892,
+      "median": 74.0,
+      "quantiles": {
+        "0.9": 92,
+        "0.95": 98,
+        "0.975": 102,
+        "0.99": 107,
+        "1.0": 129
+      }
+    },
+    "W": {
+      "min": 15,
+      "max": 256,
+      "mean": 117.12552135054618,
+      "median": 119.0,
+      "quantiles": {
+        "0.9": 171,
+        "0.95": 217,
+        "0.975": 243,
+        "0.99": 256,
+        "1.0": 256
+      }
+    }
+  },
+  "axis_quantile_boxes": [
+    {
+      "shape": [
+        119,
+        92,
+        171
+      ],
+      "volume": 1872108,
+      "axis_coverage": [
+        0.9066534260178749,
+        0.9,
+        0.9012909632571996
+      ],
+      "joint_coverage": 0.8015888778550149,
+      "cropped_case_count": 1998,
+      "mean_padding_fraction": 0.5332155743168544,
+      "mean_crop_fraction": 0.0302425957242903,
+      "mean_crop_fraction_cropped_only": 0.1524238933651668,
+      "retained_source_volume_fraction": 0.9280841658720494,
+      "quantile": 0.9
+    },
+    {
+      "shape": [
+        125,
+        98,
+        217
+      ],
+      "volume": 2658250,
+      "axis_coverage": [
+        0.9559086395233366,
+        0.9543197616683218,
+        0.9534260178748759
+      ],
+      "joint_coverage": 0.8936444885799404,
+      "cropped_case_count": 1071,
+      "mean_padding_fraction": 0.6532732750180692,
+      "mean_crop_fraction": 0.008254819473406203,
+      "mean_crop_fraction_cropped_only": 0.07761534276115824,
+      "retained_source_volume_fraction": 0.9788660063193028,
+      "quantile": 0.95
+    },
+    {
+      "shape": [
+        128,
+        102,
+        243
+      ],
+      "volume": 3172608,
+      "axis_coverage": [
+        0.9778550148957299,
+        0.9783515392254221,
+        0.9752730883813306
+      ],
+      "joint_coverage": 0.9400198609731877,
+      "cropped_case_count": 604,
+      "mean_padding_fraction": 0.7049359482788359,
+      "mean_crop_fraction": 0.002239721328766837,
+      "mean_crop_fraction_cropped_only": 0.037341049305764984,
+      "retained_source_volume_fraction": 0.9941978587688947,
+      "quantile": 0.975
+    },
+    {
+      "shape": [
+        129,
+        107,
+        256
+      ],
+      "volume": 3533568,
+      "axis_coverage": [
+        0.9978152929493546,
+        0.9915590863952334,
+        1.0
+      ],
+      "joint_coverage": 0.9894736842105263,
+      "cropped_case_count": 106,
+      "mean_padding_fraction": 0.7339195063810103,
+      "mean_crop_fraction": 0.0005461929149733965,
+      "mean_crop_fraction_cropped_only": 0.05188832692247266,
+      "retained_source_volume_fraction": 0.9985426000975456,
+      "quantile": 0.99
+    },
+    {
+      "shape": [
+        164,
+        129,
+        256
+      ],
+      "volume": 5415936,
+      "axis_coverage": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "joint_coverage": 1.0,
+      "cropped_case_count": 0,
+      "mean_padding_fraction": 0.8261453265498244,
+      "mean_crop_fraction": 0.0,
+      "mean_crop_fraction_cropped_only": 0.0,
+      "retained_source_volume_fraction": 1.0,
+      "quantile": 1.0
+    }
+  ],
+  "joint_optimized_boxes": [
+    {
+      "shape": [
+        129,
+        103,
+        231
+      ],
+      "volume": 3069297,
+      "axis_coverage": [
+        0.9978152929493546,
+        0.9819265143992055,
+        0.9646474677259186
+      ],
+      "joint_coverage": 0.9501489572989077,
+      "cropped_case_count": 502,
+      "mean_padding_fraction": 0.6960437790541493,
+      "mean_crop_fraction": 0.0033560321363628716,
+      "mean_crop_fraction_cropped_only": 0.06732120241668149,
+      "retained_source_volume_fraction": 0.9908092626639365,
+      "target_coverage": 0.95,
+      "required_cases": 9567
+    },
+    {
+      "shape": [
+        129,
+        108,
+        256
+      ],
+      "volume": 3566592,
+      "axis_coverage": [
+        0.9978152929493546,
+        0.9932472691161867,
+        1.0
+      ],
+      "joint_coverage": 0.9911618669314797,
+      "cropped_case_count": 89,
+      "mean_padding_fraction": 0.7363338773779852,
+      "mean_crop_fraction": 0.00047133931447159805,
+      "mean_crop_fraction_cropped_only": 0.05333018985088755,
+      "retained_source_volume_fraction": 0.9987294826326146,
+      "target_coverage": 0.99,
+      "required_cases": 9970
+    },
+    {
+      "shape": [
+        164,
+        129,
+        256
+      ],
+      "volume": 5415936,
+      "axis_coverage": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "joint_coverage": 1.0,
+      "cropped_case_count": 0,
+      "mean_padding_fraction": 0.8261453265498244,
+      "mean_crop_fraction": 0.0,
+      "mean_crop_fraction_cropped_only": 0.0,
+      "retained_source_volume_fraction": 1.0,
+      "target_coverage": 1.0,
+      "required_cases": 10070
+    }
+  ],
+  "reference_shapes": [
+    {
+      "shape": [
+        164,
+        129,
+        256
+      ],
+      "volume": 5415936,
+      "axis_coverage": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "joint_coverage": 1.0,
+      "cropped_case_count": 0,
+      "mean_padding_fraction": 0.8261453265498244,
+      "mean_crop_fraction": 0.0,
+      "mean_crop_fraction_cropped_only": 0.0,
+      "retained_source_volume_fraction": 1.0,
+      "label": "current_config"
+    },
+    {
+      "shape": [
+        144,
+        129,
+        256
+      ],
+      "volume": 4755456,
+      "axis_coverage": [
+        0.9996027805362463,
+        1.0,
+        1.0
+      ],
+      "joint_coverage": 0.9996027805362463,
+      "cropped_case_count": 4,
+      "mean_padding_fraction": 0.8020144396554143,
+      "mean_crop_fraction": 2.3284347473778177e-05,
+      "mean_crop_fraction_cropped_only": 0.05861834476523656,
+      "retained_source_volume_fraction": 0.9999212351606902,
+      "label": "previous_config"
+    }
+  ],
+  "top_shapes": [
+    {
+      "shape": [
+        95,
+        72,
+        61
+      ],
+      "count": 4,
+      "fraction": 0.00039721946375372393,
+      "volume": 417240
+    },
+    {
+      "shape": [
+        94,
+        62,
+        131
+      ],
+      "count": 4,
+      "fraction": 0.00039721946375372393,
+      "volume": 763468
+    },
+    {
+      "shape": [
+        94,
+        73,
+        65
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 446030
+    },
+    {
+      "shape": [
+        99,
+        76,
+        126
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 948024
+    },
+    {
+      "shape": [
+        93,
+        66,
+        83
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 509454
+    },
+    {
+      "shape": [
+        104,
+        77,
+        114
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 912912
+    },
+    {
+      "shape": [
+        102,
+        78,
+        75
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 596700
+    },
+    {
+      "shape": [
+        104,
+        67,
+        109
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 759512
+    },
+    {
+      "shape": [
+        91,
+        70,
+        110
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 700700
+    },
+    {
+      "shape": [
+        97,
+        71,
+        116
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 798892
+    },
+    {
+      "shape": [
+        105,
+        67,
+        135
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 949725
+    },
+    {
+      "shape": [
+        104,
+        75,
+        128
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 998400
+    },
+    {
+      "shape": [
+        106,
+        76,
+        130
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 1047280
+    },
+    {
+      "shape": [
+        94,
+        72,
+        110
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 744480
+    },
+    {
+      "shape": [
+        120,
+        68,
+        146
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 1191360
+    },
+    {
+      "shape": [
+        102,
+        71,
+        127
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 919734
+    },
+    {
+      "shape": [
+        88,
+        61,
+        129
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 692472
+    },
+    {
+      "shape": [
+        97,
+        79,
+        122
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 934886
+    },
+    {
+      "shape": [
+        99,
+        65,
+        126
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 810810
+    },
+    {
+      "shape": [
+        95,
+        75,
+        71
+      ],
+      "count": 3,
+      "fraction": 0.00029791459781529296,
+      "volume": 505875
+    }
+  ],
+  "records": [],
+  "warnings": [],
+  "warning_count": 0,
+  "elapsed_seconds": 18.6568124294281
+}

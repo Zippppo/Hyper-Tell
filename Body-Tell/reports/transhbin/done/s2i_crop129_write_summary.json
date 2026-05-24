@@ -1,0 +1,37 @@
+{
+  "axis_crop_after": [
+    115,
+    239,
+    0
+  ],
+  "axis_crop_before": [
+    97,
+    193,
+    0
+  ],
+  "axis_pad_after": [
+    158620,
+    186033,
+    771695
+  ],
+  "axis_pad_before": [
+    153035,
+    180551,
+    766221
+  ],
+  "cropped_files": 96,
+  "estimated_label_bytes": 39482173440,
+  "full_coverage_files": 10974,
+  "full_coverage_fraction": 0.9913279132791328,
+  "input_bytes": 6945902031,
+  "kept_sensor_points": 605468160,
+  "output_bytes": 7389437936,
+  "padded_files": 11069,
+  "source_sensor_points": 605903872,
+  "target_shape": [
+    129,
+    108,
+    256
+  ],
+  "total_files": 11070
+}
