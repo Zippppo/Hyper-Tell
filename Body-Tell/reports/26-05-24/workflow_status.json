@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-05-25T07:25:06+00:00",
+  "generated_at": "2026-05-25T08:19:06+00:00",
   "source_manifest": "Body-Tell/reports/26-05-24/workflow_manifest.yaml",
   "lead_safe": true,
   "rule": "Leader agents must use this compact status and must not tail events.jsonl or review-events.jsonl.",
@@ -18,13 +18,13 @@
     "updated_at": "2026-05-25T07:18:49.911813+00:00",
     "last_note": "SP-A.P5-P6-lite accepted after current review recorded phase1 Slurm gate job 37779 as COMPLETED with exit code 0:0. Phase1 Slurm gate ver...",
     "result": {
-      "path": "Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/RESULT.html",
+      "path": "Body-Tell/reports/26-05-24/runs/archive/SP-A.P5-P6-lite/RESULT.html",
       "exists": true,
       "bytes": 9959,
       "modified_at": "2026-05-25T05:59:50+00:00"
     },
     "review": {
-      "path": "Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/REVIEW.html",
+      "path": "Body-Tell/reports/26-05-24/runs/archive/SP-A.P5-P6-lite/REVIEW.html",
       "exists": true,
       "bytes": 5372,
       "modified_at": "2026-05-25T07:18:34+00:00"

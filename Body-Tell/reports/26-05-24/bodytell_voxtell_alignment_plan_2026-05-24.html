@@ -212,37 +212,37 @@
             <td>Transformer decoder</td>
             <td><span class="tag ok">已修复</span> 构造层显式使用 <code>activation="relu"</code>；active <code>forward_pre</code> 只执行 <code>norm2</code> cross-attention 和 <code>norm3</code> FFN，保留 self-attention 参数但不在 pre-norm path 执行。</td>
             <td>P6-lite 唯一加载目标。fresh audit 显示 <code>transformer_decoder.*</code> 110 个 tensor、251,858,944 参数，0 missing / unexpected / shape mismatch；小模型 shared-weight parity test 通过 <code>atol=1e-6</code>。</td>
-            <td><code>body_tell/models/voxtell_body_model.py:78</code>、<code>body_tell/models/transformer.py:137</code>、<code>tests/test_voxtell_transformer_compat.py:66</code>、<code>runs/SP-A.P5-P6-lite/REVIEW.html</code></td>
+            <td><code>body_tell/models/voxtell_body_model.py:78</code>、<code>body_tell/models/transformer.py:137</code>、<code>tests/test_voxtell_transformer_compat.py:66</code>、<code>runs/archive/SP-A.P5-P6-lite/REVIEW.html</code></td>
           </tr>
           <tr>
             <td>Encoder backbone</td>
             <td><span class="tag ok">aligned 路径已实现</span> 新增 <code>backbone="residual_encoder"</code>，aligned config 使用 6-stage <code>ResidualEncoder</code>，channels 为 <code>[32,64,128,256,320,320]</code>，blocks 为 <code>[1,3,4,6,6,6]</code>，并保持 legacy conv 路径可用。</td>
             <td>P6-lite 不加载 <code>encoder.*</code>。fresh audit 证明当前同名 checkpoint state 覆盖可审计，但 encoder 权重复用仍属于 full/full-minus-pos_embed 后续实验，不作为 P6-lite 完成条件。</td>
-            <td><code>body_tell/models/voxtell_body_model.py:116</code>、<code>:247</code>、<code>configs/phase1_voxtell_aligned.yaml:5</code>、<code>runs/SP-A.P2/REVIEW.html</code></td>
+            <td><code>body_tell/models/voxtell_body_model.py:116</code>、<code>:247</code>、<code>configs/phase1_voxtell_aligned.yaml:5</code>、<code>runs/archive/SP-A.P2/REVIEW.html</code></td>
           </tr>
           <tr>
             <td>Mask projections（含 <code>num_heads</code>）</td>
             <td><span class="tag ok">已对齐 checkpoint profile</span> 模块改名为 <code>project_to_decoder_channels</code>；aligned config 下恢复 5 个 projection stage；保留 <code>num_heads=32</code>，与 v1.1 predictor/checkpoint profile 一致。源码默认 <code>num_heads=1</code> 只作为条件风险记录。</td>
             <td>P6-lite loader 明确排除 projectors 和 decoder mask-fusion 权重。后续如做 full checkpoint 复用，应继续以实际 checkpoint audit 为准；当前 fresh audit 输出 projection dims <code>[32, 2048, 4096, 8192, 10240]</code>。</td>
-            <td><code>body_tell/models/voxtell_body_model.py:92</code>、<code>configs/phase1_voxtell_aligned.yaml:19</code>、<code>tests/test_model_shapes.py:381</code>、<code>runs/SP-A.P4/audit_projection_after_p4.html</code></td>
+            <td><code>body_tell/models/voxtell_body_model.py:92</code>、<code>configs/phase1_voxtell_aligned.yaml:19</code>、<code>tests/test_model_shapes.py:381</code>、<code>runs/archive/SP-A.P4/audit_projection_after_p4.html</code></td>
           </tr>
           <tr>
             <td>Decoder</td>
             <td><span class="tag ok">已替换</span> 当前实现使用 <code>VoxTellDecoder</code>，包含 <code>stages</code>、<code>transpconvs</code>、always-built <code>seg_layers</code>，并从 encoder 继承 conv/norm/nonlin/dropout/bias policy。stride 不兼容时显式报错，不再静默插值。</td>
             <td>P6-lite 不加载 <code>decoder.*</code>。5-stage decoder、deep-supervision 输出、<code>seg_layers</code> 保留和 stride mismatch 均有单测覆盖。</td>
-            <td><code>body_tell/models/voxtell_body_model.py:305</code>、<code>:419</code>、<code>tests/test_model_shapes.py:77</code>、<code>:298</code>、<code>runs/SP-A.P3/REVIEW.html</code></td>
+            <td><code>body_tell/models/voxtell_body_model.py:305</code>、<code>:419</code>、<code>tests/test_model_shapes.py:77</code>、<code>:298</code>、<code>runs/archive/SP-A.P3/REVIEW.html</code></td>
           </tr>
           <tr>
             <td>Position / memory 排列</td>
             <td><span class="tag ok">已实现 runtime 契约</span> selected feature 以 <code>B,C,D,H,W -&gt; B,H,W,D,C -&gt; H*W*D,B,C</code> 排列；runtime 位置编码按真实 <code>H,W,D</code> 生成，并强校验 shape、batch、dtype 和 device。</td>
             <td>P6-lite 不加载 checkpoint 中的 <code>pos_embed</code>，不实现 <code>fixed_voxtell_192</code>。CPU 非立方输入测试和 CUDA bfloat16 smoke 均已覆盖；fresh audit 仍将 <code>pos_embed</code> 列为 required skip。</td>
-            <td><code>body_tell/models/voxtell_body_model.py:153</code>、<code>:532</code>、<code>tests/test_model_shapes.py:174</code>、<code>:245</code>、<code>runs/SP-A.P5-P6-lite/REVIEW.html</code></td>
+            <td><code>body_tell/models/voxtell_body_model.py:153</code>、<code>:532</code>、<code>tests/test_model_shapes.py:174</code>、<code>:245</code>、<code>runs/archive/SP-A.P5-P6-lite/REVIEW.html</code></td>
           </tr>
           <tr>
             <td>训练入口 / prefix loader</td>
             <td><span class="tag ok">已接入</span> 新增 <code>--init-transformer-from-voxtell</code>，加载目录时解析到 <code>fold_0/checkpoint_final.pth</code>，只筛选 <code>transformer_decoder.*</code>，严格 key/shape 校验后调用 <code>load_state_dict(..., strict=True)</code>。</td>
             <td>训练日志和 checkpoint config 记录 checkpoint path、prefix、loaded tensor count、loaded parameter count。<code>--amp-dtype bfloat16</code> 与 <code>--grad-clip-norm</code> 已接入并通过 Slurm gate。</td>
-            <td><code>body_tell/models/voxtell_body_model.py:568</code>、<code>train.py:351</code>、<code>:466</code>、<code>tests/test_model_shapes.py:453</code>、<code>runs/SP-A.P5-P6-lite/RESULT.html</code></td>
+            <td><code>body_tell/models/voxtell_body_model.py:568</code>、<code>train.py:351</code>、<code>:466</code>、<code>tests/test_model_shapes.py:453</code>、<code>runs/archive/SP-A.P5-P6-lite/RESULT.html</code></td>
           </tr>
         </tbody>
       </table>
@@ -306,32 +306,32 @@
           <tr>
             <td>P0：兼容性基线</td>
             <td><span class="tag ok">accept</span> 建立 audit CLI、HTML audit 和 transformer golden test；确认 v1.1 predictor/checkpoint profile 实际为 <code>num_heads=32</code>。</td>
-            <td><code>runs/SP-A.P0/RESULT.html</code>、<code>runs/SP-A.P0/REVIEW.html</code></td>
+            <td><code>runs/archive/SP-A.P0/RESULT.html</code>、<code>runs/archive/SP-A.P0/REVIEW.html</code></td>
           </tr>
           <tr>
             <td>P1：Transformer decoder 语义</td>
             <td><span class="tag ok">accept</span> active pre-norm path 与 VoxTell 一致；golden parity 从 xfail 变成通过。</td>
-            <td><code>runs/SP-A.P1/REVIEW.html</code>；复核 <code>test_voxtell_transformer_compat.py</code> 通过。</td>
+            <td><code>runs/archive/SP-A.P1/REVIEW.html</code>；复核 <code>test_voxtell_transformer_compat.py</code> 通过。</td>
           </tr>
           <tr>
             <td>P2：Residual encoder aligned path</td>
             <td><span class="tag ok">accept</span> 新增 aligned config 和 <code>ResidualEncoder</code> builder，直接检查 encoder 参数约 <code>90.30M</code>。</td>
-            <td><code>runs/SP-A.P2/REVIEW.html</code>、<code>configs/phase1_voxtell_aligned.yaml</code></td>
+            <td><code>runs/archive/SP-A.P2/REVIEW.html</code>、<code>configs/phase1_voxtell_aligned.yaml</code></td>
           </tr>
           <tr>
             <td>P3：VoxTellDecoder</td>
             <td><span class="tag ok">accept</span> 替换为 5-stage decoder，保留 transposed conv、stage、seg layer 结构和 strict stride behavior。</td>
-            <td><code>runs/SP-A.P3/REVIEW.html</code>；review smoke 记录 decoder-owned params <code>12,175,429</code>。</td>
+            <td><code>runs/archive/SP-A.P3/REVIEW.html</code>；review smoke 记录 decoder-owned params <code>12,175,429</code>。</td>
           </tr>
           <tr>
             <td>P4：Projection / mask head / HWD layout</td>
             <td><span class="tag ok">accept</span> projection 命名、5-stage 输出、<code>num_heads=32</code> path B 和非立方轴测试完成。</td>
-            <td><code>runs/SP-A.P4/REVIEW.html</code>、<code>runs/SP-A.P4/audit_projection_after_p4.html</code></td>
+            <td><code>runs/archive/SP-A.P4/REVIEW.html</code>、<code>runs/archive/SP-A.P4/audit_projection_after_p4.html</code></td>
           </tr>
           <tr>
             <td>P5/P6-lite：Transformer prefix loading</td>
             <td><span class="tag ok">accept</span> runtime HWD position/memory contract、strict prefix-only loader、training CLI、AMP dtype 和 grad clipping 已完成。最终 review 已接受，早期 <code>review-final.md</code> 中的 <code>needs_fix</code> 是过期状态。</td>
-            <td><code>runs/SP-A.P5-P6-lite/RESULT.html</code>、<code>runs/SP-A.P5-P6-lite/REVIEW.html</code>、Slurm job <code>37779</code> completed。</td>
+            <td><code>runs/archive/SP-A.P5-P6-lite/RESULT.html</code>、<code>runs/archive/SP-A.P5-P6-lite/REVIEW.html</code>、Slurm job <code>37779</code> completed。</td>
           </tr>
         </tbody>
       </table>

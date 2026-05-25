@@ -19,6 +19,7 @@ This directory turns the existing four HTML plans into an executable workflow fo
 - `runs/<TASK_ID>/events.jsonl`: raw worker `codex --json` event stream. Do not tail this from the long-lived leader context.
 - `runs/<TASK_ID>/review-events.jsonl`: raw reviewer `codex --json` event stream. Do not tail this from the long-lived leader context.
 - `runs/<TASK_ID>/codex-final.md`: final Codex worker message.
+- `runs/archive/<TASK_ID>/...`: archived accepted run artifacts. The manifest may point accepted historical tasks here so compact status can still verify result/review evidence after active run directories are cleaned.
 
 ## Agents
 

@@ -175,8 +175,8 @@
     <div class="cards">
       <div class="card"><strong>明确不一致</strong><span class="bad">13 项</span></div>
       <div class="card"><strong>已分发到子计划</strong><span class="ok">13 项</span></div>
-      <div class="card"><strong>已起草子计划</strong><span class="ok">3 个</span></div>
-      <div class="card"><strong>总体判断</strong><span class="warn">可执行，待实施（2026-05-24 修订）</span></div>
+      <div class="card"><strong>子计划进度</strong><span class="ok">SP-A 完成</span></div>
+      <div class="card"><strong>总体判断</strong><span class="warn">进入 SP-B Step 1</span></div>
     </div>
     <p class="note warn">2026-05-24 修订：原 11 项基础上新增 #12 BCE+Dice loss 等价性、#13 <code>num_heads</code> mismatch（Body-Tell=32 vs VoxTell=1）。其中 #13 同时修正了原 SP-A 中"VoxTell projection 输出 <code>[32,2048,4096,8192,10240]</code>"的错误表述（实际为 <code>[32,64,128,256,320]</code> 量级，<code>num_heads</code> 才是根因）。</p>
     <div class="note warn"><strong>域差异豁免（2026-05-24 重要约束）</strong>：Body-Tell 处理 occupancy grid，VoxTell 处理医学影像（CT/MRI/PET）。任务输入模态、特征统计、噪声特性都不同。<strong>本计划中"对齐"是手段不是目的，目的是支持 VoxTell 权重复用与实现一致性。任何一项不一致，若实现阶段 audit 后发现对齐会损害性能、或对当前任务没有可观察收益、或与权重复用无关，允许显式跳过并在子计划中记录原因。</strong> #12（loss 公式）与 #13（<code>num_heads</code>）尤其适用此豁免。</div>
@@ -204,19 +204,19 @@
           <td>SP-A</td>
           <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">Body-Tell 对齐 VoxTell v1.1 实施计划</a></td>
           <td>模型结构对齐：transformer decoder 语义、ResidualEncoder、VoxTellDecoder、5-scale projection、位置编码策略、VoxTell 权重加载入口、训练实验矩阵。</td>
-          <td><span class="tag ok">已起草</span></td>
+          <td><span class="tag ok">已完成：P0-P6-lite accept</span></td>
         </tr>
         <tr>
           <td>SP-B</td>
           <td><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">Body-Tell Sampling 与 Vocabulary 优化思路</a></td>
           <td>数据构造对齐：动态采样基础设施、85% foreground patch oversampling、patch 内 2+1 prompt、25/75 canonical/variant、aggregate sampler、vocabulary expansion、text embedding 重建。</td>
-          <td><span class="tag ok">已起草</span></td>
+          <td><span class="tag warn">下一步：Step 1 ready</span></td>
         </tr>
         <tr>
           <td>SP-C</td>
           <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html">Body-Tell 训练机制与评估协议对齐计划</a></td>
           <td>训练循环对齐：fixed-update epoch/iteration 节奏、SGD + polynomial decay、deep supervision 5-scale loss 权重、checkpoint/scheduler resume、prompt robustness / negative / held-out 评估协议、paper-aligned 测试矩阵。</td>
-          <td><span class="tag ok">已起草</span></td>
+          <td><span class="tag warn">可并行：Task 0 ready</span></td>
         </tr>
       </tbody>
     </table>
@@ -224,7 +224,7 @@
 
   <section>
     <h2>直接执行顺序</h2>
-    <p>按下面顺序开工。SP-C 不需要整体等到 SP-A/SP-B 完成；只有 deep supervision、长训通过和最终评估需要等结构与 patch-level sampler 到位。<strong>（2026-05-24 修订）阶段 1 新增 SP-A P0 audit 作为首项；SP-A 当前收窄为 P6-lite：只复用 <code>transformer_decoder.*</code>，P5 不再是独立位置编码阶段，后续 warm-start 实验不再属于 SP-A 当前执行范围。</strong></p>
+    <p>当前同步状态：<strong>SP-A P0-P6-lite 已完成并通过 review / phase1 Slurm gate</strong>，相关产物已归档到 <code>runs/archive/SP-A.*</code>。下一项默认执行 <strong>SP-B Step 1</strong>；SP-C Task 0 也处于 ready，可在不争用同一文件的前提下并行。</p>
     <table>
       <thead>
         <tr>
@@ -239,37 +239,36 @@
           <td>1</td>
           <td>
             <ul>
-              <li><strong><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0</a>（新增首项）</strong>：建立兼容性基线 audit—— <code>transformer_decoder.*</code> prefix key/shape 覆盖率、transformer golden test、模型参数信息。产出 P1 transformer parity 验收材料和 P6-lite prefix loader 输入。</li>
-              <li><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P1</a>：Transformer decoder 语义对齐（验收使用 P0 的 transformer golden test）。</li>
-              <li><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
-              <li><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop（含 smoke epoch 反直觉修复）、SGD、poly schedule、checkpoint/resume（含 scaler state 持久化与 <code>latest.pt</code> 周期写入）。</li>
+              <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0-P6-lite</a>：模型结构、runtime HWD position/memory 契约、<code>transformer_decoder.*</code> strict prefix loader 均已验收。</li>
+              <li><span class="tag warn">下一步</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
+              <li><span class="tag warn">可并行</span> <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop、SGD、poly schedule、checkpoint/resume。</li>
             </ul>
           </td>
-          <td>可以并行。P0 audit 不修改 Body-Tell 代码，只输出审计材料；P1 transformer 改动可与 P0 同步进行。</td>
-          <td>形成可复现训练 loop 骨架；<strong>完成 P0 后必须显式记录 <code>num_heads</code> 路径决议（默认路径 B：保留 32）</strong>；但还不能宣称 paper-aligned 长训通过。</td>
+          <td>SP-B Step 1 与 SP-C Task 0 可并行；默认 manager next task 是 <code>SP-B.Step1</code>。</td>
+          <td>SP-B Step 1 通过后进入 patch-level sampler；SP-C Task 0-4 通过后可接 Task 5 deep supervision。</td>
         </tr>
         <tr>
           <td>2</td>
           <td>
             <ul>
-              <li>SP-A P2-P4：Residual encoder、VoxTellDecoder、projection/forward 排列；P5 并入 P6-lite，只保留 runtime HWD position/memory flatten 契约，不实现 <code>fixed_voxtell_192</code> 或 <code>pos_embed</code> 加载路径。</li>
-              <li>SP-B Step 2-Step 4：patch crop + patch 内 2+1、positive prompt 25/75、aggregate sampler。</li>
+              <li><span class="tag ok">已完成</span> SP-A P2-P4：Residual encoder、VoxTellDecoder、projection/forward 排列。</li>
+              <li><span class="tag warn">待执行</span> SP-B Step 2-Step 4：patch crop + patch 内 2+1、positive prompt 25/75、aggregate sampler。</li>
             </ul>
           </td>
-          <td>SP-A 与 SP-B 可并行；各自内部按步骤顺序做。</td>
-          <td>具备启用 5-scale deep supervision、patch-level prompt 监督和 P6-lite transformer prefix 初始化的前提。</td>
+          <td>SP-B 内部按 Step 1 → Step 2 → Step 3/4 顺序做。</td>
+          <td>具备 patch-level prompt 监督前提，并为后续 vocabulary/cache 对齐提供 sampler 语义。</td>
         </tr>
         <tr>
           <td>3</td>
           <td>
             <ul>
-              <li>SP-C Task 5：启用 5-scale BCE + Dice deep supervision<strong>，并同步完成父表 #12 BCE+Dice 公式 audit（域差异豁免，audit 结论可为"保留 Body-Tell 现公式"）</strong>。</li>
+              <li>SP-C Task 5：SP-A P3 前置已满足；仍需等 SP-C Task 4 后启用 5-scale BCE + Dice deep supervision，并同步完成父表 #12 BCE+Dice 公式 audit。</li>
               <li>SP-B Step 5-Step 6：扩 vocabulary 并重建 text embedding cache。</li>
-              <li>SP-A P6-lite：新增 <code>--init-transformer-from-voxtell</code>，只筛选并严格加载 VoxTell <code>transformer_decoder.*</code> 到 <code>model.transformer_decoder</code>；不加载 encoder、decoder、projector、mask-fusion 或 <code>pos_embed</code>，也不使用 full-model 白名单。</li>
+              <li><span class="tag ok">已完成</span> SP-A P6-lite：<code>--init-transformer-from-voxtell</code> 只严格加载 VoxTell <code>transformer_decoder.*</code>，不加载 encoder、decoder、projector、mask-fusion 或 <code>pos_embed</code>。</li>
             </ul>
           </td>
-          <td>SP-C Task 5 依赖 SP-A P3；SP-B Step 5/6 依赖 SP-B Step 4；SP-A P6-lite 依赖 SP-A P4 和 P5/P6-lite position/memory 契约。</td>
-          <td>进入端到端 smoke、评估协议扩展和权重初始化实验；<strong>触发"baseline 评估闸门"</strong>的结构闸门与权重加载闸门。</td>
+          <td>SP-C Task 5 只剩 SP-C Task 4 前置；SP-B Step 5/6 依赖 SP-B Step 4。</td>
+          <td>进入端到端 smoke、评估协议扩展和权重初始化实验；结构闸门与权重加载闸门已由 SP-A 完成。</td>
         </tr>
         <tr>
           <td>4</td>
@@ -284,7 +283,7 @@
       </tbody>
     </table>
     <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs ≈ 75</code></strong>，对应 <code>total_updates ≈ 75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、机制验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平</strong>，baseline 回归闸门按此基准设定。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>。</p>
-    <p class="note warn">关键路径串行依赖（2026-05-24 修订后）：<strong>SP-A P0/P1 transformer parity → P5/P6-lite position/memory 契约 → P6-lite transformer prefix loader</strong>；<strong>SP-A P3 → SP-C Task 5</strong>；<strong>SP-B Step 1 → Step 2 → Step 3/4 → Step 5 → Step 6</strong>。其余环节可并行。</p>
+    <p class="note warn">关键路径串行依赖（2026-05-25 状态同步）：<strong>SP-A 链路已完成</strong>（P0/P1 transformer parity → P5/P6-lite position/memory 契约 → P6-lite transformer prefix loader）；当前关键路径转为 <strong>SP-B Step 1 → Step 2 → Step 3/4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。</p>
   </section>
 
   <section>
@@ -334,25 +333,25 @@
           <td>6</td>
           <td><span class="tag bad">encoder 结构</span></td>
           <td>ResEncL 6-stage <code>[32,64,128,256,320,320]</code>、residual blocks <code>[1,3,4,6,6,6]</code> vs 当前 5-stage ConvBlock。</td>
-          <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P2 — Residual encoder</a></td>
+          <td><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P2</a>；证据见 <code>runs/archive/SP-A.P2/REVIEW.html</code></td>
         </tr>
         <tr>
           <td>7</td>
           <td><span class="tag bad">conv/norm/activation</span></td>
           <td>InstanceNorm3d + LeakyReLU + conv_bias=true vs 当前 GroupNorm + GELU + bias=False。</td>
-          <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P2/P3 — Encoder/Decoder 构造参数</a></td>
+          <td><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P2/P3</a>；证据见 <code>runs/archive/SP-A.P3/REVIEW.html</code></td>
         </tr>
         <tr>
           <td>8</td>
           <td><span class="tag bad">fusion scale 数量</span></td>
           <td>5 scales vs 实际 4 scales（被 <code>min(5, len(encoder_channels)-1)</code> 截断）。</td>
-          <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P3/P4 — VoxTellDecoder + projection</a></td>
+          <td><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P3/P4</a>；证据见 <code>runs/archive/SP-A.P4/REVIEW.html</code></td>
         </tr>
         <tr>
           <td>9</td>
           <td><span class="tag bad">deep supervision</span></td>
           <td>5-scale loss 权重 <code>[1,1/2,1/4,1/8,1/16]</code> vs 当前 <code>deep_supervision: false</code>。</td>
-          <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-5">SP-C Task 5 — 5-scale deep supervision</a>（依赖 SP-A P3）</td>
+          <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-5">SP-C Task 5 — 5-scale deep supervision</a>（SP-A P3 前置已满足）</td>
         </tr>
         <tr>
           <td>10</td>
@@ -376,7 +375,7 @@
           <td>13</td>
           <td><span class="tag warn"><code>num_heads</code> mismatch<br><span class="small">（条件性对齐）</span></span></td>
           <td>VoxTell 源码默认 <code>num_heads=1</code>，但 v1.1 checkpoint profile 需以实际 audit 为准；Body-Tell 当前保留 <code>num_heads=32</code>。当前 SP-A P6-lite 只加载 <code>transformer_decoder.*</code>，因此 projection 与 mask-fusion 权重不参与本阶段加载，<code>num_heads</code> 只作为 audit 信息记录，不阻塞 P6-lite。</td>
-          <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0 + P4 — num_heads 审计与对齐决议</a></td>
+          <td><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0 + P4</a>；P6-lite 不因 <code>num_heads</code> 阻塞。</td>
         </tr>
       </tbody>
     </table>
@@ -387,7 +386,7 @@
     <p>SP-C 拆成两类执行，避免误把训练基础设施全部拖到结构和数据完成之后。</p>
     <ul>
       <li><strong>可以现在做：</strong><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">Task 0</a> profile 骨架、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-1">Task 1</a> fixed-update loop、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-2">Task 2</a> SGD profile、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-3">Task 3</a> poly schedule、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a> checkpoint/resume。</li>
-      <li><strong>必须等前置完成：</strong><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-5">Task 5</a> deep supervision 等 SP-A P3；Task 6 的最终评估口径等 SP-B patch-level sampler 和 vocabulary/cache；长训通过等端到端 smoke 通过。</li>
+      <li><strong>必须等前置完成：</strong><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-5">Task 5</a> 的 SP-A P3 前置已满足，但仍等 SP-C Task 4；Task 6 的最终评估口径等 SP-B patch-level sampler 和 vocabulary/cache；长训通过等端到端 smoke 通过。</li>
     </ul>
     <div class="note bad"><strong>明确不做项（2026-05-24 决议，不得在 SP-C 中再次提案）：</strong>
       <ol>
@@ -399,7 +398,7 @@
 
   <section>
     <h2>关键依赖</h2>
-    <p class="note">关键串行依赖（2026-05-24 修订后）：<strong>SP-A P0 transformer prefix audit → SP-A P1 transformer parity → SP-A P5/P6-lite position/memory 契约 → SP-A P6-lite prefix loader</strong>；<strong>SP-B Step 1 → Step 2 → Step 3 / Step 4</strong>；<strong>SP-B Step 4 → Step 5 → Step 6</strong>；<strong>SP-A P3 → SP-C Task 5 deep supervision</strong>。SP-A 结构对齐与 SP-B 数据构造可并行，但二者必须早于 deep supervision、权重加载和正式长训。</p>
+    <p class="note">关键串行依赖（2026-05-25 状态同步）：<strong>SP-A P0-P6-lite 已完成</strong>，其结构与权重加载闸门不再阻塞后续任务。当前剩余串行依赖是 <strong>SP-B Step 1 → Step 2 → Step 3 / Step 4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5 → Task 6/7</strong>。</p>
   </section>
 
   <section>
@@ -413,8 +412,8 @@
     <div class="note warn">
       在进入"paper-aligned 长训"之前，必须先通过下列 baseline 闸门，避免结构对齐与权重加载在 silent regression 下被误判为收益：
       <ol>
-        <li><strong>结构闸门</strong>（SP-A P0 完成后）：<code>audit_voxtell_alignment.py</code> 报告 transformer parity test 通过（输出差异 &lt; <code>1e-6</code>，dropout=0）；<code>num_heads</code> 与每级 projection 实际 shape 已显式打印。</li>
-        <li><strong>权重加载闸门</strong>（SP-A P6-lite 完成后）：只筛选 VoxTell <code>checkpoint_final.pth</code> 中的 <code>transformer_decoder.*</code>，映射到 <code>model.transformer_decoder.state_dict()</code> 后 key 集合和 shape 完全一致，并用 <code>strict=True</code> 加载；不加载 <code>pos_embed</code> 或 full-model 其他 prefix。</li>
+        <li><strong>结构闸门</strong>（已完成）：<code>audit_voxtell_alignment.py</code> 报告 transformer parity test 通过；<code>num_heads</code> 与 projection 路径已在 SP-A P0/P4 记录。</li>
+        <li><strong>权重加载闸门</strong>（已完成）：SP-A P6-lite 已只筛选 VoxTell <code>checkpoint_final.pth</code> 中的 <code>transformer_decoder.*</code>，映射到 <code>model.transformer_decoder.state_dict()</code> 后用 <code>strict=True</code> 加载；不加载 <code>pos_embed</code> 或 full-model 其他 prefix。</li>
         <li><strong>数值闸门</strong>（aligned random 训练 2 epoch smoke 后）：val foreground Dice 不得低于当前 baseline（约 <code>0.3257</code>）的 70%，否则回退 SP-A / SP-B 已落地改动，不进入长训。该阈值仅用于"明显回归"识别，不是性能目标。</li>
         <li><strong>评估闸门</strong>（SP-C Task 6 完成后）：known concepts / prompt variants / negative empty-mask / held-out 四组评估全部能输出指标（即使分数不理想），且 prompt records / vocab hash 与 checkpoint 一致。</li>
       </ol>
@@ -423,9 +422,9 @@
 
   <section>
     <h2>当前结论</h2>
-    <p><strong>可以按本文件开始执行。</strong> 13 项明确不一致已全部分发：SP-A 覆盖结构类（含 #13 <code>num_heads</code>），SP-B 覆盖数据构造类，SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。<strong>#12 和 #13 适用域差异豁免</strong>：audit 后允许在保留 Body-Tell 当前实现并显式记录偏差的前提下跳过对齐。</p>
-    <p>短期优先顺序是：SP-A P0（含 <code>num_heads</code> + projection 实际 shape 审计）、SP-B Step 1、SP-C Task 0-4 并行启动；随后推进 SP-A P1-P5 和 SP-B Step 2-Step 4；最后启用 SP-C Task 5（含 BCE+Dice 等价性 audit，可仅记录偏差）、权重加载、评估与训练实验。</p>
-    <p class="small">本报告仅维护审计与索引，未修改训练代码。2026-05-24 修订：增列 #12 loss 等价性、#13 <code>num_heads</code>（带域差异豁免），新增 baseline 评估闸门。</p>
+    <p><strong>SP-A 已完成，当前可以启动 SP-B。</strong> 13 项明确不一致仍按原分工维护：SP-A 覆盖的结构类与 #13 <code>num_heads</code> 已验收；SP-B 继续覆盖数据构造类；SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。</p>
+    <p>短期优先顺序更新为：<strong>SP-B Step 1</strong> 先启动动态采样 RNG；SP-C Task 0 可并行启动。随后推进 SP-B Step 2-Step 4，再做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
+    <p class="small">本报告同步 SP-A 完成状态与归档证据路径，未修改训练代码。2026-05-25 状态：SP-A P0-P6-lite accepted；workflow next task 为 SP-B.Step1。</p>
   </section>
 </main>
 
@@ -437,15 +436,15 @@
 <h3>2026-05-24 21:02:45 - SP-A.P0 - accepted</h3>
 <p><strong>Title:</strong> Establish VoxTell compatibility baseline audit</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P0/RESULT.html</p>
-<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P0/REVIEW.html.</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P0/RESULT.html</p>
+<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P0/REVIEW.html.</p>
 </article>
 
 <article class="workflow-progress-entry">
 <h3>2026-05-24 21:15:24 - SP-A.P1 - accepted</h3>
 <p><strong>Title:</strong> Align transformer decoder semantics</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P1/RESULT.html</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P1/RESULT.html</p>
 <p><strong>Note:</strong> Transformer decoder semantics accepted after reviewer verdict accept; parity test passed with dropout disabled.</p>
 </article>
 
@@ -453,31 +452,31 @@
 <h3>2026-05-24 22:07:56 - SP-A.P2 - accepted</h3>
 <p><strong>Title:</strong> Replace encoder with VoxTell residual encoder</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P2/RESULT.html</p>
-<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P2/REVIEW.html.</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P2/RESULT.html</p>
+<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P2/REVIEW.html.</p>
 </article>
 
 <article class="workflow-progress-entry">
 <h3>2026-05-24 22:46:25 - SP-A.P3 - accepted</h3>
 <p><strong>Title:</strong> Replace decoder with VoxTellDecoder</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P3/RESULT.html</p>
-<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P3/REVIEW.html.</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P3/RESULT.html</p>
+<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P3/REVIEW.html.</p>
 </article>
 
 <article class="workflow-progress-entry">
 <h3>2026-05-24 23:18:43 - SP-A.P4 - accepted</h3>
 <p><strong>Title:</strong> Align projection, mask head, num_heads decision, and forward layout</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P4/RESULT.html</p>
-<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P4/REVIEW.html.</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P4/RESULT.html</p>
+<p><strong>Note:</strong> Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P4/REVIEW.html.</p>
 </article>
 
 <article class="workflow-progress-entry">
 <h3>2026-05-25 02:22:02 - SP-A.P4 - accepted</h3>
 <p><strong>Title:</strong> Align projection, mask head, num_heads decision, and forward layout</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P4/RESULT.html</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P4/RESULT.html</p>
 <p><strong>Note:</strong> SP-A.P4 accepted after phase1 Slurm gate job 37739 completed successfully with 128x128x256 dataset shape. Phase1 Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.</p>
 </article>
 
@@ -485,7 +484,7 @@
 <h3>2026-05-25 15:18:49 - SP-A.P5-P6-lite - accepted</h3>
 <p><strong>Title:</strong> Load VoxTell transformer decoder prefix</p>
 <p><strong>Owner:</strong> sp_a_architecture_worker</p>
-<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/RESULT.html</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/archive/SP-A.P5-P6-lite/RESULT.html</p>
 <p><strong>Note:</strong> SP-A.P5-P6-lite accepted after current review recorded phase1 Slurm gate job 37779 as COMPLETED with exit code 0:0. Phase1 Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.</p>
 </article>
 <!-- WORKFLOW_PROGRESS_LOG_END -->

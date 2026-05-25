@@ -178,8 +178,8 @@
     <p class="meta">日期：2026-05-24。编号：SP-C。父级来源：<a class="child-link" href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">Body-Tell 与 VoxTell 论文不一致项总控计划</a>。范围：训练 loop、optimizer/scheduler、deep supervision loss、checkpoint/resume、评估协议、测试矩阵与 paper-aligned 配置 profile。</p>
     <div class="cards">
       <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9 #12</span></div>
-      <div class="card"><strong>状态</strong><span class="tag ok">已起草（2026-05-24 修订）</span></div>
-      <div class="card"><strong>硬依赖</strong><span class="tag warn">SP-A P3 / SP-B Step 2</span></div>
+      <div class="card"><strong>状态</strong><span class="tag warn">Task 0 ready</span></div>
+      <div class="card"><strong>硬依赖</strong><span class="tag warn">SP-A 已满足 / SP-B Step 2 待完成</span></div>
       <div class="card"><strong>目标</strong><span class="tag info">paper-aligned 训练闭环</span></div>
     </div>
   </header>
@@ -225,7 +225,7 @@
         <tr>
           <td>#9 deep supervision</td>
           <td>当前 <code>deep_supervision: false</code>，只优化最高分辨率输出。</td>
-          <td><a class="child-link" href="#task-5">Task 5</a>，依赖 SP-A P3</td>
+          <td><a class="child-link" href="#task-5">Task 5</a>，SP-A P3 前置已满足</td>
         </tr>
         <tr>
           <td>#12 loss 公式等价性（2026-05-24 新增，可跳过）</td>
@@ -253,9 +253,9 @@
       </thead>
       <tbody>
         <tr>
-          <td>SP-A P3：5-stage VoxTellDecoder</td>
+          <td>SP-A P3：5-stage VoxTellDecoder（已完成）</td>
           <td>5-scale deep supervision 需要模型稳定返回 5 个尺度输出。</td>
-          <td>Task 5 在 SP-A P3 之前只能写配置和 loss 测试骨架，不启用长训。</td>
+          <td>SP-A 前置已满足；Task 5 仍需等 SP-C Task 4 后启用。</td>
         </tr>
         <tr>
           <td>SP-B Step 1：动态采样 RNG</td>
@@ -288,7 +288,7 @@
         </ul>
         必须以独立字段 <code>compute_budget</code> 块写入这些值（不要散落在 dataloader / optimizer 子段），便于日志和 W&amp;B 一次性打印。<strong>不允许把 <code>epochs</code> 或 <code>total_updates</code> 隐式从其他字段倒推</strong>——值就是 75 和 18,750，写死即可。详见父文档 <a href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">总控计划</a> 中 2026-05-24 决议。
       </li>
-      <li>模型字段应引用 SP-A aligned 架构：<code>architecture: voxtell_v1_1</code>、<code>num_maskformer_stages: 5</code>。在 SP-A 未完成前，该 profile 可以存在但不作为默认训练入口。</li>
+      <li>模型字段应引用 SP-A aligned 架构：<code>architecture: voxtell_v1_1</code>、<code>num_maskformer_stages: 5</code>。SP-A P0-P6-lite 已完成；该 profile 可以直接引用 aligned 架构，但默认训练入口仍应等 smoke / resume 验收后再切换。</li>
       <li>训练启动日志和 W&amp;B config 中打印 <code>paper_aligned profile</code>、<code>compute_budget</code> 全字段（含 <code>total_updates=18750</code> 与 <code>paper_step_ratio=0.0375</code>）、optimizer/scheduler、deep supervision 权重。日志一行 banner 显式提示："训练预算 18,750 step（bz=2×2, ep=75），约论文 500k 的 3.75%，非论文复刻"。</li>
     </ol>
     <p>验收：读取配置时能区分当前 baseline profile 与 paper-aligned profile；<code>compute_budget</code> 字段值与父文档锁定一致（<code>epochs=75</code>、<code>total_updates=18750</code>）；未启用 SP-A aligned 架构时，长训入口不能静默落回旧轻量模型。</p>
@@ -338,14 +338,14 @@
 
     <h3 id="task-5">Task 5. 启用 5-scale deep supervision loss + BCE/Dice 公式 audit（含 #12）</h3>
     <ol>
-      <li>依赖 SP-A P3：模型必须返回 5 个尺度输出，且最高分辨率输出仍与 target mask 的轴语义一致。</li>
+      <li>SP-A P3 前置已满足：模型必须返回 5 个尺度输出，且最高分辨率输出仍与 target mask 的轴语义一致。</li>
       <li>paper-aligned profile 设置 <code>deep_supervision: true</code> 与权重 <code>[1, 1/2, 1/4, 1/8, 1/16]</code>。</li>
       <li>loss 层保存原始权重，并在日志中同时报告归一化后的有效权重；避免“论文权重”和“实现归一化”混淆。</li>
       <li>每个 scale 的 target 使用统一 resize 策略；日志至少记录总 loss、BCE、Dice，以及可选的 per-scale loss。</li>
       <li>补充反传测试：5 个尺度输出都参与 loss，且每个可训练输出分支都有梯度。</li>
       <li><strong>（2026-05-24 新增，覆盖 #12，域差异豁免）BCE+Dice 公式 audit（不强制对齐）</strong>：对照 nnU-Net <code>DC_and_BCE_loss</code>（或 VoxTell 引用的等价实现）的关键字段——BCE 与 Dice 权重比、<code>smooth</code> 常数、<code>batch_dice</code>、<code>do_bg</code>、<code>ignore_label</code> 处理、reduce 策略——在 <code>PromptSegmentationLoss</code> 内逐项 audit 并列出偏差表。<strong>对齐不是强制目标</strong>：nnU-Net 默认值是为医学影像（强度分布、噪声、稀疏前景）调过的；occupancy grid 任务下，Body-Tell 当前公式可能已经更合适。<strong>处理策略</strong>：(a) audit 后偏差小且对齐成本低 → 对齐；(b) 偏差大或对齐后 smoke 指标下降 → 保留 Body-Tell 现公式并把偏差表写入 audit 记录；(c) 不能仅因"和论文不一样"就改公式。</li>
     </ol>
-    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；SP-A P3 未完成时不得把 paper-aligned 长训标记为通过；BCE+Dice 公式 audit 报告（即使结论是"保留现状"）写入 SP-C 子目录，所有偏差项均有显式记录与处理判断（对齐 / 保留 / 待定）。</p>
+    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；paper-aligned 长训仍必须等待 SP-C Task 4、SP-B patch-level sampler 和端到端 smoke，而不是仅凭 SP-A 完成即标记通过；BCE+Dice 公式 audit 报告（即使结论是"保留现状"）写入 SP-C 子目录，所有偏差项均有显式记录与处理判断（对齐 / 保留 / 待定）。</p>
 
     <h3 id="task-6">Task 6. 评估协议扩展（含 baseline 回归闸门）</h3>
     <ol>
@@ -413,7 +413,7 @@
       <li>先做 Task 0，让 paper-aligned profile 有显式配置入口，但不改变默认训练。</li>
       <li>随后做 Task 1、Task 2、Task 3，形成 fixed-update + SGD + poly 的最小训练闭环。</li>
       <li>再做 Task 4，确保中断恢复不会破坏 poly schedule。</li>
-      <li>SP-A P3 完成后做 Task 5；SP-B Step 1/2 完成后补齐 Task 6 的最终验收口径。</li>
+      <li>SP-A P3 已完成；Task 5 等 SP-C Task 4 后执行。SP-B Step 1/2 完成后补齐 Task 6 的最终验收口径。</li>
       <li>Task 7 贯穿每个阶段：每完成一项机制，就补对应测试，避免把长训当成唯一验收。</li>
     </ol>
     <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先做报告框架，但最终指标必须等 SP-B patch-level sampler 和 vocabulary/cache 对齐完成后再定稿。</p>
@@ -432,15 +432,15 @@ python Body-Tell/train.py \
   --iterations-per-epoch 2 \
   --batch-size 1
 
-# 3. deep supervision 反传测试，依赖 SP-A P3 后补齐
+# 3. deep supervision 反传测试，SP-A P3 前置已满足
 pytest Body-Tell/tests/test_deep_supervision.py -q</code></pre>
     <p class="small">命令名称和参数会随实现落地调整；本节定义的是验收意图，不是当前可立即运行的承诺。</p>
   </section>
 
   <section>
     <h2>最终判定</h2>
-    <p>SP-C 已接管父报告中所有训练机制与评估协议缺口。它不替代 SP-A/SP-B，而是在两者提供 aligned model 和 patch-level sampling 后，把训练节奏、optimizer/scheduler、deep supervision、checkpoint resume 与评估协议接成完整 paper-aligned 训练闭环。</p>
-    <p class="small">本文件仅创建子计划，未修改训练代码。</p>
+    <p>SP-C 已接管父报告中所有训练机制与评估协议缺口。SP-A 已提供 aligned model 与 P6-lite 权重加载入口；SP-C 仍需等待 SP-B 提供 patch-level sampling，才能把训练节奏、optimizer/scheduler、deep supervision、checkpoint resume 与评估协议接成完整 paper-aligned 训练闭环。</p>
+    <p class="small">本文件同步 SP-A 前置完成状态，未修改训练代码。</p>
   </section>
 </main>
 </body>

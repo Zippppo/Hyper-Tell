@@ -84,7 +84,7 @@ tasks:
     status: accepted
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on: []
-    result_file: runs/SP-A.P0/RESULT.html
+    result_file: runs/archive/SP-A.P0/RESULT.html
     scope: 'SP-A P0: num_heads/projection shape audit, transformer golden test material, weight-key audit input.'
     acceptance:
     - num_heads and projection shapes are printed for VoxTell and Body-Tell.
@@ -93,17 +93,17 @@ tasks:
     verification:
     - conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --help
     updated_at: '2026-05-24T13:02:45.445658+00:00'
-    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P0/REVIEW.html.
+    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P0/REVIEW.html.
     history:
     - at: '2026-05-24T12:40:28.774114+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P0/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P0/PROMPT.md
     - at: '2026-05-24T12:57:05.417127+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
     - at: '2026-05-24T13:02:45.445658+00:00'
       status: accepted
-      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P0/REVIEW.html.
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P0/REVIEW.html.
   SP-A.P1:
     title: Align transformer decoder semantics
     owner: sp_a_architecture_worker
@@ -112,7 +112,7 @@ tasks:
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P0
-    result_file: runs/SP-A.P1/RESULT.html
+    result_file: runs/archive/SP-A.P1/RESULT.html
     scope: 'SP-A P1: transformer decoder behavior parity using P0 golden-test material.'
     acceptance:
     - Transformer compatibility tests pass with dropout disabled.
@@ -124,7 +124,7 @@ tasks:
     history:
     - at: '2026-05-24T13:02:45.838673+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P1/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P1/PROMPT.md
     - at: '2026-05-24T13:08:24.747141+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
@@ -139,7 +139,7 @@ tasks:
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P1
-    result_file: runs/SP-A.P2/RESULT.html
+    result_file: runs/archive/SP-A.P2/RESULT.html
     scope: 'SP-A P2: residual encoder channels, blocks, norm, activation, and bias policy.'
     acceptance:
     - Encoder channel/block structure matches the SP-A plan or records an explicit domain-exemption decision.
@@ -147,17 +147,17 @@ tasks:
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
     updated_at: '2026-05-24T14:07:56.857772+00:00'
-    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P2/REVIEW.html.
+    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P2/REVIEW.html.
     history:
     - at: '2026-05-24T13:38:21.364130+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P2/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P2/PROMPT.md
     - at: '2026-05-24T13:59:51.025497+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
     - at: '2026-05-24T14:07:56.857772+00:00'
       status: accepted
-      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P2/REVIEW.html.
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P2/REVIEW.html.
   SP-A.P3:
     title: Replace decoder with VoxTellDecoder
     owner: sp_a_architecture_worker
@@ -166,7 +166,7 @@ tasks:
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P2
-    result_file: runs/SP-A.P3/RESULT.html
+    result_file: runs/archive/SP-A.P3/RESULT.html
     scope: 'SP-A P3: 5-stage decoder outputs needed by SP-C deep supervision.'
     acceptance:
     - Model can return the planned decoder outputs.
@@ -174,23 +174,23 @@ tasks:
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_prompt_loss_backward.py
     updated_at: '2026-05-24T14:46:25.835234+00:00'
-    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P3/REVIEW.html.
+    last_note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P3/REVIEW.html.
     history:
     - at: '2026-05-24T14:07:57.290534+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P3/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P3/PROMPT.md
     - at: '2026-05-24T14:15:12.735418+00:00'
       status: needs_fix
       note: Manager interrupted stale assigned worker to run post-accept Slurm gate; rerun SP-A.P3.
     - at: '2026-05-24T14:15:29.985010+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P3/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P3/PROMPT.md
     - at: '2026-05-24T14:35:44.361424+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
     - at: '2026-05-24T14:46:25.835234+00:00'
       status: accepted
-      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P3/REVIEW.html.
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P3/REVIEW.html.
   SP-A.P4:
     title: Align projection, mask head, num_heads decision, and forward layout
     owner: sp_a_architecture_worker
@@ -200,7 +200,7 @@ tasks:
     depends_on:
     - SP-A.P0
     - SP-A.P3
-    result_file: runs/SP-A.P4/RESULT.html
+    result_file: runs/archive/SP-A.P4/RESULT.html
     scope: 'SP-A P4: execute path A or path B for num_heads, projection shape, mask fusion, and axis layout.'
     acceptance:
     - num_heads path decision is recorded in RESULT.html.
@@ -214,7 +214,7 @@ tasks:
     history:
     - at: '2026-05-24T14:46:26.285449+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P4/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P4/PROMPT.md
     - at: '2026-05-24T14:49:49.593706+00:00'
       status: needs_fix
       note: Paused by leader immediately after SP-A.P3 acceptance; rerun SP-A.P4 when resuming.
@@ -225,13 +225,13 @@ tasks:
         Rerun SP-A.P4 to address layout/projection/shape path.'
     - at: '2026-05-24T14:58:37.849126+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P4/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P4/PROMPT.md
     - at: '2026-05-24T15:13:25.966736+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
     - at: '2026-05-24T15:18:43.544879+00:00'
       status: accepted
-      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/SP-A.P4/REVIEW.html.
+      note: Accepted by reviewer. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P4/REVIEW.html.
     - at: '2026-05-24T15:24:31.835125+00:00'
       status: gate_failed
       note: 'Post-accept phase1 Slurm gate job 37719 failed after SP-A.P4 review acceptance; no commit made. Failure remains
@@ -249,7 +249,7 @@ tasks:
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P4
-    result_file: runs/SP-A.P5-P6-lite/RESULT.html
+    result_file: runs/archive/SP-A.P5-P6-lite/RESULT.html
     scope: 'SP-A P5/P6-lite: runtime HWD position/memory contract plus --init-transformer-from-voxtell transformer_decoder.*
       prefix loading.'
     acceptance:
@@ -275,16 +275,16 @@ tasks:
     history:
     - at: '2026-05-25T04:15:40.905078+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P5-P6-lite/PROMPT.md
     - at: '2026-05-25T04:32:51.227556+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
     - at: '2026-05-25T04:48:02.645935+00:00'
       status: needs_fix
-      note: 'Reviewer verdict: needs_fix. See Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/REVIEW.html.'
+      note: 'Reviewer verdict: needs_fix. See Body-Tell/reports/26-05-24/runs/archive/SP-A.P5-P6-lite/REVIEW.html.'
     - at: '2026-05-25T04:57:12.736295+00:00'
       status: assigned
-      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/PROMPT.md
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/archive/SP-A.P5-P6-lite/PROMPT.md
     - at: '2026-05-25T06:01:25.668170+00:00'
       status: submitted
       note: Worker finished and RESULT.html exists.
