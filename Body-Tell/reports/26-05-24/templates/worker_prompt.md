@@ -11,6 +11,10 @@ Lead plan:
 Your source-of-truth sub-plan:
 {{plan_file}}
 
+Plan authority:
+- The task section in the source-of-truth sub-plan is authoritative.
+- The manifest scope and acceptance criteria below are only a synchronized summary. If they conflict with the sub-plan, follow the sub-plan and record the conflict in RESULT.html.
+
 Task scope:
 {{scope}}
 

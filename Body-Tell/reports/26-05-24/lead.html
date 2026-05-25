@@ -224,7 +224,7 @@
 
   <section>
     <h2>直接执行顺序</h2>
-    <p>按下面顺序开工。SP-C 不需要整体等到 SP-A/SP-B 完成；只有 deep supervision、长训通过和最终评估需要等结构与 patch-level sampler 到位。<strong>（2026-05-24 修订）阶段 1 新增 SP-A P0 audit 作为首项；阶段 2 P4 内部包含 <code>num_heads</code> 路径决议（路径 A vs 路径 B），决议依赖 P0 audit 输出；阶段 3 Task 5 与 P6 的具体实现内容随 P4 决议变化。</strong></p>
+    <p>按下面顺序开工。SP-C 不需要整体等到 SP-A/SP-B 完成；只有 deep supervision、长训通过和最终评估需要等结构与 patch-level sampler 到位。<strong>（2026-05-24 修订）阶段 1 新增 SP-A P0 audit 作为首项；SP-A 当前收窄为 P6-lite：只复用 <code>transformer_decoder.*</code>，P5 不再是独立位置编码阶段，后续 warm-start 实验不再属于 SP-A 当前执行范围。</strong></p>
     <table>
       <thead>
         <tr>
@@ -239,7 +239,7 @@
           <td>1</td>
           <td>
             <ul>
-              <li><strong><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0</a>（新增首项）</strong>：建立兼容性基线 audit—— <code>num_heads</code> + projection shape 双侧打印、transformer golden test、weight key audit。产出三份输入材料：(a) 父表 #13 <code>num_heads</code> 路径决议输入，(b) P1 transformer parity 验收测试，(c) P6 权重加载白名单。</li>
+              <li><strong><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0</a>（新增首项）</strong>：建立兼容性基线 audit—— <code>transformer_decoder.*</code> prefix key/shape 覆盖率、transformer golden test、模型参数信息。产出 P1 transformer parity 验收材料和 P6-lite prefix loader 输入。</li>
               <li><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P1</a>：Transformer decoder 语义对齐（验收使用 P0 的 transformer golden test）。</li>
               <li><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
               <li><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop（含 smoke epoch 反直觉修复）、SGD、poly schedule、checkpoint/resume（含 scaler state 持久化与 <code>latest.pt</code> 周期写入）。</li>
@@ -252,12 +252,12 @@
           <td>2</td>
           <td>
             <ul>
-              <li>SP-A P2-P5：Residual encoder、VoxTellDecoder、projection/forward 排列、位置编码策略（<code>dynamic_hwd</code> 默认，适配 <code>[129,108,256]</code>）。<strong>P4 内部按 P0 选定的 <code>num_heads</code> 路径执行</strong>——路径 A 改 <code>num_heads=1</code>；路径 B 保留 <code>num_heads=32</code>，把 <code>project_to_decoder_channels.*</code> 与 mask fusion 相关 key 加入 P6 跳过白名单候选。</li>
+              <li>SP-A P2-P4：Residual encoder、VoxTellDecoder、projection/forward 排列；P5 并入 P6-lite，只保留 runtime HWD position/memory flatten 契约，不实现 <code>fixed_voxtell_192</code> 或 <code>pos_embed</code> 加载路径。</li>
               <li>SP-B Step 2-Step 4：patch crop + patch 内 2+1、positive prompt 25/75、aggregate sampler。</li>
             </ul>
           </td>
-          <td>SP-A 与 SP-B 可并行；各自内部按步骤顺序做。P4 决议必须在 P5 开始前敲定。</td>
-          <td>具备启用 5-scale deep supervision 和 patch-level prompt 监督的前提；P6 跳过白名单内容由 P4 决议产出。</td>
+          <td>SP-A 与 SP-B 可并行；各自内部按步骤顺序做。</td>
+          <td>具备启用 5-scale deep supervision、patch-level prompt 监督和 P6-lite transformer prefix 初始化的前提。</td>
         </tr>
         <tr>
           <td>3</td>
@@ -265,10 +265,10 @@
             <ul>
               <li>SP-C Task 5：启用 5-scale BCE + Dice deep supervision<strong>，并同步完成父表 #12 BCE+Dice 公式 audit（域差异豁免，audit 结论可为"保留 Body-Tell 现公式"）</strong>。</li>
               <li>SP-B Step 5-Step 6：扩 vocabulary 并重建 text embedding cache。</li>
-              <li>SP-A P6：VoxTell v1.1 权重加载入口与 smoke。<strong>跳过白名单按 P4 决议组装</strong>——路径 A 仅含 <code>pos_embed</code>；路径 B 额外含 <code>project_to_decoder_channels.*</code> 与 mask fusion key。<code>unexpected_keys</code> 必须完全等于白名单，否则抛错。</li>
+              <li>SP-A P6-lite：新增 <code>--init-transformer-from-voxtell</code>，只筛选并严格加载 VoxTell <code>transformer_decoder.*</code> 到 <code>model.transformer_decoder</code>；不加载 encoder、decoder、projector、mask-fusion 或 <code>pos_embed</code>，也不使用 full-model 白名单。</li>
             </ul>
           </td>
-          <td>SP-C Task 5 依赖 SP-A P3；SP-B Step 5/6 依赖 SP-B Step 4；SP-A P6 依赖 SP-A P2-P5 全部完成且 P4 路径已敲定。</td>
+          <td>SP-C Task 5 依赖 SP-A P3；SP-B Step 5/6 依赖 SP-B Step 4；SP-A P6-lite 依赖 SP-A P4 和 P5/P6-lite position/memory 契约。</td>
           <td>进入端到端 smoke、评估协议扩展和权重初始化实验；<strong>触发"baseline 评估闸门"</strong>的结构闸门与权重加载闸门。</td>
         </tr>
         <tr>
@@ -276,7 +276,6 @@
           <td>
             <ul>
               <li>SP-C Task 6-Task 7：prompt robustness / negative / held-out 评估与测试矩阵；<strong>baseline 回归闸门（aligned 任一变体 val Dice ≥ 当前轻量基线 70%）</strong>必须在长训启动前通过。</li>
-              <li>SP-A P7：random / prompt-only / full 三组 warm-start 对照实验。若 P4 选路径 B，<code>full</code> 实际等价于"除 mask fusion 与 projection 外全部加载"，需在实验日志显式区分。</li>
             </ul>
           </td>
           <td>评估与实验可在端到端 smoke 通过后并行推进。</td>
@@ -285,7 +284,7 @@
       </tbody>
     </table>
     <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs ≈ 75</code></strong>，对应 <code>total_updates ≈ 75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、机制验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平</strong>，baseline 回归闸门按此基准设定。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>。</p>
-    <p class="note warn">关键路径串行依赖（2026-05-24 修订后）：<strong>SP-A P0 audit → P4 <code>num_heads</code> 路径决议 → P6 跳过白名单</strong>；<strong>SP-A P3 → SP-C Task 5</strong>；<strong>SP-B Step 1 → Step 2 → Step 3/4 → Step 5 → Step 6</strong>。其余环节可并行。</p>
+    <p class="note warn">关键路径串行依赖（2026-05-24 修订后）：<strong>SP-A P0/P1 transformer parity → P5/P6-lite position/memory 契约 → P6-lite transformer prefix loader</strong>；<strong>SP-A P3 → SP-C Task 5</strong>；<strong>SP-B Step 1 → Step 2 → Step 3/4 → Step 5 → Step 6</strong>。其余环节可并行。</p>
   </section>
 
   <section>
@@ -376,7 +375,7 @@
         <tr>
           <td>13</td>
           <td><span class="tag warn"><code>num_heads</code> mismatch<br><span class="small">（条件性对齐）</span></span></td>
-          <td>VoxTell <code>num_heads=1</code>（<code>voxtell/model/voxtell_model.py:74</code>）；Body-Tell <code>num_heads=32</code>（<code>body_tell/models/voxtell_body_model.py:29</code>）。projection 输出 = <code>channels × num_heads</code>，因此原 SP-A "VoxTell 输出 <code>10240</code>"的说法错误，实际为 <code>320</code> 量级。<strong>域差异豁免</strong>：<code>num_heads=32</code> 给 Body-Tell mask fusion 提供 32× 容量，是为 occupancy grid 任务设计的；强行降到 1 可能损害 capacity。<strong>对齐前提</strong>：只有在"目标是直接复用 VoxTell <code>project_to_decoder_channels.*</code> 与 mask fusion 权重"的实验中才必要；若仅做结构对齐（不复用这部分权重），可以保留 <code>num_heads=32</code>，但<strong>必须在 SP-A P0 audit 中显式打印 num_heads 并把这些 key 加入跳过白名单</strong>，避免错误判断为权重已加载。</td>
+          <td>VoxTell 源码默认 <code>num_heads=1</code>，但 v1.1 checkpoint profile 需以实际 audit 为准；Body-Tell 当前保留 <code>num_heads=32</code>。当前 SP-A P6-lite 只加载 <code>transformer_decoder.*</code>，因此 projection 与 mask-fusion 权重不参与本阶段加载，<code>num_heads</code> 只作为 audit 信息记录，不阻塞 P6-lite。</td>
           <td><a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0 + P4 — num_heads 审计与对齐决议</a></td>
         </tr>
       </tbody>
@@ -400,7 +399,7 @@
 
   <section>
     <h2>关键依赖</h2>
-    <p class="note">关键串行依赖（2026-05-24 修订后）：<strong>SP-A P0 audit → P4 <code>num_heads</code> 路径决议 → P6 跳过白名单组装</strong>；<strong>SP-A P0 transformer golden test → P1 验收</strong>；<strong>SP-B Step 1 → Step 2 → Step 3 / Step 4</strong>；<strong>SP-B Step 4 → Step 5 → Step 6</strong>；<strong>SP-A P3 → SP-C Task 5 deep supervision</strong>；<strong>SP-A P2/P3/P4 → SP-A P6</strong>。SP-A 结构对齐与 SP-B 数据构造可并行，但二者必须早于 deep supervision、权重加载和正式长训。</p>
+    <p class="note">关键串行依赖（2026-05-24 修订后）：<strong>SP-A P0 transformer prefix audit → SP-A P1 transformer parity → SP-A P5/P6-lite position/memory 契约 → SP-A P6-lite prefix loader</strong>；<strong>SP-B Step 1 → Step 2 → Step 3 / Step 4</strong>；<strong>SP-B Step 4 → Step 5 → Step 6</strong>；<strong>SP-A P3 → SP-C Task 5 deep supervision</strong>。SP-A 结构对齐与 SP-B 数据构造可并行，但二者必须早于 deep supervision、权重加载和正式长训。</p>
   </section>
 
   <section>
@@ -415,7 +414,7 @@
       在进入"paper-aligned 长训"之前，必须先通过下列 baseline 闸门，避免结构对齐与权重加载在 silent regression 下被误判为收益：
       <ol>
         <li><strong>结构闸门</strong>（SP-A P0 完成后）：<code>audit_voxtell_alignment.py</code> 报告 transformer parity test 通过（输出差异 &lt; <code>1e-6</code>，dropout=0）；<code>num_heads</code> 与每级 projection 实际 shape 已显式打印。</li>
-        <li><strong>权重加载闸门</strong>（SP-A P6 完成后）：<code>strict=False</code> 加载 VoxTell <code>checkpoint_final.pth</code> 时，<code>unexpected_keys</code> 集合等于 P4 决议产出的<strong>显式白名单</strong>——路径 A 为 <code>{"pos_embed"}</code>，路径 B 为 <code>{"pos_embed"} ∪ {project_to_decoder_channels.*, mask_fusion.*}</code>；<code>missing_keys</code> 为空；任何 shape mismatch 必须抛错。</li>
+        <li><strong>权重加载闸门</strong>（SP-A P6-lite 完成后）：只筛选 VoxTell <code>checkpoint_final.pth</code> 中的 <code>transformer_decoder.*</code>，映射到 <code>model.transformer_decoder.state_dict()</code> 后 key 集合和 shape 完全一致，并用 <code>strict=True</code> 加载；不加载 <code>pos_embed</code> 或 full-model 其他 prefix。</li>
         <li><strong>数值闸门</strong>（aligned random 训练 2 epoch smoke 后）：val foreground Dice 不得低于当前 baseline（约 <code>0.3257</code>）的 70%，否则回退 SP-A / SP-B 已落地改动，不进入长训。该阈值仅用于"明显回归"识别，不是性能目标。</li>
         <li><strong>评估闸门</strong>（SP-C Task 6 完成后）：known concepts / prompt variants / negative empty-mask / held-out 四组评估全部能输出指标（即使分数不理想），且 prompt records / vocab hash 与 checkpoint 一致。</li>
       </ol>

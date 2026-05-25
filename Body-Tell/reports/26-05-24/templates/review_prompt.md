@@ -11,6 +11,10 @@ Lead plan:
 Sub-plan:
 {{plan_file}}
 
+Plan authority:
+- The task section in the source-of-truth sub-plan is authoritative.
+- The acceptance criteria below are a synchronized manifest summary. If they conflict with the sub-plan, review against the sub-plan and record the conflict in REVIEW.html.
+
 Worker result:
 {{result_file}}
 

@@ -89,7 +89,7 @@ tasks:
     acceptance:
     - num_heads and projection shapes are printed for VoxTell and Body-Tell.
     - Transformer golden test material is produced for SP-A P1 acceptance.
-    - Weight-loading whitelist input is produced for SP-A P6.
+    - Transformer decoder prefix-loading input is produced for SP-A P5/P6-lite.
     verification:
     - conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --help
     updated_at: '2026-05-24T13:02:45.445658+00:00'
@@ -236,59 +236,35 @@ tasks:
       status: gate_failed
       note: 'Post-accept phase1 Slurm gate job 37719 failed after SP-A.P4 review acceptance; no commit made. Failure remains
         VoxTellDecoder stride-compatible input mismatch at stage 0: transposed output spatial (18, 14, 32) vs skip spatial
-        (17, 14, 32). Rerun SP-A.P4 before advancing to SP-A.P5.'
+        (17, 14, 32). Rerun SP-A.P4 before advancing to SP-A P5/P6-lite.'
     - at: '2026-05-24T18:22:02.707317+00:00'
       status: accepted
       note: 'SP-A.P4 accepted after phase1 Slurm gate job 37739 completed successfully with 128x128x256 dataset shape. Phase1
         Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.'
-  SP-A.P5:
-    title: Implement position encoding strategy
-    owner: sp_a_architecture_worker
-    phase: 2
-    status: todo
-    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
-    depends_on:
-    - SP-A.P4
-    result_file: runs/SP-A.P5/RESULT.html
-    scope: 'SP-A P5: dynamic_hwd default positional encoding and optional fixed_voxtell_192 profile boundary.'
-    acceptance:
-    - dynamic_hwd works with current Body-Tell crop shape.
-    - pos_embed loading/skip policy is unambiguous.
-    verification:
-    - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
-  SP-A.P6:
-    title: Add VoxTell weight loading entrypoint
+  SP-A.P5-P6-lite:
+    title: Load VoxTell transformer decoder prefix
     owner: sp_a_architecture_worker
     phase: 3
     status: todo
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
-    - SP-A.P5
     - SP-A.P4
-    result_file: runs/SP-A.P6/RESULT.html
-    scope: 'SP-A P6: --init-from-voxtell, strict whitelist audit, checkpoint metadata, smoke.'
+    result_file: runs/SP-A.P5-P6-lite/RESULT.html
+    scope: 'SP-A P5/P6-lite: runtime HWD position/memory contract plus --init-transformer-from-voxtell transformer_decoder.* prefix loading.'
     acceptance:
-    - unexpected_keys are exactly the P4 policy whitelist.
-    - Shape mismatch fails hard.
-    - At least one forward/loss/backward smoke passes if GPU is available; otherwise CPU audit is recorded.
+    - P5 is not an independent pos_embed implementation stage.
+    - Do not implement fixed_voxtell_192 and do not add a pos_embed state-dict loading path.
+    - Runtime position encoding is generated from the selected feature's actual H,W,D and matches memory token count, batch, dtype, device, and channel dimension.
+    - Non-cubic input coverage verifies the VoxTell-compatible flatten contract b c d h w -> b h w d c -> (h w d) b c.
+    - Loader reads fold_0/checkpoint_final.pth network_weights and filters only transformer_decoder.* keys.
+    - Filtered keys map exactly to model.transformer_decoder.state_dict() with no missing, unexpected, or shape mismatch entries.
+    - Loading uses model.transformer_decoder.load_state_dict(..., strict=True).
+    - Loader explicitly does not load encoder.*, decoder.*, project_bottleneck_embed.*, project_text_embed.*, project_to_decoder_channels.*, or pos_embed; no full-model whitelist is used.
+    - 'Logs and saved checkpoint config record init_transformer_from_voxtell metadata: checkpoint path, prefix, loaded tensor count, and loaded parameter count.'
+    - CPU prefix audit passes; at least one forward/loss/backward smoke passes if GPU is available.
     verification:
+    - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
     - conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml
-  SP-A.P7:
-    title: Run architecture warm-start experiment matrix
-    owner: sp_a_architecture_worker
-    phase: 4
-    status: todo
-    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
-    depends_on:
-    - SP-A.P6
-    - SP-C.Task6
-    result_file: runs/SP-A.P7/RESULT.html
-    scope: 'SP-A P7: random, prompt-only, and full warm-start comparison plan/results.'
-    acceptance:
-    - Experiment matrix records initialization mode, skipped keys, and comparable metrics.
-    - Long-run recommendation is explicit.
-    verification:
-    - conda run -n voxtell python Body-Tell/train.py --help
   SP-B.Step1:
     title: Add dynamic sampling RNG infrastructure
     owner: sp_b_sampling_vocab_worker
@@ -485,7 +461,7 @@ tasks:
     plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
     depends_on:
     - SP-B.Step6
-    - SP-A.P6
+    - SP-A.P5-P6-lite
     - SP-C.Task5
     result_file: runs/SP-C.Task6/RESULT.html
     scope: 'SP-C Task 6: known concepts, variants, negative empty-mask, held-out prompts, and baseline regression gates.'

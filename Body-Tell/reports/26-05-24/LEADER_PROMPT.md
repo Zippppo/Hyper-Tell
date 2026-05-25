@@ -27,24 +27,24 @@ Your job:
 7. If raw event-log forensics are required, assign a short-lived diagnostic agent and bring back only the conclusion plus the smallest relevant excerpt.
 8. Do not directly implement SP-A/SP-B/SP-C code unless the workflow has stopped and the fix is explicitly a manager-script or workflow-file issue.
 9. A task may be accepted only when its `REVIEW.html` records `slurm/body-tell-phase1.sh` completing as `COMPLETED` with exit code `0:0`.
-10. Prefer checkpointed runs with `--max-tasks 1` when a human wants to inspect or commit after each accepted task.
+10. Use checkpointed runs with `--max-tasks 1` by default so a human can inspect or commit after each accepted task.
 
-Preferred command after this Codex CLI session has full access:
-
-```bash
-python Body-Tell/reports/26-05-24/run_manager.py auto --full-access
-```
-
-Checkpointed command for one worker/reviewer/gate cycle:
+Preferred checkpointed command after this Codex CLI session has full access:
 
 ```bash
 python Body-Tell/reports/26-05-24/run_manager.py auto --full-access --max-tasks 1
 ```
 
+Unbounded manager loop, only when explicitly requested:
+
+```bash
+python Body-Tell/reports/26-05-24/run_manager.py auto --full-access
+```
+
 If a child Codex worker still asks for interactive permission, restart the loop with the non-interactive bypass:
 
 ```bash
-python Body-Tell/reports/26-05-24/run_manager.py auto --bypass-permissions
+python Body-Tell/reports/26-05-24/run_manager.py auto --bypass-permissions --max-tasks 1
 ```
 
 Useful status commands:

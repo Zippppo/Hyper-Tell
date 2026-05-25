@@ -84,6 +84,18 @@ def task_result_path(task: dict[str, Any]) -> Path:
     return report_path(task["result_file"])
 
 
+def file_identity(path: Path) -> tuple[int, int] | None:
+    if not path.exists():
+        return None
+    stat = path.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def file_was_updated(path: Path, previous_identity: tuple[int, int] | None) -> bool:
+    current_identity = file_identity(path)
+    return current_identity is not None and current_identity != previous_identity
+
+
 def task_run_dir(task_id: str, task: dict[str, Any]) -> Path:
     result = task_result_path(task)
     if result.name:
@@ -186,6 +198,8 @@ def effective_sandbox(args: argparse.Namespace) -> str:
 
 def run_worker_task(manifest: dict[str, Any], task_id: str, *, sandbox: str, bypass_permissions: bool) -> int:
     task = get_task(manifest, task_id)
+    result_path = task_result_path(task)
+    result_before = file_identity(result_path)
     prompt_path = write_prompt(manifest, task_id, kind="worker")
     mark_status(manifest, task_id, "assigned", f"Started Codex worker with {rel(prompt_path)}")
     save_manifest(manifest)
@@ -199,8 +213,10 @@ def run_worker_task(manifest: dict[str, Any], task_id: str, *, sandbox: str, byp
     )
     manifest = load_manifest()
     result_path = task_result_path(get_task(manifest, task_id))
-    if code == 0 and result_path.exists():
+    if code == 0 and file_was_updated(result_path, result_before):
         mark_status(manifest, task_id, "submitted", "Worker finished and RESULT.html exists.")
+    elif code == 0 and result_path.exists():
+        mark_status(manifest, task_id, "needs_fix", "Worker finished but RESULT.html was not updated.")
     elif code == 0:
         mark_status(manifest, task_id, "needs_fix", "Worker finished but RESULT.html is missing.")
     else:
@@ -211,8 +227,10 @@ def run_worker_task(manifest: dict[str, Any], task_id: str, *, sandbox: str, byp
 
 def run_review_task(manifest: dict[str, Any], task_id: str, *, sandbox: str, bypass_permissions: bool) -> int:
     task = get_task(manifest, task_id)
+    review_path = review_path_for(task_id, task)
+    review_before = file_identity(review_path)
     prompt_path = write_prompt(manifest, task_id, kind="review")
-    return run_codex(
+    code = run_codex(
         prompt_path.read_text(encoding="utf-8"),
         task_run_dir(task_id, task),
         final_name="review-final.md",
@@ -220,6 +238,9 @@ def run_review_task(manifest: dict[str, Any], task_id: str, *, sandbox: str, byp
         sandbox=sandbox,
         bypass_permissions=bypass_permissions,
     )
+    if code == 0 and not file_was_updated(review_path, review_before):
+        return 1
+    return code
 
 
 def review_path_for(task_id: str, task: dict[str, Any]) -> Path:
