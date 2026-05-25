@@ -382,7 +382,7 @@ def render_report(audit: dict[str, Any]) -> str:
         <div><span>日志交叉校验</span><strong class="{'ok' if verdict == 'match' else 'warn'}">{verdict}</strong></div>
         <div><span>FP32 参数内存</span><strong>{audit['memory']['fp32_parameters_gib']:.2f} GiB</strong></div>
       </div>
-      <p>本次以 <code>Body-Tell/train.py::build_model()</code> 和 <code>phase1_voxtell_body.yaml</code> 实例化模型后统计，因此覆盖训练时真实使用的 Body-Tell 架构。当前模型没有冻结层，<strong>328.98M 参数全部参与 AdamW 优化</strong>。</p>
+      <p>本次以 <code>Body-Tell/train.py::build_model()</code> 和 <code>phase1_voxtell_aligned.yaml</code> 实例化模型后统计，因此覆盖训练时真实使用的 Body-Tell 架构。当前模型没有冻结层，<strong>{human_count(trainable)} 参数全部参与 AdamW 优化</strong>。</p>
       <p class="note">参数量本身已经足以支持强记忆能力；结合日志里训练 Dice 持续上升、验证 Dice 基本平台化，过拟合判断是合理的。但参数量不是唯一原因，还需要同时看数据划分、prompt 分布、标签稀疏度和验证集类别覆盖。</p>
     </section>
 
@@ -461,7 +461,7 @@ def render_report(audit: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Count Body-Tell model parameters")
-    parser.add_argument("--config", type=Path, default=BODY_TELL_ROOT / "configs/phase1_voxtell_body.yaml")
+    parser.add_argument("--config", type=Path, default=BODY_TELL_ROOT / "configs/phase1_voxtell_aligned.yaml")
     parser.add_argument("--log", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=BODY_TELL_ROOT / "reports/body_tell_parameter_audit.html")
     parser.add_argument("--json-output", type=Path, default=BODY_TELL_ROOT / "reports/body_tell_parameter_audit.json")

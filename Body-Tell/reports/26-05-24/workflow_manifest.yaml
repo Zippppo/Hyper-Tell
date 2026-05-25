@@ -51,6 +51,16 @@ agents:
       gate.
     writable:
     - Body-Tell/reports/26-05-24/runs/**/REVIEW.html
+  config_unification_worker:
+    role: Resolves cross-plan Phase1 config ambiguity and keeps active code on one canonical VoxTell-aligned config.
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    writable:
+    - Body-Tell/configs/**
+    - Body-Tell/train.py
+    - Body-Tell/inference.py
+    - Body-Tell/scripts/**
+    - Body-Tell/tests/**
+    - Body-Tell/reports/26-05-24/runs/**
   sp_a_architecture_worker:
     role: Implements SP-A model architecture, VoxTell compatibility, weight loading, and experiment matrix work.
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
@@ -339,31 +349,92 @@ tasks:
       status: accepted
       note: 'Accepted by reviewer after fresh phase1 Slurm gate job 37868 completed with exit code 0:0. Prior needs_fix
         resolved by propagating epoch to sampler and underlying dataset, including Subset handling.'
+  CFG.CanonicalPhase1:
+    title: Collapse Phase1 VoxTell training config ambiguity
+    owner: config_unification_worker
+    phase: 1
+    status: accepted
+    plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
+    depends_on:
+    - SP-A.P5-P6-lite
+    - SP-B.Step1
+    result_file: runs/CFG.CanonicalPhase1/RESULT.html
+    scope: 'Resolve phase1_voxtell_body.yaml versus phase1_voxtell_aligned.yaml ambiguity by keeping phase1_voxtell_aligned.yaml
+      as the only active Phase1 VoxTell training config and updating code/test/script references.'
+    acceptance:
+    - phase1_voxtell_aligned.yaml is the single canonical Phase1 VoxTell training config.
+    - phase1_voxtell_body.yaml is removed from active use and no active default references it.
+    - Training, inference, audit scripts, and tests point to phase1_voxtell_aligned.yaml.
+    - Canonical config preserves SP-A aligned architecture-sensitive encoder fields.
+    - Any SP-B.Step2 config-only fields already introduced by the interrupted worker are present only in the canonical aligned
+      config if they remain needed.
+    verification:
+    - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_train_loop.py
+    - conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml
+    updated_at: '2026-05-25T13:02:40+00:00'
+    last_note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37958
+      COMPLETED with exit code 0:0. phase1_voxtell_aligned.yaml is now the only active Phase1 VoxTell config.'
+    history:
+    - at: '2026-05-25T12:05:37+00:00'
+      status: assigned
+      note: Started config unification worker with Body-Tell/reports/26-05-24/runs/CFG.CanonicalPhase1/PROMPT.md
+    - at: '2026-05-25T12:22:02+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists; reviewer subagent started with REVIEW_PROMPT.md.
+    - at: '2026-05-25T13:02:40+00:00'
+      status: accepted
+      note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37958
+        COMPLETED with exit code 0:0. phase1_voxtell_aligned.yaml is now the only active Phase1 VoxTell config.'
   SP-B.Step2:
     title: Implement patch crop and patch-level 2 positive plus 1 negative prompts
     owner: sp_b_sampling_vocab_worker
     phase: 2
-    status: ready
+    status: accepted
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
+    - CFG.CanonicalPhase1
     - SP-B.Step1
     result_file: runs/SP-B.Step2/RESULT.html
     scope: 'SP-B Step 2: sub-volume crop inside the on-disk 128x128x256 case (default patch_size=[128,128,128], yaml-configurable;
       do not hardcode VoxTell 192^3), 85/15 foreground/random sampling, patch-local present/absent recomputation, full 2+1
       sampling.'
     acceptance:
-    - patch_size, foreground_oversample_prob live in phase1_voxtell_body.yaml (no hardcoded 192).
+    - patch_size, foreground_oversample_prob live in phase1_voxtell_aligned.yaml (no hardcoded 192).
     - Output patch shape equals configured patch_size.
     - Foreground/random crop ratio is auditable and close to 85/15.
     - Positive masks are not empty inside the sampled patch.
     - Setting patch_size=[128,128,256] degrades sampler to whole-case behavior (regression path).
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_crop_s2i_dataset.py
+    updated_at: '2026-05-25T14:00:10+00:00'
+    last_note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37959
+      COMPLETED with exit code 0:0. Patch crop and patch-local 2+1 sampling are aligned to phase1_voxtell_aligned.yaml.'
+    history:
+    - at: '2026-05-25T11:45:55+00:00'
+      status: assigned
+      note: Started worker subagent with Body-Tell/reports/26-05-24/runs/SP-B.Step2/PROMPT.md
+    - at: '2026-05-25T12:05:37+00:00'
+      status: todo
+      note: 'Interrupted worker before RESULT.html and froze task until CFG.CanonicalPhase1 resolves canonical config ambiguity.'
+    - at: '2026-05-25T13:02:40+00:00'
+      status: ready
+      note: 'CFG.CanonicalPhase1 accepted; SP-B.Step2 may rerun against phase1_voxtell_aligned.yaml only.'
+    - at: '2026-05-25T13:04:14+00:00'
+      status: assigned
+      note: 'Rerun started with fresh PROMPT.md after CFG.CanonicalPhase1 acceptance; worker must use phase1_voxtell_aligned.yaml
+        only and reconcile prior interrupted SP-B.Step2 edits.'
+    - at: '2026-05-25T13:18:40+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists; reviewer subagent started with REVIEW_PROMPT.md.
+    - at: '2026-05-25T14:00:10+00:00'
+      status: accepted
+      note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37959
+        COMPLETED with exit code 0:0. Patch crop and patch-local 2+1 sampling are aligned to phase1_voxtell_aligned.yaml.'
   SP-B.Step3:
     title: Implement 25/75 canonical versus variant positive prompt sampling
     owner: sp_b_sampling_vocab_worker
     phase: 2
-    status: todo
+    status: ready
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step2
@@ -374,11 +445,17 @@ tasks:
     - Classes without variants fall back explicitly and are counted.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py
+    updated_at: '2026-05-25T14:00:10+00:00'
+    last_note: SP-B.Step2 accepted; dependencies satisfied.
+    history:
+    - at: '2026-05-25T14:00:10+00:00'
+      status: ready
+      note: SP-B.Step2 accepted; dependencies satisfied.
   SP-B.Step4:
     title: Support aggregate and combined-label concepts in sampler
     owner: sp_b_sampling_vocab_worker
     phase: 2
-    status: todo
+    status: ready
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step2
@@ -390,6 +467,12 @@ tasks:
     - Base class evaluation semantics remain separate from aggregates.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py
+    updated_at: '2026-05-25T14:00:10+00:00'
+    last_note: SP-B.Step2 accepted; dependencies satisfied.
+    history:
+    - at: '2026-05-25T14:00:10+00:00'
+      status: ready
+      note: SP-B.Step2 accepted; dependencies satisfied.
   SP-B.Step5:
     title: Expand vocabulary under VoxTell Appendix C principles
     owner: sp_b_sampling_vocab_worker

@@ -2,11 +2,11 @@
 
 Usage:
     # Single GPU
-    python train.py --config configs/phase1_voxtell_body.yaml
+    python train.py --config configs/phase1_voxtell_aligned.yaml
     # Smoke test
-    python train.py --config configs/phase1_voxtell_body.yaml --smoke --volume-size 72 64 128 --amp
+    python train.py --config configs/phase1_voxtell_aligned.yaml --smoke --volume-size 72 64 128 --amp
     # Multi-GPU (DDP via torchrun)
-    torchrun --nproc_per_node=2 train.py --config configs/phase1_voxtell_body.yaml
+    torchrun --nproc_per_node=2 train.py --config configs/phase1_voxtell_aligned.yaml
 """
 
 from __future__ import annotations
@@ -166,6 +166,10 @@ def build_dataset(
     ):
         if key in dc:
             dataset_kwargs[key] = dc[key]
+    if dc.get("patch_size") is not None:
+        dataset_kwargs["patch_size"] = tuple(dc["patch_size"])
+    if "foreground_oversample_prob" in dc:
+        dataset_kwargs["foreground_oversample_prob"] = dc["foreground_oversample_prob"]
     return HyperBodyPromptDataset(**dataset_kwargs)
 
 
@@ -355,7 +359,7 @@ def evaluate(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Body-Tell Phase 1 training")
     parser.add_argument(
-        "--config", type=str, default="configs/phase1_voxtell_body.yaml",
+        "--config", type=str, default="configs/phase1_voxtell_aligned.yaml",
     )
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--epochs", type=int, default=None)

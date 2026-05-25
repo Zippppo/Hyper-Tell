@@ -28,6 +28,8 @@ data:
   embedding_cache_path: artifacts/text_embeddings/prompt_embeddings.pt
   strict_embedding_cache: true
   volume_size: [128, 128, 256]
+  patch_size: [128, 128, 128]
+  foreground_oversample_prob: 0.85
   num_positive: 2
   num_negative: 1
   min_voxels: 1

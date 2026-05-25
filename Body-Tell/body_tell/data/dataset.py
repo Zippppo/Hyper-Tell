@@ -18,6 +18,7 @@ from .vocabulary import (
     prompt_records_by_class,
     read_json,
     sample_prompts_for_case,
+    train_class_ids,
 )
 
 
@@ -39,6 +40,8 @@ class HyperBodyPromptDataset(Dataset):
         root: str | Path,
         split: str = "train",
         volume_size: Optional[Sequence[int]] = None,
+        patch_size: Optional[Sequence[int]] = None,
+        foreground_oversample_prob: float = 0.0,
         num_positive: int = 2,
         num_negative: int = 1,
         min_voxels: int = 1,
@@ -53,6 +56,10 @@ class HyperBodyPromptDataset(Dataset):
         self.root = Path(root)
         self.split = split
         self.volume_size = tuple(int(x) for x in volume_size) if volume_size else None
+        self.patch_size = self._normalize_shape("patch_size", patch_size)
+        self.foreground_oversample_prob = float(foreground_oversample_prob)
+        if not 0.0 <= self.foreground_oversample_prob <= 1.0:
+            raise ValueError("foreground_oversample_prob must be between 0 and 1")
         self.num_positive = int(num_positive)
         self.num_negative = int(num_negative)
         self.min_voxels = int(min_voxels)
@@ -86,6 +93,7 @@ class HyperBodyPromptDataset(Dataset):
         )
 
         self.vocab = load_label_vocab(self.vocab_path)
+        self._train_class_ids = tuple(train_class_ids(self.vocab))
         self.presence = load_class_presence(self.presence_path)
         split_data = read_json(self.split_path)
         if split not in split_data:
@@ -103,6 +111,20 @@ class HyperBodyPromptDataset(Dataset):
         self.embedding_cache = validation["cache"]
         self.prompt_embeddings = self.embedding_cache["embeddings"].float().contiguous()
         self._prompt_records_by_class = prompt_records_by_class(self.vocab)
+
+    @staticmethod
+    def _normalize_shape(
+        name: str,
+        shape: Optional[Sequence[int]],
+    ) -> Optional[Tuple[int, int, int]]:
+        if shape is None:
+            return None
+        values = tuple(int(x) for x in shape)
+        if len(values) != 3:
+            raise ValueError(f"{name} must contain exactly 3 dimensions")
+        if any(value <= 0 for value in values):
+            raise ValueError(f"{name} dimensions must be positive")
+        return values
 
     def _resolve_root_path(self, path: str | Path) -> Path:
         path = Path(path)
@@ -142,6 +164,157 @@ class HyperBodyPromptDataset(Dataset):
     def _prompt_rng(self, index: int) -> random.Random:
         return random.Random(self.seed + self._epoch * _EPOCH_SEED_STRIDE + int(index))
 
+    def _patch_case_record(
+        self,
+        case_record: Mapping[str, Any],
+        labels: np.ndarray,
+    ) -> Dict[str, Any]:
+        class_ids, counts = np.unique(labels, return_counts=True)
+        voxel_counts = {
+            int(class_id): int(count)
+            for class_id, count in zip(class_ids, counts)
+        }
+        present_class_ids = sorted(voxel_counts)
+        trainable = set(self._train_class_ids)
+        patch_record = dict(case_record)
+        patch_record.update(
+            {
+                "shape": [int(axis) for axis in labels.shape],
+                "present_class_ids": present_class_ids,
+                "foreground_present_class_ids": [
+                    class_id for class_id in present_class_ids if class_id in trainable
+                ],
+                "voxel_counts": {
+                    str(class_id): int(count) for class_id, count in voxel_counts.items()
+                },
+            }
+        )
+        return patch_record
+
+    def _sample_foreground_voxel(
+        self,
+        labels: np.ndarray,
+        rng: random.Random,
+    ) -> Optional[Tuple[int, int, int]]:
+        if not self._train_class_ids:
+            return None
+        foreground_mask = np.isin(labels, self._train_class_ids)
+        foreground_flat = np.flatnonzero(foreground_mask.reshape(-1))
+        if foreground_flat.size == 0:
+            return None
+        flat_index = int(foreground_flat[rng.randrange(int(foreground_flat.size))])
+        return tuple(int(axis) for axis in np.unravel_index(flat_index, labels.shape))
+
+    @staticmethod
+    def _random_crop_start(
+        shape: Sequence[int],
+        patch_size: Sequence[int],
+        rng: random.Random,
+    ) -> Tuple[int, int, int]:
+        starts: List[int] = []
+        for axis_size, patch_axis in zip(shape, patch_size):
+            max_start = max(0, int(axis_size) - int(patch_axis))
+            starts.append(rng.randint(0, max_start) if max_start else 0)
+        return starts[0], starts[1], starts[2]
+
+    @staticmethod
+    def _foreground_crop_start(
+        shape: Sequence[int],
+        patch_size: Sequence[int],
+        voxel: Sequence[int],
+        rng: random.Random,
+    ) -> Tuple[int, int, int]:
+        starts: List[int] = []
+        for axis_size, patch_axis, voxel_axis in zip(shape, patch_size, voxel):
+            axis_size = int(axis_size)
+            patch_axis = int(patch_axis)
+            voxel_axis = int(voxel_axis)
+            max_start = max(0, axis_size - patch_axis)
+            if max_start == 0:
+                starts.append(0)
+                continue
+            low = max(0, voxel_axis - patch_axis + 1)
+            high = min(voxel_axis, max_start)
+            starts.append(rng.randint(low, high) if high > low else low)
+        return starts[0], starts[1], starts[2]
+
+    def _sample_patch(
+        self,
+        labels: np.ndarray,
+        occupancy: np.ndarray,
+        rng: random.Random,
+    ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+        input_shape = tuple(int(axis) for axis in labels.shape)
+        patch_size = self.patch_size
+        if patch_size is None:
+            metadata = {
+                "branch": "whole_case",
+                "start": [0, 0, 0],
+                "end": list(input_shape),
+                "input_shape": list(input_shape),
+                "patch_size": list(input_shape),
+                "output_shape": list(input_shape),
+                "foreground_oversample_prob": self.foreground_oversample_prob,
+            }
+            return labels, occupancy, metadata
+
+        needs_crop = any(
+            patch_axis < axis_size
+            for patch_axis, axis_size in zip(patch_size, input_shape)
+        )
+        if not needs_crop:
+            patch_labels = labels
+            patch_occupancy = occupancy
+            if tuple(patch_labels.shape) != patch_size:
+                patch_labels = fit_array_to_shape(patch_labels, patch_size, pad_value=0)
+                patch_occupancy = fit_array_to_shape(patch_occupancy, patch_size, pad_value=False)
+            metadata = {
+                "branch": "whole_case",
+                "start": [0, 0, 0],
+                "end": list(input_shape),
+                "input_shape": list(input_shape),
+                "patch_size": list(patch_size),
+                "output_shape": [int(axis) for axis in patch_labels.shape],
+                "foreground_oversample_prob": self.foreground_oversample_prob,
+            }
+            return patch_labels, patch_occupancy, metadata
+
+        foreground_voxel = None
+        if (
+            self.foreground_oversample_prob > 0.0
+            and rng.random() < self.foreground_oversample_prob
+        ):
+            foreground_voxel = self._sample_foreground_voxel(labels, rng)
+
+        if foreground_voxel is not None:
+            branch = "foreground"
+            start = self._foreground_crop_start(input_shape, patch_size, foreground_voxel, rng)
+        else:
+            branch = "random"
+            start = self._random_crop_start(input_shape, patch_size, rng)
+
+        end = [
+            min(int(axis_size), int(axis_start) + int(patch_axis))
+            for axis_size, axis_start, patch_axis in zip(input_shape, start, patch_size)
+        ]
+        slices = tuple(slice(axis_start, axis_end) for axis_start, axis_end in zip(start, end))
+        patch_labels = labels[slices]
+        patch_occupancy = occupancy[slices]
+        if tuple(patch_labels.shape) != patch_size:
+            patch_labels = fit_array_to_shape(patch_labels, patch_size, pad_value=0)
+            patch_occupancy = fit_array_to_shape(patch_occupancy, patch_size, pad_value=False)
+
+        metadata = {
+            "branch": branch,
+            "start": [int(axis) for axis in start],
+            "end": [int(axis) for axis in end],
+            "input_shape": list(input_shape),
+            "patch_size": list(patch_size),
+            "output_shape": [int(axis) for axis in patch_labels.shape],
+            "foreground_oversample_prob": self.foreground_oversample_prob,
+        }
+        return patch_labels, patch_occupancy, metadata
+
     def __getitem__(self, index: int) -> Dict[str, Any]:
         case_path = self.case_files[index]
         case_id = case_path.stem
@@ -163,8 +336,10 @@ class HyperBodyPromptDataset(Dataset):
             occupancy = fit_array_to_shape(occupancy, self.volume_size, pad_value=False)
 
         rng = self._prompt_rng(index)
+        labels, occupancy, crop_metadata = self._sample_patch(labels, occupancy, rng)
+        patch_record = self._patch_case_record(case_record, labels)
         prompt_records = sample_prompts_for_case(
-            case_record,
+            patch_record,
             self.vocab,
             num_positive=self.num_positive,
             num_negative=self.num_negative,
@@ -201,6 +376,7 @@ class HyperBodyPromptDataset(Dataset):
             "target_class_ids": [list(record.get("target_class_ids", [])) for record in prompt_records],
             "target_empty": target_empty,
             "target_masks": torch.from_numpy(np.stack(masks, axis=0)),
+            "crop": crop_metadata,
         }
 
 
@@ -288,7 +464,7 @@ def prompt_collate_fn(batch: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     collated["target_empty"] = pad_prompt_tensor("target_empty", True)
     collated["target_masks"] = pad_prompt_tensor("target_masks", 0.0)
     collated["prompt_valid"] = prompt_valid
-    for key in ("case_id", "case_path", "prompt_texts", "target_class_ids"):
+    for key in ("case_id", "case_path", "prompt_texts", "target_class_ids", "crop"):
         collated[key] = [item[key] for item in batch]
     return collated
 

@@ -158,6 +158,8 @@ def test_build_dataset_forwards_s2i_path_config(monkeypatch) -> None:
             "embedding_cache_path": "artifacts/text_embeddings/prompt_embeddings.pt",
             "strict_embedding_cache": False,
             "volume_size": [4, 5, 6],
+            "patch_size": [4, 5, 3],
+            "foreground_oversample_prob": 0.85,
             "num_positive": 2,
             "num_negative": 1,
             "min_voxels": 1,
@@ -171,6 +173,8 @@ def test_build_dataset_forwards_s2i_path_config(monkeypatch) -> None:
         "root": "Body-Tell",
         "split": "train",
         "volume_size": (4, 5, 6),
+        "patch_size": (4, 5, 3),
+        "foreground_oversample_prob": 0.85,
         "num_positive": 2,
         "num_negative": 1,
         "min_voxels": 1,
@@ -183,13 +187,16 @@ def test_build_dataset_forwards_s2i_path_config(monkeypatch) -> None:
     }
 
 
-def test_body_config_targets_cropped_s2i_package() -> None:
-    cfg = train_module.load_config("Body-Tell/configs/phase1_voxtell_body.yaml")
+def test_phase1_canonical_config_targets_cropped_s2i_package() -> None:
+    canonical_config = Path("Body-Tell/configs/phase1_voxtell_aligned.yaml")
+    cfg = train_module.load_config(canonical_config)
 
     assert cfg["data"]["voxel_dir"] == "S2I-Dataset-70cls/data"
     assert cfg["data"]["split_path"] == "S2I-Dataset-70cls/dataset_split.json"
     assert cfg["data"]["presence_path"] == "S2I-Dataset-70cls/class_presence.json"
     assert cfg["data"]["volume_size"] == [128, 128, 256]
+    assert cfg["data"]["patch_size"] == [128, 128, 128]
+    assert cfg["data"]["foreground_oversample_prob"] == 0.85
 
 
 def test_mini_overfit_loss_decreases(tmp_path: Path) -> None:

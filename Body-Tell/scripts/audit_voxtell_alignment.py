@@ -17,7 +17,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BODY_TELL_ROOT = Path(__file__).resolve().parents[1]
 VOXTELL_ROOT = REPO_ROOT / "VoxTell"
-DEFAULT_BODY_CONFIG = BODY_TELL_ROOT / "configs" / "phase1_voxtell_body.yaml"
+DEFAULT_BODY_CONFIG = BODY_TELL_ROOT / "configs" / "phase1_voxtell_aligned.yaml"
 DEFAULT_VOXTELL_DIR = VOXTELL_ROOT / "models-weight" / "voxtell" / "voxtell_v1.1"
 PROJECT_TO_DECODER_RE = re.compile(r"^project_to_decoder_channels\.(\d+)\.2\.weight$")
 

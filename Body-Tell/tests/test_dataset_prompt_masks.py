@@ -152,6 +152,42 @@ def _make_tiny_body_tell_root(tmp_path: Path) -> Path:
     return root
 
 
+def _overwrite_case_with_patch_local_negative(root: Path) -> None:
+    labels = np.zeros((4, 5, 6), dtype=np.uint8)
+    labels[0, 0, 3] = 1
+    labels[1, 1, 4] = 2
+    labels[2, 2, 0] = 3
+    sensor_pc = np.array(
+        [
+            [0.2, 0.2, 3.2],
+            [1.2, 1.2, 4.2],
+            [2.2, 2.2, 0.2],
+        ],
+        dtype=np.float32,
+    )
+    np.savez(
+        root / "Dataset" / "voxel_data" / "CASE_0001.npz",
+        sensor_pc=sensor_pc,
+        voxel_labels=labels,
+        grid_world_min=np.zeros(3, dtype=np.float32),
+        grid_world_max=np.array([4, 5, 6], dtype=np.float32),
+        grid_voxel_size=np.ones(3, dtype=np.float32),
+        grid_occ_size=np.array([4, 5, 6], dtype=np.int32),
+    )
+
+    presence_path = root / "artifacts" / "data_stats" / "class_presence.json"
+    presence = json.loads(presence_path.read_text(encoding="utf-8"))
+    presence["cases"]["CASE_0001"].update(
+        {
+            "shape": [4, 5, 6],
+            "present_class_ids": [0, 1, 2, 3],
+            "foreground_present_class_ids": [1, 2, 3],
+            "voxel_counts": {"0": 117, "1": 1, "2": 1, "3": 1},
+        }
+    )
+    _write_json(presence_path, presence)
+
+
 def test_prompt_dataset_builds_binary_masks_and_negative_prompt(tmp_path: Path) -> None:
     root = _make_tiny_body_tell_root(tmp_path)
 
@@ -177,6 +213,87 @@ def test_prompt_dataset_builds_binary_masks_and_negative_prompt(tmp_path: Path) 
     assert sample["target_masks"][1].sum().item() == 6
     assert sample["target_masks"][2].sum().item() == 0
     assert sample["occupancy"].sum().item() == 3
+
+
+def test_prompt_dataset_crops_patch_and_recomputes_prompt_presence(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    _overwrite_case_with_patch_local_negative(root)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        patch_size=(4, 5, 3),
+        foreground_oversample_prob=0.0,
+        num_positive=2,
+        num_negative=1,
+        seed=0,
+    )
+
+    sample = dataset[0]
+
+    assert sample["occupancy"].shape == (1, 4, 5, 3)
+    assert sample["voxel_labels"].shape == (4, 5, 3)
+    assert sample["target_masks"].shape == (3, 4, 5, 3)
+    assert sample["crop"]["branch"] == "random"
+    assert sample["crop"]["start"] == [0, 0, 3]
+    assert sample["crop"]["end"] == [4, 5, 6]
+    assert sample["target_class_ids"] == [[1], [2], [3]]
+    assert sample["target_empty"].tolist() == [False, False, True]
+    assert [mask.sum().item() for mask in sample["target_masks"]] == [1, 1, 0]
+
+
+def test_prompt_dataset_foreground_crop_ratio_is_auditable(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        patch_size=(4, 5, 3),
+        foreground_oversample_prob=0.85,
+        num_positive=1,
+        num_negative=1,
+        seed=17,
+    )
+
+    foreground_count = 0
+    sample_count = 200
+    for epoch in range(sample_count):
+        dataset.set_epoch(epoch)
+        sample = dataset[0]
+        foreground_count += sample["crop"]["branch"] == "foreground"
+        assert sample["crop"]["foreground_oversample_prob"] == 0.85
+
+    foreground_ratio = foreground_count / sample_count
+    assert 0.75 <= foreground_ratio <= 0.95
+
+
+def test_prompt_dataset_whole_case_patch_size_keeps_existing_behavior(
+    tmp_path: Path,
+) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        patch_size=(4, 5, 6),
+        foreground_oversample_prob=1.0,
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+    )
+
+    sample = dataset[0]
+
+    assert sample["occupancy"].shape == (1, 4, 5, 6)
+    assert sample["target_masks"].shape == (3, 4, 5, 6)
+    assert sample["crop"]["branch"] == "whole_case"
+    assert sample["crop"]["start"] == [0, 0, 0]
+    assert sample["crop"]["end"] == [4, 5, 6]
+    assert sample["prompt_ids"].tolist() == [1, 2, 3]
+    assert sample["target_empty"].tolist() == [False, False, True]
+    assert [mask.sum().item() for mask in sample["target_masks"]] == [12, 6, 0]
 
 
 def test_prompt_dataset_set_epoch_changes_prompt_text_deterministically(
@@ -424,6 +541,7 @@ def test_prompt_collate_pads_mixed_prompt_counts() -> None:
         "occupancy": torch.ones(1, *spatial_shape),
         "voxel_labels": torch.zeros(spatial_shape, dtype=torch.long),
         "case_path": "case.npz",
+        "crop": {"branch": "whole_case"},
     }
     sample_two = {
         **base,

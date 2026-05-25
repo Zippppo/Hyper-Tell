@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=Path,
-        default=ROOT / "configs" / "phase1_voxtell_body.yaml",
+        default=ROOT / "configs" / "phase1_voxtell_aligned.yaml",
         help="Training config used to build the model and resolve data artifacts.",
     )
     parser.add_argument(

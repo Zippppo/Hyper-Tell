@@ -179,7 +179,7 @@
     <div class="cards">
       <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9 #12</span></div>
       <div class="card"><strong>状态</strong><span class="tag warn">Task 0 ready</span></div>
-      <div class="card"><strong>硬依赖</strong><span class="tag warn">SP-A 已满足 / SP-B Step 2 待完成</span></div>
+      <div class="card"><strong>硬依赖</strong><span class="tag ok">SP-A / SP-B Step 2 已满足</span></div>
       <div class="card"><strong>目标</strong><span class="tag info">paper-aligned 训练闭环</span></div>
     </div>
   </header>
@@ -258,14 +258,14 @@
           <td>SP-A 前置已满足；Task 5 仍需等 SP-C Task 4 后启用。</td>
         </tr>
         <tr>
-          <td>SP-B Step 1：动态采样 RNG</td>
+          <td>SP-B Step 1：动态采样 RNG（已完成）</td>
           <td>训练 loop 每个 epoch 必须同时驱动 sampler 和 dataset epoch state。</td>
-          <td>Task 1 要调用 dataset epoch setter；若 dataset 尚未实现，则记录 warning 并在测试中暴露。</td>
+          <td>Task 1 要保留并验证 dataset epoch setter 调用；该前置已由 SP-B Step 1 提供。</td>
         </tr>
         <tr>
-          <td>SP-B Step 2：patch-level 2+1</td>
+          <td>SP-B Step 2：patch-level 2+1（已完成）</td>
           <td>paper-aligned profile 的 prompt 监督应基于 patch present/absent，而不是 whole-case presence。</td>
-          <td>Task 6 的 prompt/negative 评估可以先在 whole-case 口径上 smoke，最终验收必须等 patch-level sampler 完成。</td>
+          <td>Task 6 可直接基于 patch-level sampler 口径验证 prompt/negative 评估；vocabulary/cache 仍等 SP-B Step 5/6。</td>
         </tr>
       </tbody>
     </table>
@@ -413,10 +413,10 @@
       <li>先做 Task 0，让 paper-aligned profile 有显式配置入口，但不改变默认训练。</li>
       <li>随后做 Task 1、Task 2、Task 3，形成 fixed-update + SGD + poly 的最小训练闭环。</li>
       <li>再做 Task 4，确保中断恢复不会破坏 poly schedule。</li>
-      <li>SP-A P3 已完成；Task 5 等 SP-C Task 4 后执行。SP-B Step 1/2 完成后补齐 Task 6 的最终验收口径。</li>
+      <li>SP-A P3 与 SP-B Step 1/2 已完成；Task 5 等 SP-C Task 4 后执行。Task 6 可基于 patch-level sampler 验证 prompt/negative 口径，但最终 vocabulary/cache 一致性仍等 SP-B Step 5/6。</li>
       <li>Task 7 贯穿每个阶段：每完成一项机制，就补对应测试，避免把长训当成唯一验收。</li>
     </ol>
-    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先做报告框架，但最终指标必须等 SP-B patch-level sampler 和 vocabulary/cache 对齐完成后再定稿。</p>
+    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先基于已验收的 SP-B patch-level sampler 做 prompt/negative 评估框架，但最终指标必须等 SP-B vocabulary/cache 对齐完成后再定稿。</p>
   </section>
 
   <section>
