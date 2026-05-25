@@ -12,6 +12,10 @@ status_model:
   blocked: Task cannot move without human input or an external artifact.
   accepted: Manager accepted the result and appended progress to lead.html.
 required_gates:
+  tdd_test_quality:
+    pass_condition: REVIEW.html records Test quality as pass and Targeted pytest as pass.
+    artifact_policy: Record focused test paths, regression coverage, red evidence, targeted pytest command, and targeted
+      pytest result in REVIEW.html.
   phase1_slurm:
     command: sbatch slurm/body-tell-phase1.sh
     accounting_command: sacct -j <JOB_ID> --format=JobID,State,ExitCode,Elapsed -n
@@ -24,8 +28,11 @@ global_rules:
 - lead.html is owned only by the manager.
 - Workers must not edit lead.html or workflow_manifest.yaml.
 - Workers must keep changes limited to the assigned task and plan file.
+- Workers must follow TDD: focused test first, red evidence, implementation, green evidence.
 - Long-lived dispatcher sessions must use only targeted manifest entries and compact artifact summaries; do not read legacy
   child event logs.
+- Reviewers must review test quality before implementation and may accept only when Test quality and Targeted pytest both
+  pass.
 - Reviewers must submit slurm/body-tell-phase1.sh and may accept only when the main job is COMPLETED with exit code 0:0.
 - Rerun prompts must include the current manager note so workers address needs_fix or gate_failed causes directly.
 - Run one worker/reviewer cycle at a time unless the user explicitly asks for parallel lanes.

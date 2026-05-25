@@ -175,8 +175,8 @@
     <div class="cards">
       <div class="card"><strong>明确不一致</strong><span class="bad">13 项</span></div>
       <div class="card"><strong>已分发到子计划</strong><span class="ok">13 项</span></div>
-      <div class="card"><strong>子计划进度</strong><span class="ok">SP-A 完成</span></div>
-      <div class="card"><strong>总体判断</strong><span class="warn">进入 SP-B Step 1</span></div>
+      <div class="card"><strong>子计划进度</strong><span class="ok">SP-B Step 1 完成</span></div>
+      <div class="card"><strong>总体判断</strong><span class="warn">进入 SP-B Step 2</span></div>
     </div>
     <p class="note warn">2026-05-24 修订：原 11 项基础上新增 #12 BCE+Dice loss 等价性、#13 <code>num_heads</code> mismatch（Body-Tell=32 vs VoxTell=1）。其中 #13 同时修正了原 SP-A 中"VoxTell projection 输出 <code>[32,2048,4096,8192,10240]</code>"的错误表述（实际为 <code>[32,64,128,256,320]</code> 量级，<code>num_heads</code> 才是根因）。</p>
     <div class="note warn"><strong>域差异豁免（2026-05-24 重要约束）</strong>：Body-Tell 处理 occupancy grid，VoxTell 处理医学影像（CT/MRI/PET）。任务输入模态、特征统计、噪声特性都不同。<strong>本计划中"对齐"是手段不是目的，目的是支持 VoxTell 权重复用与实现一致性。任何一项不一致，若实现阶段 audit 后发现对齐会损害性能、或对当前任务没有可观察收益、或与权重复用无关，允许显式跳过并在子计划中记录原因。</strong> #12（loss 公式）与 #13（<code>num_heads</code>）尤其适用此豁免。</div>
@@ -210,7 +210,7 @@
           <td>SP-B</td>
           <td><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">Body-Tell Sampling 与 Vocabulary 优化思路</a></td>
           <td>数据构造对齐：动态采样基础设施、85% foreground patch oversampling、patch 内 2+1 prompt、25/75 canonical/variant、aggregate sampler、vocabulary expansion、text embedding 重建。</td>
-          <td><span class="tag warn">下一步：Step 1 ready</span></td>
+          <td><span class="tag warn">Step 1 accepted；下一步：Step 2 ready</span></td>
         </tr>
         <tr>
           <td>SP-C</td>
@@ -224,7 +224,7 @@
 
   <section>
     <h2>直接执行顺序</h2>
-    <p>当前同步状态：<strong>SP-A P0-P6-lite 已完成并通过 review / phase1 Slurm gate</strong>，相关产物已归档到 <code>runs/archive/SP-A.*</code>。下一项默认执行 <strong>SP-B Step 1</strong>；SP-C Task 0 也处于 ready，可在不争用同一文件的前提下并行。</p>
+    <p>当前同步状态：<strong>SP-A P0-P6-lite 已完成并通过 review / phase1 Slurm gate；SP-B Step 1 已 accepted</strong>。下一项默认执行 <strong>SP-B Step 2</strong>；SP-C Task 0 也处于 ready，可在不争用同一文件的前提下并行。</p>
     <table>
       <thead>
         <tr>
@@ -240,22 +240,23 @@
           <td>
             <ul>
               <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0-P6-lite</a>：模型结构、runtime HWD position/memory 契约、<code>transformer_decoder.*</code> strict prefix loader 均已验收。</li>
-              <li><span class="tag warn">下一步</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
+              <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
+              <li><span class="tag warn">下一步</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 2</a>：patch crop + patch 内 2+1 prompt 采样。</li>
               <li><span class="tag warn">可并行</span> <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop、SGD、poly schedule、checkpoint/resume。</li>
             </ul>
           </td>
-          <td>SP-B Step 1 与 SP-C Task 0 可并行；默认 manager next task 是 <code>SP-B.Step1</code>。</td>
-          <td>SP-B Step 1 通过后进入 patch-level sampler；SP-C Task 0-4 通过后可接 Task 5 deep supervision。</td>
+          <td>SP-B Step 2 与 SP-C Task 0 可并行；默认 manager next task 是 <code>SP-B.Step2</code>。</td>
+          <td>SP-B Step 2 通过后进入 Step 3/4；SP-C Task 0-4 通过后可接 Task 5 deep supervision。</td>
         </tr>
         <tr>
           <td>2</td>
           <td>
             <ul>
               <li><span class="tag ok">已完成</span> SP-A P2-P4：Residual encoder、VoxTellDecoder、projection/forward 排列。</li>
-              <li><span class="tag warn">待执行</span> SP-B Step 2-Step 4：patch crop + patch 内 2+1、positive prompt 25/75、aggregate sampler。</li>
+              <li><span class="tag warn">下一步</span> SP-B Step 2：patch crop + patch 内 2+1 prompt 采样；随后接 Step 3/4。</li>
             </ul>
           </td>
-          <td>SP-B 内部按 Step 1 → Step 2 → Step 3/4 顺序做。</td>
+          <td>SP-B 内部当前按 Step 2 → Step 3/4 顺序做；Step 1 已验收。</td>
           <td>具备 patch-level prompt 监督前提，并为后续 vocabulary/cache 对齐提供 sampler 语义。</td>
         </tr>
         <tr>
@@ -283,7 +284,7 @@
       </tbody>
     </table>
     <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs ≈ 75</code></strong>，对应 <code>total_updates ≈ 75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、机制验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平</strong>，baseline 回归闸门按此基准设定。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>。</p>
-    <p class="note warn">关键路径串行依赖（2026-05-25 状态同步）：<strong>SP-A 链路已完成</strong>（P0/P1 transformer parity → P5/P6-lite position/memory 契约 → P6-lite transformer prefix loader）；当前关键路径转为 <strong>SP-B Step 1 → Step 2 → Step 3/4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。</p>
+    <p class="note warn">关键路径串行依赖（2026-05-25 状态同步）：<strong>SP-A 链路已完成，SP-B Step 1 已验收</strong>（动态采样 RNG 与 epoch propagation 已通过 review / phase1 Slurm gate）；当前关键路径转为 <strong>SP-B Step 2 → Step 3/4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。</p>
   </section>
 
   <section>
@@ -398,7 +399,7 @@
 
   <section>
     <h2>关键依赖</h2>
-    <p class="note">关键串行依赖（2026-05-25 状态同步）：<strong>SP-A P0-P6-lite 已完成</strong>，其结构与权重加载闸门不再阻塞后续任务。当前剩余串行依赖是 <strong>SP-B Step 1 → Step 2 → Step 3 / Step 4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5 → Task 6/7</strong>。</p>
+    <p class="note">关键串行依赖（2026-05-25 状态同步）：<strong>SP-A P0-P6-lite 与 SP-B Step 1 已完成</strong>，结构、权重加载与动态采样 RNG 闸门不再阻塞后续任务。当前剩余串行依赖是 <strong>SP-B Step 2 → Step 3 / Step 4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5 → Task 6/7</strong>。</p>
   </section>
 
   <section>
@@ -422,9 +423,9 @@
 
   <section>
     <h2>当前结论</h2>
-    <p><strong>SP-A 已完成，当前可以启动 SP-B。</strong> 13 项明确不一致仍按原分工维护：SP-A 覆盖的结构类与 #13 <code>num_heads</code> 已验收；SP-B 继续覆盖数据构造类；SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。</p>
-    <p>短期优先顺序更新为：<strong>SP-B Step 1</strong> 先启动动态采样 RNG；SP-C Task 0 可并行启动。随后推进 SP-B Step 2-Step 4，再做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
-    <p class="small">本报告同步 SP-A 完成状态与归档证据路径，未修改训练代码。2026-05-25 状态：SP-A P0-P6-lite accepted；workflow next task 为 SP-B.Step1。</p>
+    <p><strong>SP-A 与 SP-B Step 1 已完成，当前进入 SP-B Step 2。</strong> 13 项明确不一致仍按原分工维护：SP-A 覆盖的结构类与 #13 <code>num_heads</code> 已验收；SP-B 继续覆盖数据构造类；SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。</p>
+    <p>短期优先顺序更新为：<strong>SP-B Step 2</strong> 启动 patch crop + patch 内 2+1 prompt 采样；SP-C Task 0 可并行启动。随后推进 SP-B Step 3/4，再做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
+    <p class="small">本报告同步 SP-A 完成状态、SP-B Step 1 accepted 证据路径与 <code>Body-Tell/train.py</code> epoch propagation 更新。2026-05-25 状态：SP-A P0-P6-lite accepted；SP-B.Step1 accepted；workflow next task 为 SP-B.Step2。</p>
   </section>
 </main>
 

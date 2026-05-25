@@ -34,6 +34,8 @@ Global rules:
 - Use conda environment `voxtell` for verification. Prefer commands like `conda run -n voxtell python -m pytest ...`.
 - Keep all reports and run logs in HTML.
 - You are not alone in the codebase; do not revert unrelated edits made by other agents or the user.
+- Follow TDD: write or update focused tests before implementation, run them to capture red evidence, implement the smallest task-scoped fix, then rerun them to capture green evidence.
+- If true red evidence is impossible because the behavior is already covered or this is a pure audit, state that explicitly in RESULT.html and still provide the strongest focused regression coverage you can.
 - Do not edit `{{lead_file}}`.
 - Do not edit `{{manifest_file}}`.
 - Do not modify unrelated code or perform adjacent refactors.
@@ -43,10 +45,13 @@ Global rules:
 Required output:
 Write `{{result_file}}` as an HTML report containing:
 1. Task id and summary.
-2. Files changed.
-3. Verification commands run and important output.
-4. Acceptance criteria checklist.
-5. Blockers or residual risks.
-6. Recommendation: `ready_for_review`, `needs_fix`, or `blocked`.
+2. Test files added or updated, with the acceptance criteria they cover.
+3. Red evidence: focused pytest command and important failing output, or a clear explanation for why a true red run was not possible.
+4. Green evidence: focused pytest command and important passing output.
+5. Implementation files changed.
+6. Broader verification commands run and important output.
+7. Acceptance criteria checklist.
+8. Blockers or residual risks.
+9. Recommendation: `ready_for_review`, `needs_fix`, or `blocked`.
 
 Start by reading the lead plan and the source-of-truth sub-plan. Then complete only the assigned task.

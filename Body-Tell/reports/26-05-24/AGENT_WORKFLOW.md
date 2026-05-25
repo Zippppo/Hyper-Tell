@@ -25,11 +25,11 @@ Legacy `events.jsonl` and `review-events.jsonl` files may exist from the old CLI
 1. Read only `workflow_manifest.yaml` and targeted sections of `lead.html` or the relevant plan.
 2. Select a `ready` task whose dependencies are accepted.
 3. Save the worker prompt to `runs/<TASK_ID>/PROMPT.md` if an audit trail is useful.
-4. Spawn one worker subagent with the task id, owner, plan file, scope, acceptance criteria, verification commands, current manager note, and writable paths.
-5. Wait for the worker to write `runs/<TASK_ID>/RESULT.html` and return a compact summary.
-6. Spawn one reviewer subagent with the result path, acceptance criteria, relevant diff scope, and gate requirements.
+4. Spawn one worker subagent with the task id, owner, plan file, scope, acceptance criteria, verification commands, current manager note, writable paths, and TDD requirements.
+5. Wait for the worker to write `runs/<TASK_ID>/RESULT.html` with test-first evidence and return a compact summary.
+6. Spawn one reviewer subagent with the result path, acceptance criteria, relevant diff scope, TDD test-quality requirements, and gate requirements.
 7. Wait for the reviewer to write `runs/<TASK_ID>/REVIEW.html` and return `accept`, `needs_fix`, or `blocked`.
-8. Accept only when the reviewer records a passing phase1 Slurm gate.
+8. Accept only when the reviewer records passing test quality, passing targeted pytest, and a passing phase1 Slurm gate.
 9. Update `workflow_manifest.yaml` and append compact progress to `lead.html`.
 10. If the verdict is `needs_fix` or `gate_failed`, rerun the same task with the reviewer note.
 11. If the verdict is `blocked`, stop and report the blocker.
@@ -89,7 +89,37 @@ Only the dispatcher changes task status. Workers write `RESULT.html`; reviewers 
 
 - Reviews the worker result, relevant diff, verification evidence, and acceptance criteria.
 - Does not edit implementation files, `lead.html`, or `workflow_manifest.yaml`.
+- Reviews test quality before implementation details.
 - Must run the required phase1 Slurm gate before returning `accept`.
+
+## TDD Development Contract
+
+Every implementation task is test-first by default.
+
+Worker sequence:
+
+1. Read the assigned acceptance criteria and identify the focused regression behavior.
+2. Add or update the smallest meaningful pytest/regression test for that behavior.
+3. Run the focused test before the implementation change and record red evidence. If a true red run is impossible because the behavior is already covered or the task is a pure audit, explain that explicitly in `RESULT.html`.
+4. Implement the smallest task-scoped code change.
+5. Run the focused pytest target again and record green evidence.
+6. Run any broader suggested verification that is cheap enough for the task.
+7. Write `RESULT.html` with test files, red evidence, green evidence, changed implementation files, acceptance checklist, blockers, and residual risk.
+
+Reviewer sequence:
+
+1. Review tests before implementation.
+2. Confirm the tests map to the acceptance criteria and would fail for the relevant regression.
+3. Reject tests that are tautological, only check superficial shapes when semantics are required, mock away the core behavior, or merely assert the implementation's current constants.
+4. Run or verify the focused pytest target and record `Targeted pytest: pass`, `failed`, or `blocked`.
+5. Review the implementation diff only after test quality is acceptable.
+6. Run the phase1 Slurm gate last.
+
+Acceptance requires all of:
+
+- `Test quality: pass`.
+- `Targeted pytest: pass`.
+- `Phase1 Slurm gate: pass`.
 
 ## Required Gate
 
@@ -109,7 +139,7 @@ sacct -j <JOB_ID> --format=JobID,State,ExitCode,Elapsed -n
 - `sacct exit code: <EXIT_CODE>`.
 - The smallest relevant failure excerpt, only when failed.
 
-A task may be accepted only when the main job is `COMPLETED` with exit code `0:0`. If the reviewer says `accept` without this evidence, record `gate_failed` and rerun the same task with the gate note.
+A task may be accepted only when test quality passes, targeted pytest passes, and the main Slurm job is `COMPLETED` with exit code `0:0`. If the reviewer says `accept` without this evidence, record `gate_failed` and rerun the same task with the missing-evidence note.
 
 ## Worker Rules
 
@@ -118,11 +148,12 @@ Every worker prompt must enforce:
 - Use only the assigned task from the assigned sub-plan.
 - You are not alone in the codebase; do not revert unrelated edits.
 - Read the current manager note; if rerun after `needs_fix` or `gate_failed`, address it directly.
+- Follow the TDD sequence: focused test first, red evidence, implementation, green evidence.
 - Do not edit `lead.html` or `workflow_manifest.yaml`.
 - Do not do adjacent refactors.
 - Use `conda run -n voxtell ...` for verification commands.
 - Write an HTML result report to the requested result path.
-- Include changed files, verification commands, important output, blockers, and residual risks.
+- Include test files, red/green evidence, changed implementation files, verification commands, important output, blockers, and residual risks.
 
 ## Context Rules
 

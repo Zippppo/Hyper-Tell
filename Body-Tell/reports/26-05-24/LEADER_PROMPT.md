@@ -23,9 +23,9 @@ Your job:
 1. Keep this main conversation as a dispatcher only.
 2. Read `AGENT_WORKFLOW.md` and the relevant task entry in `workflow_manifest.yaml`.
 3. Pick the next `ready` task whose dependencies are accepted.
-4. Spawn a worker subagent for implementation. The worker must write `runs/<TASK_ID>/RESULT.html`.
-5. Spawn a reviewer subagent after the worker returns. The reviewer must write `runs/<TASK_ID>/REVIEW.html` and run the phase1 Slurm gate.
-6. Accept a task only when `REVIEW.html` records `slurm/body-tell-phase1.sh` as `COMPLETED` with exit code `0:0`.
+4. Spawn a worker subagent for TDD implementation. The worker must write `runs/<TASK_ID>/RESULT.html` with focused test files, red evidence, implementation files, and green evidence.
+5. Spawn a reviewer subagent after the worker returns. The reviewer must review test quality first, run or verify targeted pytest, then run the phase1 Slurm gate.
+6. Accept a task only when `REVIEW.html` records `Test quality: pass`, `Targeted pytest: pass`, and `slurm/body-tell-phase1.sh` as `COMPLETED` with exit code `0:0`.
 7. If accepted, update `workflow_manifest.yaml` and append compact progress to `lead.html`.
 8. If `needs_fix` or `gate_failed`, rerun the same task with the reviewer note.
 9. If blocked, report the blocker compactly and stop.

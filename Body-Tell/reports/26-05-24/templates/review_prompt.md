@@ -31,8 +31,12 @@ Rules:
 - Do not edit implementation files.
 - Do not edit `{{lead_file}}`.
 - Do not edit `{{manifest_file}}`.
-- Inspect the worker result, relevant git diff, and verification evidence.
+- Inspect tests before implementation. Test quality is a required acceptance gate.
+- Confirm tests map to the acceptance criteria and would fail for the relevant regression.
+- Reject tautological tests, tests that only assert superficial shapes when semantics are required, tests that mock away the core behavior, and tests that only assert current implementation constants.
+- Inspect the worker result, test diff, implementation diff, and verification evidence.
 - Use `conda run -n voxtell ...` if running verification.
+- Run or verify the focused pytest target before the Slurm gate. Verdict may be `accept` only when test quality and targeted pytest pass.
 - Run the required phase1 Slurm gate before accepting:
   - Submit `sbatch slurm/body-tell-phase1.sh`.
   - Wait for the job to leave the queue.
@@ -45,11 +49,17 @@ Rules:
 Required output:
 Write `{{review_file}}` as an HTML review containing:
 1. Verdict: `accept`, `needs_fix`, or `blocked`.
-2. Evidence for each acceptance criterion.
-3. Commands run and important output.
-4. Required fix list if not accepted.
-5. Any residual risk the manager should record.
-6. A phase1 Slurm gate section with these exact fields:
+2. Test quality section with these exact fields:
+   - `Test quality: pass`, `failed`, or `blocked`.
+   - `Focused tests reviewed: <paths>`.
+   - `Regression covered: <yes/no and reason>`.
+   - `Red evidence reviewed: <yes/no and reason>`.
+   - `Targeted pytest: pass`, `failed`, or `blocked`.
+3. Evidence for each acceptance criterion.
+4. Commands run and important output.
+5. Required fix list if not accepted.
+6. Any residual risk the manager should record.
+7. A phase1 Slurm gate section with these exact fields:
    - `Phase1 Slurm gate: pass`, `failed`, or `blocked`.
    - `Slurm command: sbatch slurm/body-tell-phase1.sh`.
    - `Slurm job id: <JOB_ID>`.
