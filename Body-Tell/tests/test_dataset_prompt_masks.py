@@ -14,6 +14,7 @@ from body_tell.data.vocabulary import (
     EMBEDDING_DIM,
     file_sha256,
     flatten_prompt_records,
+    foreground_eval_class_ids,
     prompt_records_by_class,
     sample_prompts_for_case,
 )
@@ -152,6 +153,24 @@ def _make_tiny_body_tell_root(tmp_path: Path) -> Path:
     return root
 
 
+def _add_liver_spleen_aggregate(root: Path) -> dict:
+    vocab_path = root / "configs" / "label_vocab.json"
+    vocab = json.loads(vocab_path.read_text(encoding="utf-8"))
+    vocab["aggregates"] = [
+        {
+            "id": "agg_liver_spleen",
+            "canonical": "liver and spleen",
+            "prompts": ["liver and spleen", "hepatic splenic organs"],
+            "component_class_ids": [1, 2],
+            "train_as_positive": False,
+            "eval_as_foreground": False,
+        }
+    ]
+    _write_json(vocab_path, vocab)
+    _write_prompt_embedding_cache(root, vocab)
+    return vocab
+
+
 def _overwrite_case_with_patch_local_negative(root: Path) -> None:
     labels = np.zeros((4, 5, 6), dtype=np.uint8)
     labels[0, 0, 3] = 1
@@ -213,6 +232,75 @@ def test_prompt_dataset_builds_binary_masks_and_negative_prompt(tmp_path: Path) 
     assert sample["target_masks"][1].sum().item() == 6
     assert sample["target_masks"][2].sum().item() == 0
     assert sample["occupancy"].sum().item() == 3
+
+
+def test_prompt_dataset_samples_aggregate_with_union_mask_and_embedding(
+    tmp_path: Path,
+) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    vocab = _add_liver_spleen_aggregate(root)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=3,
+        num_negative=0,
+        canonical_prob=1.0,
+        seed=3,
+    )
+
+    sample = dataset[0]
+    aggregate_position = sample["prompt_texts"].index("liver and spleen")
+
+    assert foreground_eval_class_ids(vocab) == [1, 2, 3]
+    assert sample["prompt_source_types"][aggregate_position] == "aggregate"
+    assert sample["prompt_aggregate_ids"][aggregate_position] == "agg_liver_spleen"
+    assert sample["target_class_ids"][aggregate_position] == [1, 2]
+    assert sample["target_empty"][aggregate_position].item() is False
+    expected_union = torch.logical_or(
+        sample["voxel_labels"] == 1,
+        sample["voxel_labels"] == 2,
+    ).float()
+    assert torch.equal(sample["target_masks"][aggregate_position], expected_union)
+    assert sample["target_masks"][aggregate_position].sum().item() == 18
+
+    expected_prompt_index = 4
+    assert sample["prompt_ids"][aggregate_position].item() == expected_prompt_index
+    expected_embedding = torch.arange(
+        expected_prompt_index * EMBEDDING_DIM,
+        (expected_prompt_index + 1) * EMBEDDING_DIM,
+        dtype=torch.float32,
+    )
+    assert torch.equal(sample["text_embeddings"][aggregate_position], expected_embedding)
+
+
+def test_sampler_can_draw_absent_aggregate_as_negative(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    vocab = _add_liver_spleen_aggregate(root)
+    case_record = {
+        "voxel_counts": {
+            "1": 1,
+            "2": 0,
+            "3": 0,
+        }
+    }
+
+    sampled = sample_prompts_for_case(
+        case_record,
+        vocab,
+        num_positive=0,
+        num_negative=4,
+        min_voxels=2,
+        rng=random.Random(0),
+    )
+
+    aggregate_record = next(
+        record for record in sampled if record.get("aggregate_id") == "agg_liver_spleen"
+    )
+    assert aggregate_record["source_type"] == "aggregate"
+    assert aggregate_record["target_empty"] is True
+    assert aggregate_record["target_class_ids"] == [1, 2]
 
 
 def test_prompt_dataset_crops_patch_and_recomputes_prompt_presence(tmp_path: Path) -> None:

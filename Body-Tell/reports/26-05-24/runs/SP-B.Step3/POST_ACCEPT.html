@@ -36,14 +36,14 @@
   <ul>
     <li><code>workflow_manifest.yaml</code> marks <code>SP-B.Step3</code> as <code>accepted</code>.</li>
     <li><code>updated_at</code>, <code>last_note</code>, and <code>history</code> record reviewer gate evidence and residual risk.</li>
-    <li>No newly unblocked dependency chain was found; <code>SP-B.Step4</code> and <code>SP-C.Task0</code> remain ready.</li>
+    <li>At the time of this SP-B.Step3 post-accept, no newly unblocked dependency chain was found; <code>SP-B.Step4</code> and <code>SP-C.Task0</code> were ready. <code>SP-B.Step4</code> has since been accepted.</li>
   </ul>
 
   <h2>Lead And Report Sync</h2>
   <ul>
-    <li><code>lead.html</code> now records SP-B Step 3 as accepted, appends a compact progress entry, and sets the default next task to <code>SP-B.Step4</code>.</li>
+    <li><code>lead.html</code> recorded SP-B Step 3 as accepted, appended a compact progress entry, and set the then-default next task to <code>SP-B.Step4</code>.</li>
     <li><code>bodytell_sampling_vocabulary_optimization_report.html</code> now records Step 3 accepted evidence, <code>canonical_prob=0.25</code>, fallback counting, and the residual config-forwarding risk.</li>
-    <li>Current-state summaries and next-task statements now point to <code>SP-B.Step4</code> and <code>SP-C.Task0</code>.</li>
+    <li>At the time, current-state summaries and next-task statements pointed to <code>SP-B.Step4</code> and <code>SP-C.Task0</code>; the latest manifest and lead report now carry the current next-task state.</li>
   </ul>
 
   <h2>Consistency Checks</h2>
@@ -88,8 +88,8 @@
   <h2>Unrelated Dirty Files</h2>
   <p>None detected.</p>
 
-  <h2>Next Ready Tasks</h2>
-  <p><code>SP-B.Step4</code> and <code>SP-C.Task0</code>.</p>
+  <h2>Historical Next Ready Tasks</h2>
+  <p>At the time of this artifact: <code>SP-B.Step4</code> and <code>SP-C.Task0</code>. Current next ready tasks are tracked in the latest manifest and post-accept artifact.</p>
 
   <h2>Blockers Or Residual Risks</h2>
   <p>No blockers. <span class="risk">Residual risk:</span> <code>train.py</code> relies on the dataset default for <code>canonical_prob=0.25</code> rather than forwarding <code>data.canonical_prob</code>; non-default experiments should add config plumbing in a later task.</p>

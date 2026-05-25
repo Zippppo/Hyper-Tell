@@ -144,7 +144,7 @@
   <header>
     <h1>Body-Tell Sampling 与 Vocabulary 优化思路</h1>
     <p class="muted">范围：<code>Body-Tell/</code> 当前 Phase 1 S2I 配置、既有采样审计报告、既有 vocabulary audit、<code>VoxTell/VoxTell.pdf</code> Supplementary A.3 与 C。生成/修订日期：2026-05-24；本版按重新配置后的 <code>S2I-Dataset-70cls</code> 复算。</p>
-    <div class="callout warn"><strong>执行状态（2026-05-25 同步）：</strong>SP-A P0-P6-lite、CFG.CanonicalPhase1、SP-B Step 1/2/3 已完成并通过 review / phase1 Slurm gate；当前 workflow next task 为 <code>SP-B.Step4</code>，<code>SP-C.Task0</code>（paper-mechanics profile / 训练预算控制面，非论文复刻）也处于 ready。</div>
+    <div class="callout warn"><strong>执行状态（2026-05-26 同步）：</strong>SP-A P0-P6-lite、CFG.CanonicalPhase1、SP-B Step 1/2/3/4 已完成并通过 review / phase1 Slurm gate；当前 workflow next task 为 <code>SP-B.Step5</code>，<code>SP-C.Task0</code>（paper-mechanics profile / 训练预算控制面，非论文复刻）也处于 ready。</div>
   </header>
 
   <section>
@@ -156,8 +156,8 @@
       <li><strong>第一优先级动态采样基础设施已验收</strong>：dataset epoch/iteration RNG 与训练侧 epoch propagation 已通过 SP-B Step 1 review / phase1 Slurm gate。</li>
       <li><strong>第二优先级 patch-level 训练样本对齐已验收</strong>：85% foreground patch oversampling、patch 内 present/absent 重算、2 positive + 1 negative sampling 已通过 SP-B Step 2 review / phase1 Slurm gate，并使用 canonical <code>phase1_voxtell_aligned.yaml</code>。</li>
       <li><strong>第三优先级 positive prompt 25/75 策略已验收</strong>：Step 3 已实现 25% 默认主名、75% 改写变体，并记录 classes-without-variants fallback metadata。</li>
-      <li><strong>第四优先级是 aggregate sampler 支持</strong>：当前 next task 为 Step 4；扩 vocabulary 前必须先让训练 sampler 能采到 combined-label concepts。当前 embedding cache 包含 aggregates，但训练索引仍排除了 aggregates。</li>
-      <li><strong>第五优先级是 vocabulary 与 embedding 对齐</strong>：先扩充并审校 vocabulary，再重建 text embedding cache；这两个步骤有严格先后关系。</li>
+      <li><strong>第四优先级 aggregate sampler 支持已验收</strong>：Step 4 已让训练 sampler 采到 combined-label concepts，并验证 aggregate union target mask 与 embedding row alignment。</li>
+      <li><strong>第五优先级是 vocabulary 与 embedding 对齐</strong>：当前 next task 为 Step 5，先扩充并审校 vocabulary，再进入 Step 6 重建 text embedding cache；这两个步骤有严格先后关系。</li>
       <li><strong>当前数据口径</strong>：本报告以当前 <code>S2I-Dataset-70cls/class_presence.json</code> 为准，共 11,070 cases，train/val/test 为 10,070/500/500。</li>
     </ol>
   </section>
@@ -168,7 +168,7 @@
       <div class="card"><div class="muted">Active S2I cases</div><div class="metric">11,070</div><div class="small">train 10,070 / val 500 / test 500</div></div>
       <div class="card"><div class="muted">Base classes</div><div class="metric">70</div><div class="small">69 个 foreground trainable</div></div>
       <div class="card"><div class="muted">Prompt records</div><div class="metric">264</div><div class="small">234 class + 30 aggregate</div></div>
-      <div class="card"><div class="muted">Train aggregate flags</div><div class="metric">0/10</div><div class="small">已缓存但未采样训练</div></div>
+      <div class="card"><div class="muted">Aggregate sampler</div><div class="metric">on</div><div class="small">concept-level union masks</div></div>
     </div>
     <table>
       <tr><th>证据点</th><th>当前状态</th><th>影响</th></tr>
@@ -180,17 +180,17 @@
       <tr>
         <td>随机性</td>
         <td>SP-B Step 1 已给 dataset 增加 epoch-aware RNG，并由训练 loop 传播 epoch state。</td>
-        <td>同一个 case 可跨 epoch 采到不同 prompt/class 组合；Step 3 已在此基础上扩展 prompt variant 语义，后续 Step 4 扩展 aggregate 语义。</td>
+        <td>同一个 case 可跨 epoch 采到不同 prompt/class 组合；Step 3 已在此基础上扩展 prompt variant 语义，Step 4 已扩展 aggregate 语义。</td>
       </tr>
       <tr>
         <td>prompt 选择</td>
         <td><code>sample_prompts_for_case()</code> 对 positive prompt 使用 <code>canonical_prob=0.25</code> 先选择 canonical/variant 分支；negative prompt 仍保持普通随机采样。</td>
-        <td>epoch-aware 动态采样与 25/75 positive prompt 采样均已完成；当前剩余差距是 aggregate concepts 尚未进入训练 sampler。</td>
+        <td>epoch-aware 动态采样、25/75 positive prompt 采样与 aggregate concept sampling 均已完成；当前剩余差距是 vocabulary 扩增和 cache 重建。</td>
       </tr>
       <tr>
         <td>aggregate</td>
-        <td><code>flatten_prompt_records()</code> 会缓存 aggregate，但 <code>prompt_records_by_class()</code> 使用 <code>include_aggregates=False</code>。</td>
-        <td>VoxTell Appendix C 明确包含 combined-label alternatives；Body-Tell 当前已有组合概念 schema，但还没有进入训练 sampler。</td>
+        <td><code>prompt_records_by_concept()</code> 会把合法 aggregate 作为训练 concept，并用 <code>component_class_ids</code> 构造 union target masks。</td>
+        <td>VoxTell Appendix C 明确包含 combined-label alternatives；Body-Tell 当前已有组合概念 schema，并已进入训练 sampler，下一步扩充/审校更多组合概念。</td>
       </tr>
       <tr>
         <td>当前训练 split 复算</td>
@@ -226,7 +226,7 @@
       </tr>
       <tr>
         <td>Vocabulary pipeline 包含 semantic expansion、cross-dataset harmonization、human expert validation；最终 1,087 concepts、9,682 rewritten labels，且每个 concept 至少 5 个变体。</td>
-        <td>Body-Tell 只有 70 classes，46 类 3 prompts，24 个 rib 类 4 prompts；已有 10 aggregates 但未训练。</td>
+        <td>Body-Tell 只有 70 classes，46 类 3 prompts，24 个 rib 类 4 prompts；已有 aggregate concept 已可训练采样，但 vocabulary 规模和审校 variants 仍不足。</td>
         <td>不要复制概念规模；复制构造原则：每个可监督概念至少 5 条审校 prompt，组合概念显式建模。</td>
       </tr>
     </table>
@@ -235,7 +235,7 @@
   <section>
     <h2>实现顺序</h2>
     <div class="callout warn">
-      最优顺序是：动态 RNG → patch crop 与 patch 内 2+1 → 25/75 positive prompt → aggregate sampler 支持 → vocabulary expansion → embedding cache 重建。当前动态 RNG、patch crop / patch 内 2+1、25/75 positive prompt 均已验收；下一步是 Step 4，aggregate sampler 支持必须早于 combined-label vocabulary 扩增。
+      最优顺序是：动态 RNG → patch crop 与 patch 内 2+1 → 25/75 positive prompt → aggregate sampler 支持 → vocabulary expansion → embedding cache 重建。当前动态 RNG、patch crop / patch 内 2+1、25/75 positive prompt、aggregate sampler 支持均已验收；下一步是 Step 5，combined-label vocabulary 扩增必须早于 embedding cache 重建。
     </div>
 
     <h3>Step 1. 建立训练时动态采样基础设施</h3>
@@ -287,7 +287,8 @@
     </ol>
 
     <h3>Step 4. 让训练 sampler 支持 aggregate / combined-label concepts</h3>
-    <p><strong>依赖：</strong>Step 2。<strong>对应 VoxTell：</strong>Appendix C 包含 combined-label alternatives。Body-Tell 当前 <code>flatten_prompt_records()</code> 会缓存 aggregates，但 <code>prompt_records_by_class()</code> 使用 <code>include_aggregates=False</code>，因此扩 vocabulary 前必须先让训练 sampler 能采到组合概念。</p>
+    <p class="small"><strong>执行状态：</strong>accepted。证据见 <code>runs/SP-B.Step4/RESULT.html</code> 与 <code>runs/SP-B.Step4/REVIEW.html</code>；review 记录 phase1 Slurm gate job 38028 为 <code>COMPLETED</code> / <code>0:0</code>。Step 4 已验证 aggregate prompts 可被训练 sampler 采到、target mask 等于 component union、embedding lookup 与 prompt record index 对齐，且 base class evaluation ids 保持独立。</p>
+    <p><strong>依赖：</strong>Step 2。<strong>对应 VoxTell：</strong>Appendix C 包含 combined-label alternatives。Step 4 前，Body-Tell 的 <code>flatten_prompt_records()</code> 会缓存 aggregates，但 <code>prompt_records_by_class()</code> 使用 <code>include_aggregates=False</code>；本步骤已在扩 vocabulary 前让训练 sampler 能采到组合概念。</p>
     <ol>
       <li>把 sampler 的采样单位从 class-only 扩展为 concept：base class concept 的 <code>target_class_ids</code> 为单个 class，aggregate concept 的 <code>target_class_ids</code> 为 <code>component_class_ids</code>。</li>
       <li>对 patch 计算 concept-level present/absent：aggregate 的 union mask 在 patch 内 voxel count ≥ <code>min_voxels</code> 时为 present，否则为 absent。</li>
@@ -378,18 +379,18 @@
         <td>accepted；positive canonical 比例 audit 接近 25%，fallback counts 已测试。</td>
       </tr>
       <tr>
-        <td><span class="tag amber">4</span></td>
+        <td><span class="tag green">4</span></td>
         <td>Aggregate / combined-label sampler 支持</td>
         <td>Step 2</td>
         <td>把训练 sampler 从 class-only 扩展到 concept；aggregate target mask 使用 component class union。</td>
-        <td>已有 aggregate prompt 能被训练采到；union mask 和 prompt index 对齐。</td>
+        <td>accepted；已有 aggregate prompt 能被训练采到，union mask、prompt index 对齐与 base eval separation 已测试。</td>
       </tr>
       <tr>
         <td><span class="tag amber">5</span></td>
         <td>Vocabulary expansion / harmonization / expert validation</td>
         <td>Step 4</td>
         <td>每个 base class 至少 5 条审校 variants；增加合法 combined-label alternatives。</td>
-        <td>vocab validation 无错误，combined labels 有 component ids。</td>
+        <td>ready；vocab validation 无错误，combined labels 有 component ids。</td>
       </tr>
       <tr>
         <td><span class="tag amber">6</span></td>
@@ -407,7 +408,7 @@
       <li><strong>patch crop 和 patch-level 2+1 必须同一阶段完成</strong>：不能先裁 patch 但继续用 whole-case presence 抽 prompt，否则 sampled positive 可能在 patch 内没有 target mask。</li>
       <li><strong>离线 128×128×256 不等于 foreground oversampling</strong>：<code>crop_s2i_dataset.py</code> 产出的固定 (128,128,256) on-disk 形状只是输入尺寸/显存 profile，不能替代训练时 85/15 foreground/random patch sampler，也不能替代 patch-level present/absent 重算。</li>
       <li><strong>不要照抄 VoxTell 的 192³ patch</strong>：Body-Tell 是 anisotropic 的 128×128×256，patch_size 选 <code>[128, 128, 128]</code>（保留 x/y 全幅，沿 z 随机裁），通过 yaml 配置；不在代码里硬编码。</li>
-      <li><strong>aggregate sampler 支持必须早于扩词</strong>：当前 aggregates 虽然进入 embedding cache，但训练索引排除了 aggregates；直接扩 combined labels 不会改变训练分布。</li>
+      <li><strong>aggregate sampler 支持已先于扩词完成</strong>：当前 aggregates 已可进入训练 concept sampler；扩 combined labels 后仍必须保持 component ids、union mask 与 embedding cache 一致。</li>
       <li><strong>扩词必须配套重建 embedding cache</strong>：当前 cache 对 prompt records 做 hash 校验，改 <code>label_vocab.json</code> 后旧 cache 会失效。</li>
       <li><strong>采样比例要进 config</strong>：<code>patch_size=[128,128,128]</code>、<code>foreground_oversample_prob=0.85</code>、<code>canonical_prob=0.25</code>、<code>num_positive=2</code>、<code>num_negative=1</code> 应可复现实验。</li>
       <li><strong>combined labels 不能污染 base class</strong>：组合概念是额外 prompt target，不应把 base label 的 canonical 名称改成群组名。</li>
@@ -419,7 +420,7 @@
   <section>
     <h2>最终判断</h2>
     <div class="callout risk">
-      Body-Tell 靠近 VoxTell 的最短路径不是加入更多自定义技巧，而是严格复刻 VoxTell 明确写到的数据构造，并按依赖顺序落地：训练时动态采样、85% foreground patch oversampling、patch 内 2 positive + 1 negative、positive prompt 25/75 主名/改写均已完成；下一步让 sampler 支持 aggregate / combined-label concepts；最后扩充审校 vocabulary 并重建预计算 text embeddings。其他增强项应等这些基础对齐后再单独讨论。
+      Body-Tell 靠近 VoxTell 的最短路径不是加入更多自定义技巧，而是严格复刻 VoxTell 明确写到的数据构造，并按依赖顺序落地：训练时动态采样、85% foreground patch oversampling、patch 内 2 positive + 1 negative、positive prompt 25/75 主名/改写、aggregate / combined-label concept sampler 均已完成；下一步扩充审校 vocabulary，然后重建预计算 text embeddings。其他增强项应等这些基础对齐后再单独讨论。
     </div>
   </section>
 </main>

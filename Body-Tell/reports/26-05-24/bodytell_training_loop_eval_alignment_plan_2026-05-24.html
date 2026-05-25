@@ -264,9 +264,9 @@
           <td>Task 1 要保留并验证 dataset epoch setter 调用；该前置已由 SP-B Step 1 提供。</td>
         </tr>
         <tr>
-          <td>SP-B Step 2：patch-level 2+1（已完成）</td>
-          <td>paper-mechanics profile 的 prompt 监督应基于 patch present/absent，而不是 whole-case presence。</td>
-          <td>Task 6 可直接基于 patch-level sampler 口径验证 prompt/negative 评估；vocabulary/cache 仍等 SP-B Step 5/6。</td>
+          <td>SP-B Step 2/4：patch-level 2+1 与 aggregate concept sampler（已完成）</td>
+          <td>paper-mechanics profile 的 prompt 监督应基于 patch/concept present/absent，而不是 whole-case presence；combined labels 需要 component-union target masks。</td>
+          <td>Task 6 可直接基于 patch-level sampler 与 aggregate metadata 验证 prompt/negative 评估；vocabulary/cache 仍等 SP-B Step 5/6。</td>
         </tr>
       </tbody>
     </table>
@@ -346,7 +346,7 @@
       <li>补充反传测试：5 个尺度输出都参与 loss，且每个可训练输出分支都有梯度。</li>
       <li><strong>（2026-05-24 新增，覆盖 #12，域差异豁免）BCE+Dice 公式 audit（不强制对齐）</strong>：对照 nnU-Net <code>DC_and_BCE_loss</code>（或 VoxTell 引用的等价实现）的关键字段——BCE 与 Dice 权重比、<code>smooth</code> 常数、<code>batch_dice</code>、<code>do_bg</code>、<code>ignore_label</code> 处理、reduce 策略——在 <code>PromptSegmentationLoss</code> 内逐项 audit 并列出偏差表。<strong>对齐不是强制目标</strong>：nnU-Net 默认值是为医学影像（强度分布、噪声、稀疏前景）调过的；occupancy grid 任务下，Body-Tell 当前公式可能已经更合适。<strong>处理策略</strong>：(a) audit 后偏差小且对齐成本低 → 对齐；(b) 偏差大或对齐后 smoke 指标下降 → 保留 Body-Tell 现公式并把偏差表写入 audit 记录；(c) 不能仅因"和论文不一样"就改公式。</li>
     </ol>
-    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；paper-mechanics 长训仍必须等待 SP-C Task 4、SP-B patch-level sampler 和端到端 smoke，而不是仅凭 SP-A 完成即标记通过；BCE+Dice 公式 audit 报告（即使结论是"保留现状"）写入 SP-C 子目录，所有偏差项均有显式记录与处理判断（对齐 / 保留 / 待定）。</p>
+    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；paper-mechanics 长训仍必须等待 SP-C Task 4、已验收的 SP-B patch/concept sampler 口径和端到端 smoke，而不是仅凭 SP-A 完成即标记通过；BCE+Dice 公式 audit 报告（即使结论是"保留现状"）写入 SP-C 子目录，所有偏差项均有显式记录与处理判断（对齐 / 保留 / 待定）。</p>
 
     <h3 id="task-6">Task 6. 评估协议扩展（含 baseline 回归闸门）</h3>
     <ol>
@@ -414,10 +414,10 @@
       <li>先做 Task 0，让 paper-mechanics profile 有显式配置入口和非复刻预算声明，但不改变默认训练。</li>
       <li>随后做 Task 1、Task 2、Task 3，形成 fixed-update + SGD + poly 的最小训练闭环。</li>
       <li>再做 Task 4，确保中断恢复不会破坏 poly schedule。</li>
-      <li>SP-A P3 与 SP-B Step 1/2 已完成；Task 5 等 SP-C Task 4 后执行。Task 6 可基于 patch-level sampler 验证 prompt/negative 口径，但最终 vocabulary/cache 一致性仍等 SP-B Step 5/6。</li>
+      <li>SP-A P3 与 SP-B Step 1/2/4 已完成；Task 5 等 SP-C Task 4 后执行。Task 6 可基于 patch-level sampler 与 aggregate metadata 验证 prompt/negative 口径，但最终 vocabulary/cache 一致性仍等 SP-B Step 5/6。</li>
       <li>Task 7 贯穿每个阶段：每完成一项机制，就补对应测试，避免把长训当成唯一验收。</li>
     </ol>
-    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先基于已验收的 SP-B patch-level sampler 做 prompt/negative 评估框架，但最终指标必须等 SP-B vocabulary/cache 对齐完成后再定稿。</p>
+    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先基于已验收的 SP-B patch-level 与 aggregate concept sampler 做 prompt/negative 评估框架，但最终指标必须等 SP-B vocabulary/cache 对齐完成后再定稿。</p>
   </section>
 
   <section>
@@ -441,7 +441,7 @@ pytest Body-Tell/tests/test_deep_supervision.py -q</code></pre>
 
   <section>
     <h2>最终判定</h2>
-    <p>SP-C 已接管父报告中所有训练控制面与评估协议缺口。SP-A 已提供 aligned model 与 P6-lite 权重加载入口，SP-B Step 1/2 已提供动态采样 RNG 与 patch-level 2+1 prompt 口径；SP-C 现在要补齐 optimizer/scheduler、deep supervision、checkpoint resume 与评估协议，形成可验证的 paper-mechanics 训练闭环。</p>
+    <p>SP-C 已接管父报告中所有训练控制面与评估协议缺口。SP-A 已提供 aligned model 与 P6-lite 权重加载入口，SP-B Step 1/2/4 已提供动态采样 RNG、patch-level 2+1 prompt 口径与 aggregate concept sampler；SP-C 现在要补齐 optimizer/scheduler、deep supervision、checkpoint resume 与评估协议，形成可验证的 paper-mechanics 训练闭环。</p>
     <p class="small">本文件同步 SP-A 前置完成状态，未修改训练代码。</p>
   </section>
 </main>

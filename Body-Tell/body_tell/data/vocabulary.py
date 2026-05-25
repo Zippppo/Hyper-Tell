@@ -316,6 +316,47 @@ def prompt_records_by_class(vocab: Mapping[str, Any]) -> Dict[int, List[Dict[str
     return dict(grouped)
 
 
+def prompt_records_by_concept(vocab: Mapping[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """Return trainable prompt records grouped by base or aggregate concept.
+
+    Base-class concepts use a single target class. Aggregate concepts are kept
+    separate from base-class records and target the union of their configured
+    component classes. Aggregate ``train_as_positive`` flags are intentionally
+    not used here because the current vocabulary stores existing aggregates as
+    inference/evaluation-disabled records while still caching their embeddings.
+    """
+
+    trainable = set(train_class_ids(vocab))
+    aggregate_components = _aggregate_components_by_id(vocab)
+    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    for record in flatten_prompt_records(vocab):
+        source_type = str(record.get("source_type", ""))
+        if source_type == "class":
+            class_id = int(record["class_id"])
+            if class_id not in trainable:
+                continue
+            concept_id = _class_concept_id(class_id)
+            target_class_ids = [class_id]
+        elif source_type == "aggregate":
+            aggregate_id = str(record["aggregate_id"])
+            target_class_ids = aggregate_components.get(aggregate_id, [])
+            if not target_class_ids or any(
+                class_id not in trainable for class_id in target_class_ids
+            ):
+                continue
+            concept_id = _aggregate_concept_id(aggregate_id)
+        else:
+            continue
+
+        enriched = dict(record)
+        enriched["concept_id"] = concept_id
+        enriched["target_class_ids"] = list(target_class_ids)
+        grouped[concept_id].append(enriched)
+
+    return dict(grouped)
+
+
 def sample_prompts_for_case(
     case_record: Mapping[str, Any],
     vocab: Mapping[str, Any],
@@ -324,16 +365,19 @@ def sample_prompts_for_case(
     min_voxels: int = 1,
     canonical_prob: float = 0.25,
     rng: Optional[random.Random] = None,
-    prompt_index: Optional[Mapping[int, Sequence[Mapping[str, Any]]]] = None,
+    prompt_index: Optional[Mapping[Any, Sequence[Mapping[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Sample prompt records for a case.
 
-    Positive records are sampled from present foreground classes with at least
-    ``min_voxels``. Positive prompt text uses ``canonical_prob`` for canonical
-    terms and otherwise samples non-canonical variants. If a positive class has
-    no variants, the canonical record is used and marked as an explicit
-    fallback. Negative records are sampled from absent trainable classes, keep
-    ordinary random prompt selection, and are marked with ``target_empty=true``.
+    Positive records are sampled from present concepts with at least
+    ``min_voxels`` voxels. Base-class concepts target one class; aggregate
+    concepts are present when the union of their component classes reaches the
+    threshold and target that same union. Positive prompt text uses
+    ``canonical_prob`` for canonical terms and otherwise samples non-canonical
+    variants. If a positive concept has no variants, the canonical record is
+    used and marked as an explicit fallback. Negative records are sampled from
+    absent trainable concepts, keep ordinary random prompt selection, and are
+    marked with ``target_empty=true``.
     """
 
     canonical_prob = float(canonical_prob)
@@ -342,33 +386,43 @@ def sample_prompts_for_case(
 
     rng = rng or random.Random()
     counts = {int(k): int(v) for k, v in case_record.get("voxel_counts", {}).items()}
-    trainable = set(train_class_ids(vocab))
+    grouped = prompt_index if prompt_index is not None else prompt_records_by_concept(vocab)
+    concepts = _trainable_concepts_from_prompt_index(grouped, vocab)
     present = {
-        class_id
-        for class_id, count in counts.items()
-        if class_id in trainable and count >= min_voxels
+        concept_id
+        for concept_id, concept in concepts.items()
+        if _concept_voxel_count(concept["target_class_ids"], counts) >= min_voxels
     }
-    absent = trainable - present
-    grouped = prompt_index if prompt_index is not None else prompt_records_by_class(vocab)
+    absent = set(concepts) - present
 
     sampled: List[Dict[str, Any]] = []
-    positive_classes = _sample_without_replacement(sorted(present), num_positive, rng)
-    negative_classes = _sample_without_replacement(sorted(absent), num_negative, rng)
+    positive_concepts = _sample_without_replacement(
+        sorted(present, key=_concept_sort_key),
+        num_positive,
+        rng,
+    )
+    negative_concepts = _sample_without_replacement(
+        sorted(absent, key=_concept_sort_key),
+        num_negative,
+        rng,
+    )
 
-    for class_id in positive_classes:
-        record = _sample_positive_prompt_record(grouped[class_id], canonical_prob, rng)
+    for concept_id in positive_concepts:
+        concept = concepts[concept_id]
+        record = _sample_positive_prompt_record(concept["records"], canonical_prob, rng)
         record["target_empty"] = False
-        record["target_class_ids"] = [class_id]
+        record["target_class_ids"] = list(concept["target_class_ids"])
         sampled.append(record)
 
-    for class_id in negative_classes:
-        record = dict(rng.choice(grouped[class_id]))
+    for concept_id in negative_concepts:
+        concept = concepts[concept_id]
+        record = dict(rng.choice(concept["records"]))
         record["prompt_sampling_role"] = "negative"
         record["prompt_sampling_mode"] = "random"
-        record["has_variants"] = _has_noncanonical_variant(grouped[class_id])
+        record["has_variants"] = _has_noncanonical_variant(concept["records"])
         record["canonical_fallback"] = False
         record["target_empty"] = True
-        record["target_class_ids"] = [class_id]
+        record["target_class_ids"] = list(concept["target_class_ids"])
         sampled.append(record)
 
     return sampled
@@ -418,11 +472,128 @@ def _has_noncanonical_variant(records: Sequence[Mapping[str, Any]]) -> bool:
     return any(not bool(record.get("is_canonical", False)) for record in records)
 
 
+def _aggregate_components_by_id(vocab: Mapping[str, Any]) -> Dict[str, List[int]]:
+    return {
+        str(aggregate["id"]): _unique_ints(aggregate.get("component_class_ids", []))
+        for aggregate in vocab.get("aggregates", [])
+    }
+
+
+def _trainable_concepts_from_prompt_index(
+    prompt_index: Mapping[Any, Sequence[Mapping[str, Any]]],
+    vocab: Mapping[str, Any],
+) -> Dict[str, Dict[str, Any]]:
+    trainable = set(train_class_ids(vocab))
+    aggregate_components = _aggregate_components_by_id(vocab)
+    concepts: Dict[str, Dict[str, Any]] = {}
+
+    for key, records in prompt_index.items():
+        if not records:
+            continue
+        first = records[0]
+        source_type = str(first.get("source_type", "class"))
+        target_class_ids = _concept_target_class_ids(key, first, aggregate_components)
+        if not _is_trainable_concept(source_type, target_class_ids, trainable):
+            continue
+        concept_id = str(first.get("concept_id") or _concept_id_from_record(key, first))
+
+        enriched_records: List[Dict[str, Any]] = []
+        for record in records:
+            enriched = dict(record)
+            enriched.setdefault("concept_id", concept_id)
+            enriched["target_class_ids"] = list(target_class_ids)
+            enriched_records.append(enriched)
+
+        concepts[concept_id] = {
+            "records": enriched_records,
+            "target_class_ids": list(target_class_ids),
+        }
+
+    return concepts
+
+
+def _concept_target_class_ids(
+    key: Any,
+    record: Mapping[str, Any],
+    aggregate_components: Mapping[str, Sequence[int]],
+) -> List[int]:
+    if "target_class_ids" in record:
+        return _unique_ints(record.get("target_class_ids", []))
+    if record.get("source_type") == "aggregate":
+        aggregate_id = str(record["aggregate_id"])
+        return _unique_ints(aggregate_components.get(aggregate_id, []))
+    class_id = record.get("class_id", key)
+    return [int(class_id)]
+
+
+def _concept_id_from_record(key: Any, record: Mapping[str, Any]) -> str:
+    if record.get("source_type") == "aggregate":
+        return _aggregate_concept_id(str(record["aggregate_id"]))
+    class_id = record.get("class_id", key)
+    return _class_concept_id(int(class_id))
+
+
+def _is_trainable_concept(
+    source_type: str,
+    target_class_ids: Sequence[int],
+    trainable: set[int],
+) -> bool:
+    if not target_class_ids:
+        return False
+    if source_type == "aggregate":
+        return all(class_id in trainable for class_id in target_class_ids)
+    return len(target_class_ids) == 1 and int(target_class_ids[0]) in trainable
+
+
+def _concept_voxel_count(
+    target_class_ids: Sequence[int],
+    counts: Mapping[int, int],
+) -> int:
+    return sum(
+        int(counts.get(int(class_id), 0))
+        for class_id in _unique_ints(target_class_ids)
+    )
+
+
+def _unique_ints(values: Iterable[Any]) -> List[int]:
+    result: List[int] = []
+    seen: set[int] = set()
+    for value in values:
+        class_id = int(value)
+        if class_id in seen:
+            continue
+        result.append(class_id)
+        seen.add(class_id)
+    return result
+
+
+def _class_concept_id(class_id: int) -> str:
+    return f"class:{int(class_id)}"
+
+
+def _aggregate_concept_id(aggregate_id: str) -> str:
+    return f"aggregate:{aggregate_id}"
+
+
+def _concept_sort_key(value: Any) -> tuple[int, int, str]:
+    text = str(value)
+    if text.startswith("class:"):
+        try:
+            return (0, int(text.split(":", 1)[1]), "")
+        except ValueError:
+            return (0, 0, text)
+    if isinstance(value, int):
+        return (0, int(value), "")
+    if text.startswith("aggregate:"):
+        return (1, 0, text)
+    return (2, 0, text)
+
+
 def _sample_without_replacement(
-    values: Sequence[int],
+    values: Sequence[Any],
     count: int,
     rng: random.Random,
-) -> List[int]:
+) -> List[Any]:
     if count <= 0 or not values:
         return []
     if len(values) <= count:
@@ -454,6 +625,7 @@ __all__ = [
     "load_label_vocab",
     "load_and_validate_prompt_cache",
     "prompt_records_by_class",
+    "prompt_records_by_concept",
     "read_json",
     "sample_prompts_for_case",
     "train_class_ids",

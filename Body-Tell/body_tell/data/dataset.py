@@ -15,7 +15,7 @@ from .vocabulary import (
     load_class_presence,
     load_and_validate_prompt_cache,
     load_label_vocab,
-    prompt_records_by_class,
+    prompt_records_by_concept,
     read_json,
     sample_prompts_for_case,
     train_class_ids,
@@ -114,7 +114,7 @@ class HyperBodyPromptDataset(Dataset):
         self.embedding_warnings = validation["warnings"]
         self.embedding_cache = validation["cache"]
         self.prompt_embeddings = self.embedding_cache["embeddings"].float().contiguous()
-        self._prompt_records_by_class = prompt_records_by_class(self.vocab)
+        self._prompt_records_by_concept = prompt_records_by_concept(self.vocab)
 
     @staticmethod
     def _normalize_shape(
@@ -350,7 +350,7 @@ class HyperBodyPromptDataset(Dataset):
             min_voxels=self.min_voxels,
             canonical_prob=self.canonical_prob,
             rng=rng,
-            prompt_index=self._prompt_records_by_class,
+            prompt_index=self._prompt_records_by_concept,
         )
         if not prompt_records:
             raise ValueError(f"No prompts could be sampled for {case_id}")
@@ -378,6 +378,12 @@ class HyperBodyPromptDataset(Dataset):
             "text_embeddings": self.prompt_embeddings[prompt_ids].clone(),
             "prompt_ids": prompt_ids,
             "prompt_texts": [str(record["text"]) for record in prompt_records],
+            "prompt_source_types": [
+                str(record.get("source_type", "class")) for record in prompt_records
+            ],
+            "prompt_aggregate_ids": [
+                record.get("aggregate_id") for record in prompt_records
+            ],
             "target_class_ids": [list(record.get("target_class_ids", [])) for record in prompt_records],
             "target_empty": target_empty,
             "target_masks": torch.from_numpy(np.stack(masks, axis=0)),
@@ -396,6 +402,7 @@ class HyperBodyPromptDataset(Dataset):
             {
                 int(record["class_id"])
                 for record in positive_records
+                if record.get("source_type") == "class"
                 if not bool(record.get("has_variants", False))
             }
         )
@@ -509,6 +516,8 @@ def prompt_collate_fn(batch: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "case_id",
         "case_path",
         "prompt_texts",
+        "prompt_source_types",
+        "prompt_aggregate_ids",
         "target_class_ids",
         "prompt_sampling",
         "crop",

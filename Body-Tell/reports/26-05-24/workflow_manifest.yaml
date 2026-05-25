@@ -468,7 +468,7 @@ tasks:
     title: Support aggregate and combined-label concepts in sampler
     owner: sp_b_sampling_vocab_worker
     phase: 2
-    status: ready
+    status: accepted
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step2
@@ -480,17 +480,24 @@ tasks:
     - Base class evaluation semantics remain separate from aggregates.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py
-    updated_at: '2026-05-25T14:00:10+00:00'
-    last_note: SP-B.Step2 accepted; dependencies satisfied.
+    updated_at: '2026-05-25T16:37:07+00:00'
+    last_note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 38028
+      COMPLETED with exit code 0:0. Aggregate concept sampling, union target masks, embedding row alignment, and base-class
+      evaluation separation are verified in runs/SP-B.Step4/REVIEW.html.'
     history:
     - at: '2026-05-25T14:00:10+00:00'
       status: ready
       note: SP-B.Step2 accepted; dependencies satisfied.
+    - at: '2026-05-25T16:37:07+00:00'
+      status: accepted
+      note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 38028
+        COMPLETED with exit code 0:0. Aggregate concept sampling, union masks, embedding alignment, and base evaluation
+        separation evidence is in runs/SP-B.Step4/REVIEW.html.'
   SP-B.Step5:
     title: Expand vocabulary under VoxTell Appendix C principles
     owner: sp_b_sampling_vocab_worker
     phase: 3
-    status: todo
+    status: ready
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step4
@@ -502,6 +509,12 @@ tasks:
     - Static vocabulary validation passes.
     verification:
     - conda run -n voxtell python Body-Tell/scripts/audit_vocabulary.py
+    updated_at: '2026-05-25T16:37:07+00:00'
+    last_note: SP-B.Step4 accepted; dependencies satisfied.
+    history:
+    - at: '2026-05-25T16:37:07+00:00'
+      status: ready
+      note: SP-B.Step4 accepted; dependencies satisfied.
   SP-B.Step6:
     title: Rebuild text embedding cache
     owner: sp_b_sampling_vocab_worker

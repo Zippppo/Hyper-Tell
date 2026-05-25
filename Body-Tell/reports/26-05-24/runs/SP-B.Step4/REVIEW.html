@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step4 Review</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.5; margin: 32px; color: #172033; }
+    h1, h2 { margin-bottom: 8px; }
+    code, pre { background: #f2f4f7; border-radius: 4px; }
+    code { padding: 1px 4px; }
+    pre { padding: 12px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #d7dce5; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .pass { color: #176b43; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step4 Review</h1>
+  <p><strong>Verdict:</strong> <span class="pass">accept</span></p>
+  <p><strong>Task:</strong> Support aggregate and combined-label concepts in sampler.</p>
+  <p><strong>Plan reviewed:</strong> <code>Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html</code>, Step 4.</p>
+  <p><strong>Worker result reviewed:</strong> <code>Body-Tell/reports/26-05-24/runs/SP-B.Step4/RESULT.html</code>.</p>
+
+  <h2>Test Quality</h2>
+  <p><strong>Test quality: pass</strong></p>
+  <p><strong>Focused tests reviewed:</strong> <code>Body-Tell/tests/test_dataset_prompt_masks.py</code></p>
+  <p><strong>Regression covered:</strong> yes. The focused tests assert aggregate prompts enter dataset sampling, preserve aggregate metadata, produce component-union masks, align prompt ids with embedding rows, keep foreground evaluation ids class-only, and include absent aggregates in the negative concept pool.</p>
+  <p><strong>Red evidence reviewed:</strong> yes. The worker artifact records the aggregate dataset regression failing before implementation with <code>ValueError: 'liver and spleen' is not in list</code>, which maps to aggregates being excluded from the sampler.</p>
+  <p><strong>Targeted pytest: pass</strong></p>
+
+  <h2>Acceptance Criteria Evidence</h2>
+  <table>
+    <tr><th>Criterion</th><th>Evidence</th></tr>
+    <tr>
+      <td>Existing aggregate prompts can be sampled during training.</td>
+      <td class="pass">Met. <code>prompt_records_by_concept()</code> includes aggregate prompt records whose component class ids are trainable, even though existing aggregate vocab flags are <code>train_as_positive=false</code>. <code>HyperBodyPromptDataset</code> now precomputes and passes that concept index into <code>sample_prompts_for_case()</code>. The aggregate dataset regression samples <code>liver and spleen</code> as a training prompt.</td>
+    </tr>
+    <tr>
+      <td>Aggregate target masks equal union of component masks.</td>
+      <td class="pass">Met. Aggregate prompt records carry multi-class <code>target_class_ids</code>, and dataset target construction calls <code>build_target_mask()</code>, which uses <code>np.isin()</code>. The focused test asserts the aggregate mask equals <code>(voxel_labels == 1) OR (voxel_labels == 2)</code> and has the expected voxel count.</td>
+    </tr>
+    <tr>
+      <td>Base class evaluation semantics remain separate from aggregates.</td>
+      <td class="pass">Met. <code>foreground_eval_class_ids()</code> still reads only class records, <code>prompt_records_by_class()</code> remains class-only, aggregate metadata is emitted separately as <code>prompt_source_types</code> and <code>prompt_aggregate_ids</code>, and the test asserts class eval ids remain <code>[1, 2, 3]</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Commands Run</h2>
+  <table>
+    <tr><th>Command</th><th>Important output</th></tr>
+    <tr>
+      <td><code>sed -n '1,260p' Body-Tell/tests/test_dataset_prompt_masks.py</code> and follow-on ranges</td>
+      <td>Reviewed tests before implementation, including aggregate union/embedding and absent aggregate negative coverage.</td>
+    </tr>
+    <tr>
+      <td><code>git diff -- Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td>Confirmed focused tests were added for aggregate sampling, union mask semantics, evaluation separation, and embedding row alignment.</td>
+    </tr>
+    <tr>
+      <td><code>git diff -- Body-Tell/body_tell/data/vocabulary.py Body-Tell/body_tell/data/dataset.py</code></td>
+      <td>Reviewed concept-index sampler changes, aggregate target id propagation, dataset metadata, and collate passthrough.</td>
+    </tr>
+    <tr>
+      <td><code>grep -n -E "SP-B\.Step4|Support aggregate|combined-label|aggregate|embedding lookup|Base class|Step 4" Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html</code></td>
+      <td>Confirmed Step 4 requires concept-level present/absent, aggregate union masks, aggregate prompt sampling, and embedding index alignment.</td>
+    </tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td><pre>collected 16 items
+Body-Tell/tests/test_dataset_prompt_masks.py ................            [100%]
+16 passed in 17.08s</pre></td>
+    </tr>
+    <tr>
+      <td><code>git diff --check -- Body-Tell/body_tell/data/vocabulary.py Body-Tell/body_tell/data/dataset.py Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td>Exit code 0.</td>
+    </tr>
+    <tr>
+      <td><code>sbatch slurm/body-tell-phase1.sh</code></td>
+      <td><pre>Submitted batch job 38028</pre></td>
+    </tr>
+    <tr>
+      <td><code>sacct -j 38028 --format=JobID,State,ExitCode,Elapsed -n</code></td>
+      <td><pre>38028         COMPLETED      0:0   00:28:52
+38028.batch   COMPLETED      0:0   00:28:52</pre></td>
+    </tr>
+  </table>
+
+  <h2>Phase1 Slurm Gate</h2>
+  <p><strong>Phase1 Slurm gate: pass</strong></p>
+  <p><strong>Slurm command: sbatch slurm/body-tell-phase1.sh</strong></p>
+  <p><strong>Slurm job id: 38028</strong></p>
+  <p><strong>sacct final state: COMPLETED</strong></p>
+  <p><strong>sacct exit code: 0:0</strong></p>
+
+  <h2>Required Fix List</h2>
+  <p>None.</p>
+
+  <h2>Residual Risk</h2>
+  <p>Low. This review verifies legal aggregate sampling and union-mask semantics, but does not set a target aggregate sampling frequency; any desired distribution tuning should be handled as a separate sampling policy task. Vocabulary expansion and embedding cache rebuild remain later workflow steps.</p>
+</body>
+</html>
