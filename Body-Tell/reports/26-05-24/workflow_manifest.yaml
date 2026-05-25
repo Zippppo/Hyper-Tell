@@ -513,22 +513,24 @@ tasks:
     verification:
     - conda run -n voxtell python Body-Tell/scripts/build_prompt_embedding_cache.py --help
   SP-C.Task0:
-    title: Add paper-aligned profile skeleton
+    title: Add paper-mechanics profile skeleton
     owner: sp_c_training_eval_worker
     phase: 1
     status: ready
     plan_file: bodytell_training_loop_eval_alignment_plan_2026-05-24.html
     depends_on: []
     result_file: runs/SP-C.Task0/RESULT.html
-    scope: 'SP-C Task 0: paper_aligned config skeleton and compute_budget block.'
+    scope: 'SP-C Task 0: paper-mechanics/non-replica config skeleton, compute_budget block, and startup logging.'
     acceptance:
     - phase1_voxtell_paper_aligned.yaml exists.
+    - The profile is distinguishable from baseline and explicitly logs that it is a paper-mechanics, non-replica budget.
     - compute_budget has batch_size=2, num_gpus=2, epochs=75, iterations_per_epoch=250, total_updates=18750, paper_step_ratio=0.0375.
-    - Startup logging/W&B config path can print the profile fields.
+    - A consistency check rejects compute_budget drift when epochs * iterations_per_epoch != total_updates.
+    - Startup logging/W&B config path can print the profile fields and the 18,750-step non-replica banner.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py
   SP-C.Task1:
-    title: Add fixed update-count training loop
+    title: Add global-step fixed update-count training loop
     owner: sp_c_training_eval_worker
     phase: 1
     status: todo
@@ -536,10 +538,11 @@ tasks:
     depends_on:
     - SP-C.Task0
     result_file: runs/SP-C.Task1/RESULT.html
-    scope: 'SP-C Task 1: iterations_per_epoch semantics, infinite dataloader, smoke epoch fix, dataset/sampler epoch setters.'
+    scope: 'SP-C Task 1: iterations_per_epoch semantics, global_step progress, infinite dataloader, smoke epoch fix, dataset/sampler epoch setters.'
     acceptance:
     - Optimizer steps equal epochs * iterations_per_epoch in smoke.
     - global_step is monotonic and gap-free.
+    - epoch is treated as sampler/log/eval/checkpoint period, not as full DataLoader traversal, when iterations_per_epoch is set.
     - smoke defaults to at most 2 epochs.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py
@@ -552,7 +555,7 @@ tasks:
     depends_on:
     - SP-C.Task0
     result_file: runs/SP-C.Task2/RESULT.html
-    scope: 'SP-C Task 2: optimizer factory supporting baseline AdamW and paper-aligned SGD lr=1e-4.'
+    scope: 'SP-C Task 2: optimizer factory supporting baseline AdamW and paper-mechanics SGD lr=1e-4.'
     acceptance:
     - Config can switch between AdamW and SGD.
     - Optimizer name, groups, and LR are logged/checkpointed.
@@ -584,10 +587,11 @@ tasks:
     depends_on:
     - SP-C.Task3
     result_file: runs/SP-C.Task4/RESULT.html
-    scope: 'SP-C Task 4: model, optimizer, scheduler, scaler, global step, epoch, RNG, and latest.pt persistence.'
+    scope: 'SP-C Task 4: model, optimizer, scheduler, scaler, global step, epoch, optional RNG, and resume-safe latest.pt persistence alongside best.pt/last.pt.'
     acceptance:
     - Resume test proves scheduler/scaler/global_step continuity.
-    - latest.pt behavior is documented and tested.
+    - latest.pt behavior is documented and tested without replacing best.pt or final last.pt semantics.
+    - If exact batch-sequence equivalence is claimed, Python/NumPy/Torch/CUDA RNG state is saved and restored; otherwise the result explicitly limits the claim to step/LR/scaler continuity.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py
   SP-C.Task5:
@@ -603,7 +607,8 @@ tasks:
     scope: 'SP-C Task 5: deep supervision weights plus #12 BCE/Dice audit with domain-exemption option.'
     acceptance:
     - 5-scale loss path works when SP-A decoder outputs are available.
-    - null
+    - Per-scale target resize strategy is documented, including positive/empty target counts for low-resolution occupancy-grid scales.
+    - BCE/Dice audit records each nnU-Net-default deviation and explicitly chooses align, keep, or defer.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_train_loop.py
   SP-C.Task6:
@@ -621,11 +626,11 @@ tasks:
     acceptance:
     - All four evaluation groups can output metrics.
     - Vocab hash and prompt records are linked to checkpoint metadata.
-    - Baseline gate output is recorded.
+    - Baseline gate output is recorded from a 2-epoch smoke plus quick-val or equivalent smoke-eval command.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests
   SP-C.Task7:
-    title: Build paper-alignment test matrix
+    title: Build paper-mechanics test matrix
     owner: sp_c_training_eval_worker
     phase: 4
     status: todo

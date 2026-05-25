@@ -92,6 +92,7 @@ Only the post-accept subagent changes accepted task status, dependent ready stat
 ### SP-C Training/Eval Worker
 
 - Source of truth: `bodytell_training_loop_eval_alignment_plan_2026-05-24.html`
+- Scope intent: training control-plane and evaluation protocol work. Task 0/1 define budget, step semantics, logging, and resume clocks; they are not direct performance-improvement claims.
 - Primary writable areas:
   - `Body-Tell/train.py`
   - `Body-Tell/body_tell/losses/**`

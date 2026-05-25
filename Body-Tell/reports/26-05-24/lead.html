@@ -214,8 +214,8 @@
         </tr>
         <tr>
           <td>SP-C</td>
-          <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html">Body-Tell 训练机制与评估协议对齐计划</a></td>
-          <td>训练循环对齐：fixed-update epoch/iteration 节奏、SGD + polynomial decay、deep supervision 5-scale loss 权重、checkpoint/scheduler resume、prompt robustness / negative / held-out 评估协议、paper-aligned 测试矩阵。</td>
+          <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html">Body-Tell 训练控制面与评估协议对齐计划</a></td>
+          <td>训练控制面与评估协议：fixed-update epoch/iteration 节奏、SGD + polynomial decay ablation、deep supervision 5-scale loss 权重、checkpoint/scheduler resume、prompt robustness / negative / held-out 评估协议、paper-mechanics 测试矩阵（非论文复刻）。</td>
           <td><span class="tag warn">可并行：Task 0 ready</span></td>
         </tr>
       </tbody>
@@ -243,7 +243,7 @@
               <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
               <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">CFG.CanonicalPhase1 + SP-B Step 2</a>：唯一 Phase1 config 已收敛到 <code>phase1_voxtell_aligned.yaml</code>，patch crop + patch 内 2+1 prompt 采样已验收。</li>
               <li><span class="tag warn">下一步</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 3/4</a>：25/75 positive prompt 采样与 aggregate / combined-label sampler。</li>
-              <li><span class="tag warn">可并行</span> <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：profile、fixed-update loop、SGD、poly schedule、checkpoint/resume。</li>
+              <li><span class="tag warn">可并行</span> <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：paper-mechanics profile、fixed-update loop、SGD/poly ablation、checkpoint/resume。Task 0/1 是训练控制面，不直接承诺 Dice 提升。</li>
             </ul>
           </td>
           <td>SP-B Step 3/4 与 SP-C Task 0 可并行；默认 manager next task 是 <code>SP-B.Step3</code>。</td>
@@ -277,7 +277,7 @@
           <td>4</td>
           <td>
             <ul>
-              <li>SP-C Task 6-Task 7：prompt robustness / negative / held-out 评估与测试矩阵；<strong>baseline 回归闸门（aligned 任一变体 val Dice ≥ 当前轻量基线 70%）</strong>必须在长训启动前通过。</li>
+              <li>SP-C Task 6-Task 7：prompt robustness / negative / held-out 评估与测试矩阵；<strong>baseline 回归闸门（aligned 任一变体 quick val Dice ≥ 当前轻量基线 70%）</strong>必须在长训启动前通过。</li>
             </ul>
           </td>
           <td>评估与实验可在端到端 smoke 通过后并行推进。</td>
@@ -285,13 +285,13 @@
         </tr>
       </tbody>
     </table>
-    <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs ≈ 75</code></strong>，对应 <code>total_updates ≈ 75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、机制验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平</strong>，baseline 回归闸门按此基准设定。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>。</p>
+    <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs=75</code></strong>，对应 <code>total_updates=75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、训练控制面验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平，也不能把 Task 0/1 当作直接性能优化</strong>。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>，实现侧仍需 assert <code>epochs * iterations_per_epoch == total_updates</code>。</p>
     <p class="note warn">关键路径串行依赖（2026-05-25 状态同步）：<strong>SP-A 链路、CFG.CanonicalPhase1、SP-B Step 1/2 均已验收</strong>（动态采样 RNG、canonical config、patch crop + patch-local 2+1 已通过 review / phase1 Slurm gate）；当前关键路径转为 <strong>SP-B Step 3/4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。</p>
   </section>
 
   <section>
     <h2>明确不一致项 → 子计划分发表</h2>
-    <p>下表是本文件的核心。每一项不一致都必须被某一个子计划领走；当前 13 项已全部分发，其中结构类由 SP-A 负责（含 #13 <code>num_heads</code>，标记为条件性对齐），数据构造类由 SP-B 负责，训练机制与评估协议类由 SP-C 负责（含 #12 loss 等价性，标记为 audit 后可跳过）。</p>
+    <p>下表是本文件的核心。每一项不一致都必须被某一个子计划领走；当前 13 项已全部分发，其中结构类由 SP-A 负责（含 #13 <code>num_heads</code>，标记为条件性对齐），数据构造类由 SP-B 负责，训练控制面与评估协议类由 SP-C 负责（含 #12 loss 等价性，标记为 audit 后可跳过）。</p>
     <table>
       <thead>
         <tr>
@@ -305,25 +305,25 @@
         <tr>
           <td>1</td>
           <td><span class="tag bad">训练框架</span></td>
-          <td>当前自定义 PyTorch loop 缺 fixed-update、scheduler、resume 所需的 iteration 语义。</td>
+          <td>当前自定义 PyTorch loop 缺 fixed-update、scheduler、resume 所需的 iteration 语义；这是训练控制面缺口，不是单独的性能优化项。</td>
           <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-1">SP-C Task 1 — fixed-update train loop</a></td>
         </tr>
         <tr>
           <td>2</td>
           <td><span class="tag bad">训练长度语义</span></td>
-          <td>当前 epoch 等于遍历 DataLoader；需改成固定 update-count 语义。论文 2,000 × 250 仅作参考，不作为本轮训练预算。</td>
+          <td>当前 epoch 等于遍历 DataLoader；需改成固定 update-count 语义，让 <code>global_step / total_updates</code> 成为训练进度横轴。论文 2,000 × 250 仅作参考，不作为本轮训练预算。</td>
           <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-1">SP-C Task 1 — fixed-update train loop</a></td>
         </tr>
         <tr>
           <td>3</td>
           <td><span class="tag bad">optimizer</span></td>
-          <td>SGD lr=1e-4 vs 当前 AdamW。</td>
+          <td>SGD lr=1e-4 vs 当前 AdamW；短预算下不预设 SGD 更优，必须保留 AdamW 回退和同预算 ablation。</td>
           <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-2">SP-C Task 2 — SGD profile</a></td>
         </tr>
         <tr>
           <td>4</td>
           <td><span class="tag bad">LR schedule</span></td>
-          <td>Polynomial decay vs 当前无 scheduler。</td>
+          <td>Polynomial decay vs 当前无 scheduler；必须按 update step 衰减，且短预算下仍需和 constant LR 对照。</td>
           <td><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-3">SP-C Task 3 — polynomial LR</a></td>
         </tr>
         <tr>
@@ -386,14 +386,14 @@
 
   <section>
     <h2>SP-C 执行边界</h2>
-    <p>SP-C 拆成两类执行，避免误把训练基础设施全部拖到结构和数据完成之后。</p>
+    <p>SP-C 拆成两类执行，避免误把训练基础设施全部拖到结构和数据完成之后；同时避免把 Task 0/1 误读为直接性能提升。Task 0/1 的价值是固定预算、step 语义、日志和 resume 时钟，让后续训练改动可比较。</p>
     <ul>
       <li><strong>可以现在做：</strong><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">Task 0</a> profile 骨架、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-1">Task 1</a> fixed-update loop、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-2">Task 2</a> SGD profile、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-3">Task 3</a> poly schedule、<a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a> checkpoint/resume。</li>
       <li><strong>必须等前置完成：</strong><a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-5">Task 5</a> 的 SP-A P3 前置已满足，但仍等 SP-C Task 4；Task 6 的最终评估口径等 SP-B patch-level sampler 和 vocabulary/cache；长训通过等端到端 smoke 通过。</li>
     </ul>
     <div class="note bad"><strong>明确不做项（2026-05-24 决议，不得在 SP-C 中再次提案）：</strong>
       <ol>
-        <li><strong>不严格对齐论文 2,000 × 250 = 500k step 的训练预算</strong>。<strong>2026-05-24 锁定实际预算：<code>batch_size=2 per GPU × 2 GPUs</code>（全局 4）、<code>epochs=75</code>、<code>iterations_per_epoch=250</code> → <code>total_updates=18,750</code> step（约论文 500k 的 3.75%）</strong>。paper_aligned profile 中必须以独立字段 <code>compute_budget</code> 记录上述数字，并在训练日志显式注明 "训练预算 = 18,750 step（bz=2×2, ep=75），非论文 500k"，避免误读为复刻。</li>
+        <li><strong>不严格对齐论文 2,000 × 250 = 500k step 的训练预算</strong>。<strong>2026-05-24 锁定实际预算：<code>batch_size=2 per GPU × 2 GPUs</code>（全局 4）、<code>epochs=75</code>、<code>iterations_per_epoch=250</code> → <code>total_updates=18,750</code> step（约论文 500k 的 3.75%）</strong>。paper-mechanics profile 中必须以独立字段 <code>compute_budget</code> 记录上述数字，并在训练日志显式注明 "训练预算 = 18,750 step（bz=2×2, ep=75），非论文 500k"，避免误读为复刻。</li>
         <li><strong>不切换到 nnU-Net <code>nnUNetTrainer</code> 框架</strong>。VoxTell 训练侧代码未开源，"切到 nnU-Net"等于自己重写 trainer，收益不及成本。继续使用当前自定义 PyTorch loop 作为 SP-C 改造的载体，只在 loop 内补齐 iteration 语义、SGD、poly schedule、scheduler state checkpoint 等机制级对齐；不引入 nnU-Net 框架依赖、不模仿其 <code>on_train_epoch_start</code> 等钩子结构。</li>
       </ol>
     </div>
@@ -413,11 +413,11 @@
     </ul>
     <h3>Baseline 评估闸门（2026-05-24 新增）</h3>
     <div class="note warn">
-      在进入"paper-aligned 长训"之前，必须先通过下列 baseline 闸门，避免结构对齐与权重加载在 silent regression 下被误判为收益：
+      在进入"paper-mechanics 长训"之前，必须先通过下列 baseline 闸门，避免结构对齐、训练控制面改造与权重加载在 silent regression 下被误判为收益：
       <ol>
         <li><strong>结构闸门</strong>（已完成）：<code>audit_voxtell_alignment.py</code> 报告 transformer parity test 通过；<code>num_heads</code> 与 projection 路径已在 SP-A P0/P4 记录。</li>
         <li><strong>权重加载闸门</strong>（已完成）：SP-A P6-lite 已只筛选 VoxTell <code>checkpoint_final.pth</code> 中的 <code>transformer_decoder.*</code>，映射到 <code>model.transformer_decoder.state_dict()</code> 后用 <code>strict=True</code> 加载；不加载 <code>pos_embed</code> 或 full-model 其他 prefix。</li>
-        <li><strong>数值闸门</strong>（aligned random 训练 2 epoch smoke 后）：val foreground Dice 不得低于当前 baseline（约 <code>0.3257</code>）的 70%，否则回退 SP-A / SP-B 已落地改动，不进入长训。该阈值仅用于"明显回归"识别，不是性能目标。</li>
+        <li><strong>数值闸门</strong>（aligned random 训练 2 epoch smoke + quick val 后）：val foreground Dice 不得低于当前 baseline（约 <code>0.3257</code>）的 70%，否则回退 SP-A / SP-B 已落地改动，不进入长训。当前 <code>--smoke</code> 会跳过 val，因此 SP-C Task 6 必须提供 quick val 或单独 smoke-eval 命令；该阈值仅用于"明显回归"识别，不是性能目标。</li>
         <li><strong>评估闸门</strong>（SP-C Task 6 完成后）：known concepts / prompt variants / negative empty-mask / held-out 四组评估全部能输出指标（即使分数不理想），且 prompt records / vocab hash 与 checkpoint 一致。</li>
       </ol>
     </div>
@@ -426,7 +426,7 @@
   <section>
     <h2>当前结论</h2>
     <p><strong>SP-A、CFG.CanonicalPhase1、SP-B Step 1/2 已完成，当前进入 SP-B Step 3/4。</strong> 13 项明确不一致仍按原分工维护：SP-A 覆盖的结构类与 #13 <code>num_heads</code> 已验收；SP-B 继续覆盖数据构造类；SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。</p>
-    <p>短期优先顺序更新为：<strong>SP-B Step 3/4</strong> 推进 25/75 positive prompt 采样与 aggregate / combined-label sampler；SP-C Task 0 可并行启动。随后推进 SP-B Step 5/6 做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
+    <p>短期优先顺序更新为：<strong>SP-B Step 3/4</strong> 推进 25/75 positive prompt 采样与 aggregate / combined-label sampler；SP-C Task 0 可并行启动，但其目标是 paper-mechanics profile 与训练预算/日志控制面，不是直接性能优化。随后推进 SP-B Step 5/6 做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
     <p class="small">本报告同步 SP-A 完成状态、canonical config、SP-B Step 1/2 accepted 证据路径与 <code>Body-Tell/train.py</code> epoch propagation 更新。2026-05-25 状态：SP-A P0-P6-lite accepted；CFG.CanonicalPhase1 accepted；SP-B.Step1/2 accepted；workflow next task 为 SP-B.Step3，SP-B.Step4 与 SP-C.Task0 也 ready。</p>
   </section>
 </main>
