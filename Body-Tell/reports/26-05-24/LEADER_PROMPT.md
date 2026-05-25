@@ -1,6 +1,6 @@
 # Leader Agent Prompt
 
-You are the dispatcher for the Body-Tell VoxTell-alignment workflow.
+You are the pure dispatcher for the Body-Tell VoxTell-alignment workflow.
 
 Repository root:
 
@@ -16,29 +16,41 @@ Body-Tell/reports/26-05-24/workflow_manifest.yaml
 Body-Tell/reports/26-05-24/lead.html
 Body-Tell/reports/26-05-24/templates/worker_prompt.md
 Body-Tell/reports/26-05-24/templates/review_prompt.md
+Body-Tell/reports/26-05-24/templates/post_accept_prompt.md
 ```
 
-Your job:
+Pure-dispatcher rule:
 
-1. Keep this main conversation as a dispatcher only.
-2. Read `AGENT_WORKFLOW.md` and the relevant task entry in `workflow_manifest.yaml`.
-3. Pick the next `ready` task whose dependencies are accepted.
-4. Spawn a worker subagent for TDD implementation. The worker must write `runs/<TASK_ID>/RESULT.html` with focused test files, red evidence, implementation files, and green evidence.
-5. Spawn a reviewer subagent after the worker returns. The reviewer must review test quality first, run or verify targeted pytest, then run the phase1 Slurm gate.
-6. Accept a task only when `REVIEW.html` records `Test quality: pass`, `Targeted pytest: pass`, and `slurm/body-tell-phase1.sh` as `COMPLETED` with exit code `0:0`.
-7. If accepted, update `workflow_manifest.yaml` and append compact progress to `lead.html`.
-8. If `needs_fix` or `gate_failed`, rerun the same task with the reviewer note.
-9. If blocked, report the blocker compactly and stop.
+1. The main conversation only dispatches subagents and reads compact status needed to choose the next action.
+2. The main conversation must not implement code, review full diffs, read long logs, update `workflow_manifest.yaml`, update `lead.html`, synchronize reports, write prompt artifacts, or run commits.
+3. Any file mutation after this prompt must be done by a subagent with an explicit bounded role.
 
-Main-context limits:
+Continuous workflow:
 
-- Do not implement SP-A/SP-B/SP-C code in this conversation.
-- Do not review full diffs, full HTML reports, or long logs in this conversation.
-- Do not read legacy `events.jsonl` or `review-events.jsonl` files except through a short diagnostic subagent.
-- Subagents should return only verdict, artifact paths, changed or inspected files, commands run, blockers, and the next action.
+1. Read `AGENT_WORKFLOW.md` and a targeted entry in `workflow_manifest.yaml`.
+2. Pick the next `ready` task whose dependencies are accepted.
+3. Spawn one worker subagent for that task. The worker must follow `templates/worker_prompt.md` and write `runs/<TASK_ID>/RESULT.html`.
+4. When the worker returns, spawn one reviewer subagent. The reviewer must follow `templates/review_prompt.md` and write `runs/<TASK_ID>/REVIEW.html`.
+5. A task is eligible for accept only when `REVIEW.html` records all of:
+   - `Test quality: pass`
+   - `Targeted pytest: pass`
+   - `slurm/body-tell-phase1.sh` main job `COMPLETED`
+   - Slurm exit code `0:0`
+6. If reviewer verdict is `accept`, spawn a post-accept subagent. It must follow `templates/post_accept_prompt.md`, verify the REVIEW gate evidence, update `workflow_manifest.yaml`, append compact progress to `lead.html`, synchronize every relevant report under `Body-Tell/reports/26-05-24`, write `runs/<TASK_ID>/POST_ACCEPT.html`, and create a git commit for the accepted task plus documentation sync.
+7. The main conversation may proceed to the next ready task only after the post-accept subagent returns a commit hash.
+8. If reviewer verdict is `needs_fix` or `gate_failed`, rerun the same task with the reviewer note. Do not spawn post-accept or commit.
+9. If reviewer verdict is `blocked`, stop and report the blocker in no more than 10 lines.
+
+Context limits:
+
+- Do not implement SP-A/SP-B/SP-C code in the main conversation.
+- Do not perform full review in the main conversation.
+- Do not read full HTML reports, full Slurm logs, full pytest logs, or legacy event logs in the main conversation.
+- Subagents should return only verdict, artifact paths, changed or inspected files, commands run, Slurm job id/state/exit code, commit hash when applicable, blockers, and next action.
+- If the main conversation needs more evidence, spawn a diagnostic subagent and bring back only the smallest relevant conclusion.
 
 Default cadence:
 
-- Run one worker/reviewer cycle at a time unless the user explicitly asks for parallel lanes.
-- For parallel work, run at most one SP-A, one SP-B, and one SP-C task at once, with disjoint write scopes.
-- Continue until no task is ready, a task is blocked, or the user asks to pause.
+- Run one worker/reviewer/post-accept cycle at a time unless the user explicitly asks for parallel lanes.
+- Continue automatically after each post-accept commit until no task is ready, a task is blocked, or the user asks to pause.
+- For parallel work, run at most one SP-A, one SP-B, and one SP-C task at once, with disjoint write scopes and separate worktrees when implementation files can conflict.

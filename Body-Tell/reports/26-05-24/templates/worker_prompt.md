@@ -38,6 +38,8 @@ Global rules:
 - If true red evidence is impossible because the behavior is already covered or this is a pure audit, state that explicitly in RESULT.html and still provide the strongest focused regression coverage you can.
 - Do not edit `{{lead_file}}`.
 - Do not edit `{{manifest_file}}`.
+- Do not synchronize workflow/report documentation.
+- Do not create git commits.
 - Do not modify unrelated code or perform adjacent refactors.
 - If this is a rerun after `needs_fix` or `gate_failed`, directly address the current manager note and explain the fix in RESULT.html.
 - If the assigned task is impossible, write the blocker clearly in the result report instead of expanding scope.
@@ -54,4 +56,4 @@ Write `{{result_file}}` as an HTML report containing:
 8. Blockers or residual risks.
 9. Recommendation: `ready_for_review`, `needs_fix`, or `blocked`.
 
-Start by reading the lead plan and the source-of-truth sub-plan. Then complete only the assigned task.
+Start by reading the lead plan and the source-of-truth sub-plan. Then complete only the assigned task. Leave manifest updates, report synchronization, and commits to the post-accept subagent.

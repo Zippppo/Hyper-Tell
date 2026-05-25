@@ -31,6 +31,8 @@ Rules:
 - Do not edit implementation files.
 - Do not edit `{{lead_file}}`.
 - Do not edit `{{manifest_file}}`.
+- Do not synchronize workflow/report documentation.
+- Do not create git commits.
 - Inspect tests before implementation. Test quality is a required acceptance gate.
 - Confirm tests map to the acceptance criteria and would fail for the relevant regression.
 - Reject tautological tests, tests that only assert superficial shapes when semantics are required, tests that mock away the core behavior, and tests that only assert current implementation constants.
@@ -66,3 +68,5 @@ Write `{{review_file}}` as an HTML review containing:
    - `sacct final state: <STATE>`.
    - `sacct exit code: <EXIT_CODE>`.
    - For failures, include only the smallest relevant stderr/log excerpt needed to identify the root cause.
+
+Leave manifest updates, report synchronization, accept recording, and git commits to the post-accept subagent.

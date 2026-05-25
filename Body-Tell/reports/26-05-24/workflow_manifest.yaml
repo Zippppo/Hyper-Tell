@@ -10,7 +10,7 @@ status_model:
   needs_fix: Review failed; rerun the same worker with the review notes.
   gate_failed: Review accepted or looked complete, but a required integration gate failed or was missing.
   blocked: Task cannot move without human input or an external artifact.
-  accepted: Manager accepted the result and appended progress to lead.html.
+  accepted: Post-accept maintainer verified review gates, synchronized workflow docs, and committed the accepted task.
 required_gates:
   tdd_test_quality:
     pass_condition: REVIEW.html records Test quality as pass and Targeted pytest as pass.
@@ -25,8 +25,10 @@ required_gates:
 global_rules:
 - Use conda environment voxtell for verification commands.
 - Reports and run results must be written as HTML.
-- lead.html is owned only by the manager.
+- The main dispatcher must not edit files, synchronize docs, or commit; it only reads compact state and spawns subagents.
+- lead.html and workflow_manifest.yaml are owned by the post-accept maintainer subagent after review acceptance.
 - Workers must not edit lead.html or workflow_manifest.yaml.
+- Workers must not synchronize workflow reports or commit.
 - Workers must keep changes limited to the assigned task and plan file.
 - Workers must follow TDD: focused test first, red evidence, implementation, green evidence.
 - Long-lived dispatcher sessions must use only targeted manifest entries and compact artifact summaries; do not read legacy
@@ -34,23 +36,28 @@ global_rules:
 - Reviewers must review test quality before implementation and may accept only when Test quality and Targeted pytest both
   pass.
 - Reviewers must submit slurm/body-tell-phase1.sh and may accept only when the main job is COMPLETED with exit code 0:0.
+- Reviewers must not synchronize workflow reports or commit.
+- Post-accept maintainers must verify REVIEW.html gate evidence before accepting, then update workflow_manifest.yaml, lead.html,
+  all relevant reports, write POST_ACCEPT.html, and create one task-scoped git commit.
 - Rerun prompts must include the current manager note so workers address needs_fix or gate_failed causes directly.
-- Run one worker/reviewer cycle at a time unless the user explicitly asks for parallel lanes.
-- Commit only after the task is accepted and all required gates pass; keep workflow-infrastructure commits separate from worker
-  implementation commits.
+- Run one worker/reviewer/post-accept cycle at a time unless the user explicitly asks for parallel lanes.
+- Continue to the next ready task only after the post-accept commit hash is available.
 agents:
   manager:
-    role: Dispatcher that owns lead.html, selects runnable tasks, spawns worker/reviewer subagents, and records accepted
-      progress.
-    writable:
-    - Body-Tell/reports/26-05-24/lead.html
-    - Body-Tell/reports/26-05-24/workflow_manifest.yaml
-    - Body-Tell/reports/26-05-24/runs/**
+    role: Pure dispatcher that selects runnable tasks, spawns worker/reviewer/post-accept subagents, waits for compact
+      status, and never mutates repository files.
+    writable: []
   reviewer:
     role: Reviews a submitted worker result against the plan, git diff, tests, acceptance criteria, and required phase1 Slurm
-      gate.
+      gate. Does not synchronize docs or commit.
     writable:
     - Body-Tell/reports/26-05-24/runs/**/REVIEW.html
+  post_accept_maintainer:
+    role: Verifies accepted REVIEW.html gate evidence, updates workflow state/docs, synchronizes relevant reports, writes
+      POST_ACCEPT.html, and commits accepted task changes.
+    writable:
+    - Body-Tell/reports/26-05-24/**
+    - Body-Tell/reports/26-05-24/runs/**/POST_ACCEPT.html
   config_unification_worker:
     role: Resolves cross-plan Phase1 config ambiguity and keeps active code on one canonical VoxTell-aligned config.
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
