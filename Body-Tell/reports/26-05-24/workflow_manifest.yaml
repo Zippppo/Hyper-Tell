@@ -2,9 +2,6 @@ schema_version: 1
 project: Body-Tell VoxTell alignment
 created_at: '2026-05-24'
 lead_plan: lead.html
-status_files:
-  json: workflow_status.json
-  html: workflow_status.html
 status_model:
   todo: Task is defined but not currently runnable.
   ready: Task dependencies are accepted and the task can be assigned.
@@ -27,17 +24,17 @@ global_rules:
 - lead.html is owned only by the manager.
 - Workers must not edit lead.html or workflow_manifest.yaml.
 - Workers must keep changes limited to the assigned task and plan file.
-- Long-lived leader sessions must use compact status files or run_manager.py status for monitoring; do not tail child event
-  logs.
+- Long-lived dispatcher sessions must use only targeted manifest entries and compact artifact summaries; do not read legacy
+  child event logs.
 - Reviewers must submit slurm/body-tell-phase1.sh and may accept only when the main job is COMPLETED with exit code 0:0.
 - Rerun prompts must include the current manager note so workers address needs_fix or gate_failed causes directly.
-- Prefer auto --max-tasks 1 for checkpointed phase work; continuous auto should be an explicit human choice.
+- Run one worker/reviewer cycle at a time unless the user explicitly asks for parallel lanes.
 - Commit only after the task is accepted and all required gates pass; keep workflow-infrastructure commits separate from worker
   implementation commits.
 agents:
   manager:
-    role: Owns lead.html, selects runnable tasks, reviews worker outputs, records accepted progress, and monitors only through
-      compact status.
+    role: Dispatcher that owns lead.html, selects runnable tasks, spawns worker/reviewer subagents, and records accepted
+      progress.
     writable:
     - Body-Tell/reports/26-05-24/lead.html
     - Body-Tell/reports/26-05-24/workflow_manifest.yaml

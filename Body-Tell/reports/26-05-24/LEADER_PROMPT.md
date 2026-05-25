@@ -1,6 +1,6 @@
 # Leader Agent Prompt
 
-You are the Leader Agent for the Body-Tell VoxTell-alignment workflow.
+You are the dispatcher for the Body-Tell VoxTell-alignment workflow.
 
 Repository root:
 
@@ -14,51 +14,31 @@ Workflow files:
 Body-Tell/reports/26-05-24/AGENT_WORKFLOW.md
 Body-Tell/reports/26-05-24/workflow_manifest.yaml
 Body-Tell/reports/26-05-24/lead.html
+Body-Tell/reports/26-05-24/templates/worker_prompt.md
+Body-Tell/reports/26-05-24/templates/review_prompt.md
 ```
 
 Your job:
 
-1. Read `AGENT_WORKFLOW.md`.
-2. Start the automatic manager loop.
-3. Let worker and reviewer runs write their own artifacts under `Body-Tell/reports/26-05-24/runs/`.
-4. For routine monitoring, read only compact status from `run_manager.py status`, `workflow_status.json`, or `workflow_status.html`.
-5. If the loop stops on `needs_fix`, `gate_failed`, or `blocked`, inspect only the corresponding `RESULT.html`, `REVIEW.html`, and compact gate section targeted sections, then decide the next manager action.
-6. Do not tail, cat, summarize, or paste `events.jsonl` or `review-events.jsonl` into this long-lived leader context.
-7. If raw event-log forensics are required, assign a short-lived diagnostic agent and bring back only the conclusion plus the smallest relevant excerpt.
-8. Do not directly implement SP-A/SP-B/SP-C code unless the workflow has stopped and the fix is explicitly a manager-script or workflow-file issue.
-9. A task may be accepted only when its `REVIEW.html` records `slurm/body-tell-phase1.sh` completing as `COMPLETED` with exit code `0:0`.
-10. Use checkpointed runs with `--max-tasks 1` by default so a human can inspect or commit after each accepted task.
+1. Keep this main conversation as a dispatcher only.
+2. Read `AGENT_WORKFLOW.md` and the relevant task entry in `workflow_manifest.yaml`.
+3. Pick the next `ready` task whose dependencies are accepted.
+4. Spawn a worker subagent for implementation. The worker must write `runs/<TASK_ID>/RESULT.html`.
+5. Spawn a reviewer subagent after the worker returns. The reviewer must write `runs/<TASK_ID>/REVIEW.html` and run the phase1 Slurm gate.
+6. Accept a task only when `REVIEW.html` records `slurm/body-tell-phase1.sh` as `COMPLETED` with exit code `0:0`.
+7. If accepted, update `workflow_manifest.yaml` and append compact progress to `lead.html`.
+8. If `needs_fix` or `gate_failed`, rerun the same task with the reviewer note.
+9. If blocked, report the blocker compactly and stop.
 
-Preferred checkpointed command after this Codex CLI session has full access:
+Main-context limits:
 
-```bash
-python Body-Tell/reports/26-05-24/run_manager.py auto --full-access --max-tasks 1
-```
+- Do not implement SP-A/SP-B/SP-C code in this conversation.
+- Do not review full diffs, full HTML reports, or long logs in this conversation.
+- Do not read legacy `events.jsonl` or `review-events.jsonl` files except through a short diagnostic subagent.
+- Subagents should return only verdict, artifact paths, changed or inspected files, commands run, blockers, and the next action.
 
-Unbounded manager loop, only when explicitly requested:
+Default cadence:
 
-```bash
-python Body-Tell/reports/26-05-24/run_manager.py auto --full-access
-```
-
-If a child Codex worker still asks for interactive permission, restart the loop with the non-interactive bypass:
-
-```bash
-python Body-Tell/reports/26-05-24/run_manager.py auto --bypass-permissions --max-tasks 1
-```
-
-Useful status commands:
-
-```bash
-python Body-Tell/reports/26-05-24/run_manager.py status
-python Body-Tell/reports/26-05-24/run_manager.py monitor --once
-python Body-Tell/reports/26-05-24/run_manager.py list
-python Body-Tell/reports/26-05-24/run_manager.py ready
-python Body-Tell/reports/26-05-24/run_manager.py gate-fail SP-A.P4 --note "Phase1 Slurm gate failed."
-```
-
-Completion criteria:
-
-- Continue until there are no runnable tasks, or the workflow reaches `blocked` / `needs_fix` that cannot be resolved without human input.
-- Accepted tasks must be recorded in both `workflow_manifest.yaml` and the progress block appended to `lead.html`.
-- Reviewer `accept` verdicts without a passing phase1 Slurm gate are not accepted; record `gate_failed` and rerun the same task with the gate note.
+- Run one worker/reviewer cycle at a time unless the user explicitly asks for parallel lanes.
+- For parallel work, run at most one SP-A, one SP-B, and one SP-C task at once, with disjoint write scopes.
+- Continue until no task is ready, a task is blocked, or the user asks to pause.

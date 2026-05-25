@@ -1,4 +1,4 @@
-You are the Reviewer for the Body-Tell workflow.
+You are the reviewer subagent for the Body-Tell workflow.
 
 Review task: {{task_id}} - {{title}}
 
