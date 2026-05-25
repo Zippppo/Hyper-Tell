@@ -169,6 +169,24 @@ def build_dataset(
     return HyperBodyPromptDataset(**dataset_kwargs)
 
 
+def _set_dataset_epoch(dataset: Any, epoch: int) -> bool:
+    """Propagate epoch to prompt datasets, including smoke-mode Subset wrappers."""
+
+    while isinstance(dataset, Subset):
+        dataset = dataset.dataset
+    set_epoch = getattr(dataset, "set_epoch", None)
+    if callable(set_epoch):
+        set_epoch(epoch)
+        return True
+    return False
+
+
+def _set_training_epoch(train_dataset: Any, train_sampler: Any, epoch: int) -> None:
+    if train_sampler is not None:
+        train_sampler.set_epoch(epoch)
+    _set_dataset_epoch(train_dataset, epoch)
+
+
 def build_loss(cfg: dict[str, Any]) -> PromptSegmentationLoss:
     lc = cfg["loss"]
     return PromptSegmentationLoss(
@@ -527,8 +545,7 @@ def main() -> None:
 
         t0 = time.time()
         for epoch in range(1, epochs + 1):
-            if train_sampler is not None:
-                train_sampler.set_epoch(epoch)
+            _set_training_epoch(train_dataset, train_sampler, epoch)
 
             train_metrics = train_one_epoch(
                 model, train_loader, criterion, optimizer, device, epoch,

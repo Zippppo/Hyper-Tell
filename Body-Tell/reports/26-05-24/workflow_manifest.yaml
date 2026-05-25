@@ -296,7 +296,7 @@ tasks:
     title: Add dynamic sampling RNG infrastructure
     owner: sp_b_sampling_vocab_worker
     phase: 1
-    status: ready
+    status: accepted
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on: []
     result_file: runs/SP-B.Step1/RESULT.html
@@ -307,11 +307,36 @@ tasks:
     - DDP-compatible deterministic behavior is documented.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py
+    updated_at: '2026-05-25T10:47:22.506343+00:00'
+    last_note: 'Accepted by reviewer after fresh phase1 Slurm gate job 37868 completed with exit code 0:0. Prior needs_fix
+      resolved by propagating epoch to sampler and underlying dataset, including Subset handling.'
+    history:
+    - at: '2026-05-25T08:42:40.953992+00:00'
+      status: assigned
+      note: Started subagent worker with Body-Tell/reports/26-05-24/runs/SP-B.Step1/PROMPT.md
+    - at: '2026-05-25T08:53:58.735574+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists.
+    - at: '2026-05-25T09:44:12.206957+00:00'
+      status: needs_fix
+      note: 'Reviewer verdict: needs_fix. Gate job 37823 completed 0:0, but train.py does not call dataset.set_epoch(epoch)
+        or handle smoke-mode Subset.dataset.'
+    - at: '2026-05-25T09:44:51.230651+00:00'
+      status: assigned
+      note: 'Rerunning after reviewer needs_fix: wire dataset.set_epoch(epoch) into train.py alongside sampler.set_epoch,
+        including smoke-mode Subset.dataset handling.'
+    - at: '2026-05-25T09:55:10.785187+00:00'
+      status: submitted
+      note: 'Rerun worker finished and RESULT.html exists; reviewer needs_fix item addressed in train.py with Subset handling.'
+    - at: '2026-05-25T10:47:22.506343+00:00'
+      status: accepted
+      note: 'Accepted by reviewer after fresh phase1 Slurm gate job 37868 completed with exit code 0:0. Prior needs_fix
+        resolved by propagating epoch to sampler and underlying dataset, including Subset handling.'
   SP-B.Step2:
     title: Implement patch crop and patch-level 2 positive plus 1 negative prompts
     owner: sp_b_sampling_vocab_worker
     phase: 2
-    status: todo
+    status: ready
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step1

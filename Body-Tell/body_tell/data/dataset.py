@@ -21,8 +21,18 @@ from .vocabulary import (
 )
 
 
+_EPOCH_SEED_STRIDE = 1_000_003
+
+
 class HyperBodyPromptDataset(Dataset):
-    """Read ``Body-Tell/Dataset/voxel_data`` as prompt-conditioned masks."""
+    """Read ``Body-Tell/Dataset/voxel_data`` as prompt-conditioned masks.
+
+    Prompt sampling is deterministic for a given ``seed``, epoch, and global
+    dataset index. In DDP training, call ``DistributedSampler.set_epoch(epoch)``
+    and then ``dataset.set_epoch(epoch)`` before iterating the DataLoader. The
+    prompt RNG intentionally does not include rank, so a case has the same
+    prompt sample for a given epoch/index regardless of which rank receives it.
+    """
 
     def __init__(
         self,
@@ -47,6 +57,7 @@ class HyperBodyPromptDataset(Dataset):
         self.num_negative = int(num_negative)
         self.min_voxels = int(min_voxels)
         self.seed = int(seed)
+        self._epoch = 0
 
         self.vocab_path = (
             self._resolve_root_path(vocab_path)
@@ -110,6 +121,27 @@ class HyperBodyPromptDataset(Dataset):
     def __len__(self) -> int:
         return len(self.case_files)
 
+    def set_epoch(self, epoch: int) -> None:
+        """Set the epoch used by prompt sampling.
+
+        The per-sample seed is ``base_seed + epoch * large_prime + index``.
+        This makes repeated access deterministic within an epoch while allowing
+        the same case to draw different prompt text across epochs. Call this
+        before creating the DataLoader iterator; persistent workers need their
+        own worker-side epoch propagation.
+        """
+
+        epoch = int(epoch)
+        if epoch < 0:
+            raise ValueError("epoch must be non-negative")
+        self._epoch = epoch
+
+    def get_epoch(self) -> int:
+        return self._epoch
+
+    def _prompt_rng(self, index: int) -> random.Random:
+        return random.Random(self.seed + self._epoch * _EPOCH_SEED_STRIDE + int(index))
+
     def __getitem__(self, index: int) -> Dict[str, Any]:
         case_path = self.case_files[index]
         case_id = case_path.stem
@@ -130,7 +162,7 @@ class HyperBodyPromptDataset(Dataset):
             labels = fit_array_to_shape(labels, self.volume_size, pad_value=0)
             occupancy = fit_array_to_shape(occupancy, self.volume_size, pad_value=False)
 
-        rng = random.Random(self.seed + index)
+        rng = self._prompt_rng(index)
         prompt_records = sample_prompts_for_case(
             case_record,
             self.vocab,

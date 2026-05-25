@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.utils.data import Subset
 
 import body_tell.data.vocabulary as vocabulary_module
 from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
@@ -16,11 +17,33 @@ from body_tell.data.vocabulary import (
     prompt_records_by_class,
     sample_prompts_for_case,
 )
+from train import _set_training_epoch
 
 
 def _write_json(path: Path, data: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _write_prompt_embedding_cache(root: Path, vocab: dict) -> None:
+    records = flatten_prompt_records(vocab)
+    embeddings = torch.arange(len(records) * EMBEDDING_DIM, dtype=torch.float32).view(
+        len(records), EMBEDDING_DIM
+    )
+    cache = {
+        "model_name": "Qwen/Qwen3-Embedding-4B",
+        "embedding_dim": EMBEDDING_DIM,
+        "instruction": "test instruction",
+        "vocab_version": vocab["version"],
+        "vocab_hash": file_sha256(root / "configs" / "label_vocab.json"),
+        "num_prompts": len(records),
+        "prompt_records": records,
+        "is_qwen_cache": True,
+        "embeddings": embeddings,
+    }
+    cache_path = root / "artifacts" / "text_embeddings" / "prompt_embeddings.pt"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(cache, cache_path)
 
 
 def _make_tiny_body_tell_root(tmp_path: Path) -> Path:
@@ -125,25 +148,7 @@ def _make_tiny_body_tell_root(tmp_path: Path) -> Path:
     _write_json(root / "Dataset" / "dataset_split.json", split)
     _write_json(root / "configs" / "label_vocab.json", vocab)
     _write_json(root / "artifacts" / "data_stats" / "class_presence.json", presence)
-
-    records = flatten_prompt_records(vocab)
-    embeddings = torch.arange(len(records) * EMBEDDING_DIM, dtype=torch.float32).view(
-        len(records), EMBEDDING_DIM
-    )
-    cache = {
-        "model_name": "Qwen/Qwen3-Embedding-4B",
-        "embedding_dim": EMBEDDING_DIM,
-        "instruction": "test instruction",
-        "vocab_version": vocab["version"],
-        "vocab_hash": file_sha256(root / "configs" / "label_vocab.json"),
-        "num_prompts": len(records),
-        "prompt_records": records,
-        "is_qwen_cache": True,
-        "embeddings": embeddings,
-    }
-    cache_path = root / "artifacts" / "text_embeddings" / "prompt_embeddings.pt"
-    cache_path.parent.mkdir(parents=True)
-    torch.save(cache, cache_path)
+    _write_prompt_embedding_cache(root, vocab)
     return root
 
 
@@ -172,6 +177,78 @@ def test_prompt_dataset_builds_binary_masks_and_negative_prompt(tmp_path: Path) 
     assert sample["target_masks"][1].sum().item() == 6
     assert sample["target_masks"][2].sum().item() == 0
     assert sample["occupancy"].sum().item() == 3
+
+
+def test_prompt_dataset_set_epoch_changes_prompt_text_deterministically(
+    tmp_path: Path,
+) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    vocab_path = root / "configs" / "label_vocab.json"
+    vocab = json.loads(vocab_path.read_text(encoding="utf-8"))
+    vocab["classes"][1]["prompts"] = ["liver", "hepatic organ"]
+    vocab["classes"][2]["prompts"] = ["spleen", "splenic organ"]
+    vocab["classes"][3]["prompts"] = ["pancreas", "pancreatic organ"]
+    _write_json(vocab_path, vocab)
+    _write_prompt_embedding_cache(root, vocab)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+    )
+
+    epoch0_first = dataset[0]["prompt_texts"]
+    epoch0_repeat = dataset[0]["prompt_texts"]
+    dataset.set_epoch(1)
+    epoch1_first = dataset[0]["prompt_texts"]
+    epoch1_repeat = dataset[0]["prompt_texts"]
+
+    assert epoch0_first == epoch0_repeat
+    assert epoch1_first == epoch1_repeat
+    assert epoch1_first != epoch0_first
+    assert dataset.get_epoch() == 1
+
+    another_rank_dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+    )
+    another_rank_dataset.set_epoch(1)
+
+    assert another_rank_dataset[0]["prompt_texts"] == epoch1_first
+
+
+def test_training_epoch_setter_updates_sampler_and_smoke_subset(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=1,
+        seed=3,
+    )
+    smoke_dataset = Subset(dataset, [0])
+
+    class RecordingSampler:
+        def __init__(self) -> None:
+            self.epochs: list[int] = []
+
+        def set_epoch(self, epoch: int) -> None:
+            self.epochs.append(epoch)
+
+    sampler = RecordingSampler()
+
+    _set_training_epoch(smoke_dataset, sampler, 7)
+
+    assert sampler.epochs == [7]
+    assert dataset.get_epoch() == 7
 
 
 def test_prompt_dataset_loads_embedding_cache_once(tmp_path: Path, monkeypatch) -> None:
