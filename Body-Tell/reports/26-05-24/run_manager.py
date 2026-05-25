@@ -96,6 +96,35 @@ def file_was_updated(path: Path, previous_identity: tuple[int, int] | None) -> b
     return current_identity is not None and current_identity != previous_identity
 
 
+def file_is_at_least_as_new_as(path: Path, reference_path: Path) -> bool:
+    if not path.exists():
+        return False
+    if not reference_path.exists():
+        return True
+    return path.stat().st_mtime_ns >= reference_path.stat().st_mtime_ns
+
+
+def review_is_current(task_id: str, task: dict[str, Any]) -> bool:
+    return file_is_at_least_as_new_as(review_path_for(task_id, task), task_result_path(task))
+
+
+def needs_review_retry(task_id: str, task: dict[str, Any]) -> bool:
+    if task.get("status") == "submitted":
+        return task_result_path(task).exists()
+    if task.get("status") != "needs_fix":
+        return False
+    last_note = str(task.get("last_note", "")).lower()
+    return "reviewer" in last_note and task_result_path(task).exists() and not review_is_current(task_id, task)
+
+
+def review_retry_task_ids(manifest: dict[str, Any]) -> list[str]:
+    return [
+        task_id
+        for task_id, task in manifest.get("tasks", {}).items()
+        if needs_review_retry(task_id, task)
+    ]
+
+
 def task_run_dir(task_id: str, task: dict[str, Any]) -> Path:
     result = task_result_path(task)
     if result.name:
@@ -329,6 +358,8 @@ def file_snapshot(path: Path) -> dict[str, Any]:
 
 def task_snapshot(task_id: str, task: dict[str, Any]) -> dict[str, Any]:
     review_path = review_path_for(task_id, task)
+    current_review = review_is_current(task_id, task)
+    verdict = extract_review_verdict(review_path) if current_review else None
     return {
         "task_id": task_id,
         "title": task.get("title", ""),
@@ -338,7 +369,8 @@ def task_snapshot(task_id: str, task: dict[str, Any]) -> dict[str, Any]:
         "last_note": compact_text(task.get("last_note", "")),
         "result": file_snapshot(task_result_path(task)),
         "review": file_snapshot(review_path),
-        "verdict": extract_review_verdict(review_path) or "-",
+        "review_current": current_review,
+        "verdict": verdict or ("stale" if review_path.exists() else "-"),
     }
 
 
@@ -400,7 +432,7 @@ def build_workflow_status(manifest: dict[str, Any]) -> dict[str, Any]:
 
     if focus:
         result_state = "yes" if focus["result"]["exists"] else "no"
-        review_state = "yes" if focus["review"]["exists"] else "no"
+        review_state = review_word(focus)
         focus_text = f"{focus['task_id']} {focus['status']}"
     else:
         result_state = "no"
@@ -437,13 +469,19 @@ def bool_word(snapshot: dict[str, Any] | None, key: str) -> str:
     return "yes" if snapshot[key]["exists"] else "no"
 
 
+def review_word(snapshot: dict[str, Any] | None) -> str:
+    if not snapshot or not snapshot["review"]["exists"]:
+        return "no"
+    return "current" if snapshot.get("review_current") else "stale"
+
+
 def format_snapshot(snapshot: dict[str, Any] | None) -> str:
     if not snapshot:
         return "-"
     return (
         f"{snapshot['task_id']} {snapshot['status']} "
         f"result={bool_word(snapshot, 'result')} "
-        f"review={bool_word(snapshot, 'review')} "
+        f"review={review_word(snapshot)} "
         f"verdict={snapshot.get('verdict', '-')} "
         f"updated={snapshot.get('updated_at') or '-'}"
     )
@@ -655,10 +693,68 @@ def cmd_review(args: argparse.Namespace) -> int:
     )
 
 
+def finalize_review_result(manifest: dict[str, Any], task_id: str, review_code: int) -> tuple[bool, int]:
+    task = get_task(manifest, task_id)
+    review_path = review_path_for(task_id, task)
+    verdict = extract_review_verdict(review_path)
+    if review_code != 0:
+        note = f"Reviewer exited with code {review_code}; result remains submitted for review retry."
+        mark_status(manifest, task_id, "submitted", note)
+        save_manifest(manifest)
+        print(f"[auto] reviewer failed for {task_id}; result left submitted for review retry")
+        return False, review_code
+
+    if verdict == "accept":
+        gate_ok, gate_note = extract_phase1_slurm_gate(review_path)
+        if not gate_ok:
+            note = f"Reviewer accept rejected: {gate_note} See {rel(review_path)}."
+            mark_status(manifest, task_id, "gate_failed", note)
+            save_manifest(manifest)
+            print(f"[auto] {task_id} -> gate_failed; {gate_note}")
+            return False, 1
+        note = f"Accepted by reviewer with phase1 Slurm gate pass. See {rel(review_path)}."
+        mark_status(manifest, task_id, "accepted", note)
+        append_lead_log(manifest, task_id, "accepted", note)
+        save_manifest(manifest)
+        print(f"[auto] accepted {task_id}")
+        return True, 0
+
+    if verdict in {"needs_fix", "blocked"}:
+        note = f"Reviewer verdict: {verdict}. See {rel(review_path)}."
+        mark_status(manifest, task_id, verdict, note)
+        save_manifest(manifest)
+        print(f"[auto] {task_id} -> {verdict}")
+        return False, 1
+
+    note = f"Could not parse reviewer verdict. See {rel(review_path)}."
+    mark_status(manifest, task_id, "needs_fix", note)
+    save_manifest(manifest)
+    print(f"[auto] {note}")
+    return False, 1
+
+
 def cmd_auto(args: argparse.Namespace) -> int:
     completed = 0
     while completed < args.max_tasks:
         manifest = load_manifest()
+        review_retry_ids = review_retry_task_ids(manifest)
+        if review_retry_ids:
+            task_id = review_retry_ids[0]
+            task = get_task(manifest, task_id)
+            print(f"[auto] reviewing {task_id}: {task.get('title', '')}")
+            review_code = run_review_task(
+                manifest,
+                task_id,
+                sandbox=effective_sandbox(args),
+                bypass_permissions=args.bypass_permissions,
+            )
+            manifest = load_manifest()
+            accepted, exit_code = finalize_review_result(manifest, task_id, review_code)
+            completed += 1
+            if not accepted and not args.continue_on_failure:
+                return exit_code or 1
+            continue
+
         ready = runnable_task_ids(manifest)
         if not ready:
             print("No runnable tasks remain.")
@@ -690,48 +786,9 @@ def cmd_auto(args: argparse.Namespace) -> int:
             bypass_permissions=args.bypass_permissions,
         )
         manifest = load_manifest()
-        task = get_task(manifest, task_id)
-        review_path = review_path_for(task_id, task)
-        verdict = extract_review_verdict(review_path)
-        if review_code != 0:
-            mark_status(manifest, task_id, "needs_fix", f"Reviewer exited with code {review_code}.")
-            save_manifest(manifest)
-            print(f"[auto] reviewer failed for {task_id}")
-            if args.continue_on_failure:
-                completed += 1
-                continue
-            return review_code
-
-        if verdict == "accept":
-            gate_ok, gate_note = extract_phase1_slurm_gate(review_path)
-            if not gate_ok:
-                note = f"Reviewer accept rejected: {gate_note} See {rel(review_path)}."
-                mark_status(manifest, task_id, "gate_failed", note)
-                save_manifest(manifest)
-                print(f"[auto] {task_id} -> gate_failed; {gate_note}")
-                if args.continue_on_failure:
-                    completed += 1
-                    continue
-                return 1
-            note = f"Accepted by reviewer with phase1 Slurm gate pass. See {rel(review_path)}."
-            mark_status(manifest, task_id, "accepted", note)
-            append_lead_log(manifest, task_id, "accepted", note)
-            save_manifest(manifest)
-            print(f"[auto] accepted {task_id}")
-        elif verdict in {"needs_fix", "blocked"}:
-            note = f"Reviewer verdict: {verdict}. See {rel(review_path)}."
-            mark_status(manifest, task_id, verdict, note)
-            save_manifest(manifest)
-            print(f"[auto] {task_id} -> {verdict}")
-            if not args.continue_on_failure:
-                return 1
-        else:
-            note = f"Could not parse reviewer verdict. See {rel(review_path)}."
-            mark_status(manifest, task_id, "needs_fix", note)
-            save_manifest(manifest)
-            print(f"[auto] {note}")
-            if not args.continue_on_failure:
-                return 1
+        accepted, exit_code = finalize_review_result(manifest, task_id, review_code)
+        if not accepted and not args.continue_on_failure:
+            return exit_code or 1
 
         completed += 1
 
