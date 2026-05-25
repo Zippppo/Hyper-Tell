@@ -4,7 +4,8 @@ created_at: '2026-05-24'
 lead_plan: lead.html
 status_model:
   todo: Task is defined but not currently runnable.
-  ready: Task dependencies are accepted and the task can be assigned.
+  ready: Task dependencies are accepted and the task can be assigned, or an explicit dependency_exception documents why
+    the task may run as an unblocker before a predecessor is accepted.
   assigned: A worker run has been started.
   submitted: Worker produced a result and is waiting for manager review.
   needs_fix: Review failed; rerun the same worker with the review notes.
@@ -42,6 +43,10 @@ global_rules:
 - Rerun prompts must include the current manager note so workers address needs_fix or gate_failed causes directly.
 - Run one worker/reviewer/post-accept cycle at a time unless the user explicitly asks for parallel lanes.
 - Continue to the next ready task only after the post-accept commit hash is available.
+- >-
+  SP-B.Step6 is an explicit cache-unblocker exception: it may run after SP-B.Step5 static vocabulary validation passes but
+  before SP-B.Step5 acceptance when the only remaining Step5 gate failure is stale prompt_embeddings.pt. After Step6 rebuilds
+  the cache, rerun SP-B.Step5 review and phase1 Slurm gate; final post-accept should commit the vocabulary and cache together.
 agents:
   manager:
     role: Pure dispatcher that selects runnable tasks, spawns worker/reviewer/post-accept subagents, waits for compact
@@ -84,6 +89,7 @@ agents:
     writable:
     - Body-Tell/body_tell/data/**
     - Body-Tell/configs/**
+    - Body-Tell/artifacts/text_embeddings/**
     - Body-Tell/scripts/**
     - Body-Tell/tests/**
     - Body-Tell/reports/26-05-24/runs/**
@@ -497,7 +503,7 @@ tasks:
     title: Expand vocabulary under VoxTell Appendix C principles
     owner: sp_b_sampling_vocab_worker
     phase: 3
-    status: ready
+    status: gate_failed
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step4
@@ -509,28 +515,67 @@ tasks:
     - Static vocabulary validation passes.
     verification:
     - conda run -n voxtell python Body-Tell/scripts/audit_vocabulary.py
-    updated_at: '2026-05-25T16:37:07+00:00'
-    last_note: SP-B.Step4 accepted; dependencies satisfied.
+    updated_at: '2026-05-25T22:04:03+00:00'
+    last_note: 'SP-B.Step5 vocabulary expansion artifacts exist and static validation passed, but review cannot accept:
+      phase1 Slurm gate job 38040 FAILED with exit code 1:0 because prompt_embeddings.pt is stale (264 cached prompts)
+      versus the expanded 418 prompt records. Workflow was adjusted to let SP-B.Step6 run next as the cache-unblocker before
+      rerunning SP-B.Step5 review/gate.'
     history:
     - at: '2026-05-25T16:37:07+00:00'
       status: ready
       note: SP-B.Step4 accepted; dependencies satisfied.
+    - at: '2026-05-25T22:04:03+00:00'
+      status: blocked
+      note: 'Synchronized from runs/SP-B.Step5/RESULT.html and REVIEW.html: worker produced expanded vocabulary artifacts
+        and vocabulary audit with no validation errors; reviewer recorded Test quality pass and Targeted pytest pass, but phase1
+        Slurm gate job 38040 FAILED 1:0 due to stale prompt_embeddings.pt cache metadata/shape (264 prompts vs 418 records).
+        Rerun worker could not rebuild Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt because that artifact path is
+        outside the task writable scope.'
+    - at: '2026-05-25T22:04:03+00:00'
+      status: gate_failed
+      note: 'Plan updated per operator decision: Step5 remains unaccepted, but this is no longer a terminal blocker. Dispatch
+        SP-B.Step6 next as a cache-unblocker, then rerun SP-B.Step5 reviewer/gate and post-accept only after the combined
+        vocabulary/cache state passes.'
   SP-B.Step6:
     title: Rebuild text embedding cache
     owner: sp_b_sampling_vocab_worker
     phase: 3
-    status: todo
+    status: ready
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
-    - SP-B.Step5
+    - SP-B.Step4
     result_file: runs/SP-B.Step6/RESULT.html
     scope: 'SP-B Step 6: regenerate prompt_embeddings.pt with hash/count validation.'
+    dependency_exception:
+      type: cache_unblocker_before_step5_acceptance
+      unblocks:
+      - SP-B.Step5
+      source_evidence:
+      - runs/SP-B.Step5/RESULT.html
+      - runs/SP-B.Step5/REVIEW.html
+      - runs/SP-B.Step5/vocabulary_audit.html
+      reason: 'SP-B.Step5 static vocabulary validation passed, but phase1 Slurm gate failed only because the production text
+        embedding cache still has 264 prompts while the expanded vocabulary has 418 prompt records.'
+      dispatcher_sequence: 'Run SP-B.Step6 worker/reviewer to rebuild and validate prompt_embeddings.pt, then rerun SP-B.Step5
+        reviewer and phase1 Slurm gate. Do not mark SP-B.Step5 accepted until that rerun records Test quality pass, Targeted
+        pytest pass, and Slurm COMPLETED 0:0.'
+      post_accept_policy: 'Commit vocabulary and cache together after the rerun SP-B.Step5 reviewer accepts the combined
+        state. If SP-B.Step6 itself needs a separate POST_ACCEPT.html, it must record that final workflow acceptance is deferred
+        until SP-B.Step5 passes its gate.'
     acceptance:
     - Embedding row count equals prompt record count.
     - Vocabulary hash matches label_vocab.json.
     - Cache generation command and model/instruction are recorded.
     verification:
     - conda run -n voxtell python Body-Tell/scripts/build_prompt_embedding_cache.py --help
+    updated_at: '2026-05-25T22:04:03+00:00'
+    last_note: Ready as the explicit cache-unblocker for SP-B.Step5 gate_failed. Rebuild prompt_embeddings.pt for the 418-record
+      expanded vocabulary, then rerun SP-B.Step5 review/gate.
+    history:
+    - at: '2026-05-25T22:04:03+00:00'
+      status: ready
+      note: 'Operator approved dependency exception: SP-B.Step6 may run before SP-B.Step5 acceptance because Step5 static
+        vocabulary validation passed and the only recorded phase1 gate failure is stale prompt_embeddings.pt.'
   SP-C.Task0:
     title: Add paper-mechanics profile skeleton
     owner: sp_c_training_eval_worker

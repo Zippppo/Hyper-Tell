@@ -28,7 +28,9 @@ Pure-dispatcher rule:
 Continuous workflow:
 
 1. Read `AGENT_WORKFLOW.md` and a targeted entry in `workflow_manifest.yaml`.
-2. Pick the next `ready` task whose dependencies are accepted.
+2. Pick the next `ready` task whose dependencies are accepted. Current exception: `SP-B.Step6` may be picked before
+   `SP-B.Step5` acceptance because Step5 static vocabulary validation passed and the only remaining gate failure is stale
+   `prompt_embeddings.pt`.
 3. Spawn one worker subagent for that task. The worker must follow `templates/worker_prompt.md` and write `runs/<TASK_ID>/RESULT.html`.
 4. When the worker returns, spawn one reviewer subagent. The reviewer must follow `templates/review_prompt.md` and write `runs/<TASK_ID>/REVIEW.html`.
 5. A task is eligible for accept only when `REVIEW.html` records all of:
@@ -37,9 +39,18 @@ Continuous workflow:
    - `slurm/body-tell-phase1.sh` main job `COMPLETED`
    - Slurm exit code `0:0`
 6. If reviewer verdict is `accept`, spawn a post-accept subagent. It must follow `templates/post_accept_prompt.md`, verify the REVIEW gate evidence, update `workflow_manifest.yaml`, append compact progress to `lead.html`, synchronize every relevant report under `Body-Tell/reports/26-05-24`, write `runs/<TASK_ID>/POST_ACCEPT.html`, and create a git commit for the accepted task plus documentation sync.
-7. The main conversation may proceed to the next ready task only after the post-accept subagent returns a commit hash.
+7. The main conversation may proceed to the next ready task only after the post-accept subagent returns a commit hash, except
+   for the explicit `SP-B.Step6` cache-unblocker sequence.
 8. If reviewer verdict is `needs_fix` or `gate_failed`, rerun the same task with the reviewer note. Do not spawn post-accept or commit.
 9. If reviewer verdict is `blocked`, stop and report the blocker in no more than 10 lines.
+
+SP-B Step5/Step6 cache-unblocker exception:
+
+1. `SP-B.Step5` remains unaccepted until review records all required gates.
+2. Because Step5 static vocabulary validation passed but Slurm failed only due to stale text embedding cache, dispatch
+   `SP-B.Step6` next to rebuild `Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt`.
+3. After Step6 reviewer verifies cache count/hash/shape and phase1 Slurm gate, rerun `SP-B.Step5` reviewer/gate.
+4. Run post-accept only after the rerun Step5 review passes all gates; commit vocabulary and cache together.
 
 Context limits:
 

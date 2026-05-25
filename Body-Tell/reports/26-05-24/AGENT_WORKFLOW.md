@@ -25,18 +25,35 @@ Legacy `events.jsonl` and `review-events.jsonl` files may exist from the old CLI
 ## Pure Dispatcher Loop
 
 1. Read only `workflow_manifest.yaml`, `AGENT_WORKFLOW.md`, and small targeted snippets needed to choose the next action.
-2. Select a `ready` task whose dependencies are accepted.
+2. Select a `ready` task whose dependencies are accepted. Current explicit exception: `SP-B.Step6` may run before
+   `SP-B.Step5` is accepted when `SP-B.Step5` static vocabulary validation has passed and the only remaining gate failure is
+   stale `prompt_embeddings.pt`.
 3. Spawn one worker subagent with the task id, owner, plan file, scope, acceptance criteria, verification commands, current manager note, writable paths, and TDD requirements. The worker follows `templates/worker_prompt.md` and writes `runs/<TASK_ID>/RESULT.html`.
 4. Wait for the worker to return only compact status.
 5. Spawn one reviewer subagent with the result path, acceptance criteria, relevant diff scope, TDD test-quality requirements, and gate requirements. The reviewer follows `templates/review_prompt.md` and writes `runs/<TASK_ID>/REVIEW.html`.
 6. Wait for the reviewer to return only compact status.
 7. Treat `accept` as eligible only when `REVIEW.html` records passing test quality, passing targeted pytest, and a phase1 Slurm main job `COMPLETED` with exit code `0:0`.
 8. If eligible for accept, spawn one post-accept subagent. It follows `templates/post_accept_prompt.md`, verifies the review gate evidence, updates `workflow_manifest.yaml`, appends compact progress to `lead.html`, synchronizes all relevant reports under this directory, writes `runs/<TASK_ID>/POST_ACCEPT.html`, and creates a git commit.
-9. Continue to the next `ready` task only after the post-accept subagent returns a commit hash.
+9. Continue to the next `ready` task only after the post-accept subagent returns a commit hash, except for the explicit
+   `SP-B.Step6` cache-unblocker sequence below.
 10. If the verdict is `needs_fix` or `gate_failed`, rerun the same task with the reviewer note. Do not spawn post-accept and do not commit.
 11. If the verdict is `blocked`, stop and report the blocker in no more than 10 lines.
 
 The dispatcher must not write files, apply patches, update docs, update manifests, run commits, inspect full diffs, or read long logs. If a file mutation is required, it must be delegated to a bounded subagent.
+
+### SP-B Step5/Step6 Cache-Unblocker Exception
+
+`SP-B.Step5` expanded the vocabulary to 418 prompt records and passed static validation, but its phase1 Slurm gate failed
+because `Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt` still contains the old 264-prompt cache. Since cache rebuild
+is the designed responsibility of `SP-B.Step6`, the dispatcher may run `SP-B.Step6` before `SP-B.Step5` is accepted.
+
+Required sequence:
+
+1. Dispatch `SP-B.Step6` as the next ready task with write permission to `Body-Tell/artifacts/text_embeddings/**`.
+2. The Step6 worker rebuilds `prompt_embeddings.pt` against the expanded Step5 vocabulary and writes `runs/SP-B.Step6/RESULT.html`.
+3. The Step6 reviewer verifies cache count/hash/shape and runs the phase1 Slurm gate.
+4. After Step6 reviewer acceptance, rerun `SP-B.Step5` reviewer/gate on the combined vocabulary/cache state.
+5. Only after the rerun `SP-B.Step5` review records `Test quality: pass`, `Targeted pytest: pass`, and Slurm `COMPLETED` / `0:0`, run post-accept and commit the vocabulary and cache together. Do not mark Step5 accepted from static validation alone.
 
 ## State Machine
 
@@ -86,6 +103,7 @@ Only the post-accept subagent changes accepted task status, dependent ready stat
 - Primary writable areas:
   - `Body-Tell/body_tell/data/**`
   - `Body-Tell/configs/**`
+  - `Body-Tell/artifacts/text_embeddings/**`
   - `Body-Tell/scripts/**`
   - `Body-Tell/tests/**`
 
