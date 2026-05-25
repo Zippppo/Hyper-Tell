@@ -42,6 +42,7 @@ class HyperBodyPromptDataset(Dataset):
         volume_size: Optional[Sequence[int]] = None,
         patch_size: Optional[Sequence[int]] = None,
         foreground_oversample_prob: float = 0.0,
+        canonical_prob: float = 0.25,
         num_positive: int = 2,
         num_negative: int = 1,
         min_voxels: int = 1,
@@ -60,6 +61,9 @@ class HyperBodyPromptDataset(Dataset):
         self.foreground_oversample_prob = float(foreground_oversample_prob)
         if not 0.0 <= self.foreground_oversample_prob <= 1.0:
             raise ValueError("foreground_oversample_prob must be between 0 and 1")
+        self.canonical_prob = float(canonical_prob)
+        if not 0.0 <= self.canonical_prob <= 1.0:
+            raise ValueError("canonical_prob must be between 0 and 1")
         self.num_positive = int(num_positive)
         self.num_negative = int(num_negative)
         self.min_voxels = int(min_voxels)
@@ -344,6 +348,7 @@ class HyperBodyPromptDataset(Dataset):
             num_positive=self.num_positive,
             num_negative=self.num_negative,
             min_voxels=self.min_voxels,
+            canonical_prob=self.canonical_prob,
             rng=rng,
             prompt_index=self._prompt_records_by_class,
         )
@@ -376,7 +381,43 @@ class HyperBodyPromptDataset(Dataset):
             "target_class_ids": [list(record.get("target_class_ids", [])) for record in prompt_records],
             "target_empty": target_empty,
             "target_masks": torch.from_numpy(np.stack(masks, axis=0)),
+            "prompt_sampling": self._prompt_sampling_summary(prompt_records),
             "crop": crop_metadata,
+        }
+
+    def _prompt_sampling_summary(
+        self,
+        prompt_records: Sequence[Mapping[str, Any]],
+    ) -> Dict[str, Any]:
+        positive_records = [
+            record for record in prompt_records if not bool(record.get("target_empty", False))
+        ]
+        classes_without_variants = sorted(
+            {
+                int(record["class_id"])
+                for record in positive_records
+                if not bool(record.get("has_variants", False))
+            }
+        )
+        return {
+            "canonical_prob": self.canonical_prob,
+            "positive_canonical_count": sum(
+                record.get("prompt_sampling_mode") == "canonical"
+                for record in positive_records
+            ),
+            "positive_variant_count": sum(
+                record.get("prompt_sampling_mode") == "variant"
+                for record in positive_records
+            ),
+            "positive_canonical_fallback_count": sum(
+                bool(record.get("canonical_fallback", False))
+                for record in positive_records
+            ),
+            "positive_without_variant_count": sum(
+                not bool(record.get("has_variants", False))
+                for record in positive_records
+            ),
+            "positive_classes_without_variants": classes_without_variants,
         }
 
 
@@ -464,8 +505,16 @@ def prompt_collate_fn(batch: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     collated["target_empty"] = pad_prompt_tensor("target_empty", True)
     collated["target_masks"] = pad_prompt_tensor("target_masks", 0.0)
     collated["prompt_valid"] = prompt_valid
-    for key in ("case_id", "case_path", "prompt_texts", "target_class_ids", "crop"):
-        collated[key] = [item[key] for item in batch]
+    for key in (
+        "case_id",
+        "case_path",
+        "prompt_texts",
+        "target_class_ids",
+        "prompt_sampling",
+        "crop",
+    ):
+        if key in batch[0]:
+            collated[key] = [item[key] for item in batch]
     return collated
 
 

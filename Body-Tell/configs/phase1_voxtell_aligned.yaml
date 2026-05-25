@@ -30,6 +30,7 @@ data:
   volume_size: [128, 128, 256]
   patch_size: [128, 128, 128]
   foreground_oversample_prob: 0.85
+  canonical_prob: 0.25
   num_positive: 2
   num_negative: 1
   min_voxels: 1

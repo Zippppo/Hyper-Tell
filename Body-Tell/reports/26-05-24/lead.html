@@ -175,8 +175,8 @@
     <div class="cards">
       <div class="card"><strong>明确不一致</strong><span class="bad">13 项</span></div>
       <div class="card"><strong>已分发到子计划</strong><span class="ok">13 项</span></div>
-      <div class="card"><strong>子计划进度</strong><span class="ok">SP-B Step 2 完成</span></div>
-      <div class="card"><strong>总体判断</strong><span class="warn">SP-B Step 3/4 ready</span></div>
+      <div class="card"><strong>子计划进度</strong><span class="ok">SP-B Step 3 完成</span></div>
+      <div class="card"><strong>总体判断</strong><span class="warn">SP-B Step 4 ready</span></div>
     </div>
     <p class="note warn">2026-05-24 修订：原 11 项基础上新增 #12 BCE+Dice loss 等价性、#13 <code>num_heads</code> mismatch（Body-Tell=32 vs VoxTell=1）。其中 #13 同时修正了原 SP-A 中"VoxTell projection 输出 <code>[32,2048,4096,8192,10240]</code>"的错误表述（实际为 <code>[32,64,128,256,320]</code> 量级，<code>num_heads</code> 才是根因）。</p>
     <div class="note warn"><strong>域差异豁免（2026-05-24 重要约束）</strong>：Body-Tell 处理 occupancy grid，VoxTell 处理医学影像（CT/MRI/PET）。任务输入模态、特征统计、噪声特性都不同。<strong>本计划中"对齐"是手段不是目的，目的是支持 VoxTell 权重复用与实现一致性。任何一项不一致，若实现阶段 audit 后发现对齐会损害性能、或对当前任务没有可观察收益、或与权重复用无关，允许显式跳过并在子计划中记录原因。</strong> #12（loss 公式）与 #13（<code>num_heads</code>）尤其适用此豁免。</div>
@@ -210,7 +210,7 @@
           <td>SP-B</td>
           <td><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">Body-Tell Sampling 与 Vocabulary 优化思路</a></td>
           <td>数据构造对齐：动态采样基础设施、85% foreground patch oversampling、patch 内 2+1 prompt、25/75 canonical/variant、aggregate sampler、vocabulary expansion、text embedding 重建。</td>
-          <td><span class="tag warn">Step 1/2 accepted；下一步：Step 3/4 ready</span></td>
+          <td><span class="tag warn">Step 1/2/3 accepted；下一步：Step 4 ready</span></td>
         </tr>
         <tr>
           <td>SP-C</td>
@@ -224,7 +224,7 @@
 
   <section>
     <h2>直接执行顺序</h2>
-    <p>当前同步状态：<strong>SP-A P0-P6-lite、CFG.CanonicalPhase1、SP-B Step 1/2 均已 accepted 并通过 review / phase1 Slurm gate</strong>。下一项默认执行 <strong>SP-B Step 3</strong>；SP-B Step 4 与 SP-C Task 0 也处于 ready，可在不争用同一文件的前提下并行。</p>
+    <p>当前同步状态：<strong>SP-A P0-P6-lite、CFG.CanonicalPhase1、SP-B Step 1/2/3 均已 accepted 并通过 review / phase1 Slurm gate</strong>。下一项默认执行 <strong>SP-B Step 4</strong>；SP-C Task 0 也处于 ready，可在不争用同一文件的前提下并行。</p>
     <table>
       <thead>
         <tr>
@@ -242,12 +242,13 @@
               <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_voxtell_alignment_plan_2026-05-24.html">SP-A P0-P6-lite</a>：模型结构、runtime HWD position/memory 契约、<code>transformer_decoder.*</code> strict prefix loader 均已验收。</li>
               <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 1</a>：训练时动态采样基础设施。</li>
               <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">CFG.CanonicalPhase1 + SP-B Step 2</a>：唯一 Phase1 config 已收敛到 <code>phase1_voxtell_aligned.yaml</code>，patch crop + patch 内 2+1 prompt 采样已验收。</li>
-              <li><span class="tag warn">下一步</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 3/4</a>：25/75 positive prompt 采样与 aggregate / combined-label sampler。</li>
+              <li><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 3</a>：positive prompt 已按 <code>canonical_prob=0.25</code> 执行 canonical/variant 采样。</li>
+              <li><span class="tag warn">下一步</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 4</a>：aggregate / combined-label sampler。</li>
               <li><span class="tag warn">可并行</span> <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-0">SP-C Task 0</a> 到 <a class="child-link" href="bodytell_training_loop_eval_alignment_plan_2026-05-24.html#task-4">Task 4</a>：paper-mechanics profile、fixed-update loop、SGD/poly ablation、checkpoint/resume。Task 0/1 是训练控制面，不直接承诺 Dice 提升。</li>
             </ul>
           </td>
-          <td>SP-B Step 3/4 与 SP-C Task 0 可并行；默认 manager next task 是 <code>SP-B.Step3</code>。</td>
-          <td>SP-B Step 3/4 通过后进入 Step 5/6；SP-C Task 0-4 通过后可接 Task 5 deep supervision。</td>
+          <td>SP-B Step 4 与 SP-C Task 0 可并行；默认 manager next task 是 <code>SP-B.Step4</code>。</td>
+          <td>SP-B Step 4 通过后进入 Step 5/6；SP-C Task 0-4 通过后可接 Task 5 deep supervision。</td>
         </tr>
         <tr>
           <td>2</td>
@@ -255,10 +256,11 @@
             <ul>
               <li><span class="tag ok">已完成</span> SP-A P2-P4：Residual encoder、VoxTellDecoder、projection/forward 排列。</li>
               <li><span class="tag ok">已完成</span> SP-B Step 2：patch crop + patch 内 2+1 prompt 采样。</li>
-              <li><span class="tag warn">下一步</span> SP-B Step 3/4：25/75 positive prompt 采样与 aggregate / combined-label sampler。</li>
+              <li><span class="tag ok">已完成</span> SP-B Step 3：25/75 positive prompt 采样。</li>
+              <li><span class="tag warn">下一步</span> SP-B Step 4：aggregate / combined-label sampler。</li>
             </ul>
           </td>
-          <td>SP-B 内部当前按 Step 3/4 → Step 5 → Step 6 顺序做；Step 1/2 已验收。</td>
+          <td>SP-B 内部当前按 Step 4 → Step 5 → Step 6 顺序做；Step 1/2/3 已验收。</td>
           <td>补齐 prompt variant 与 aggregate 采样语义后，进入 vocabulary/cache 对齐。</td>
         </tr>
         <tr>
@@ -286,7 +288,7 @@
       </tbody>
     </table>
     <p class="note">训练预算（2026-05-24 锁定）：<code>iterations_per_epoch=250</code> 是机制对齐；实际算力可支持 <strong><code>batch_size=2 per GPU × 2 GPUs</code>（全局 batch=4）、<code>epochs=75</code></strong>，对应 <code>total_updates=75 × 250 = 18,750</code> step，约论文 <code>500,000</code> step 的 <strong>3.75%</strong>。此预算用于结构对齐、训练控制面验证与中等收敛度评估；<strong>不期望达到论文级 Dice 水平，也不能把 Task 0/1 当作直接性能优化</strong>。profile 中必须用独立字段记录：<code>compute_budget: {batch_per_gpu: 2, num_gpus: 2, global_batch: 4, epochs: 75, total_updates: 18750, paper_step_ratio: 0.0375}</code>，实现侧仍需 assert <code>epochs * iterations_per_epoch == total_updates</code>。</p>
-    <p class="note warn">关键路径串行依赖（2026-05-25 状态同步）：<strong>SP-A 链路、CFG.CanonicalPhase1、SP-B Step 1/2 均已验收</strong>（动态采样 RNG、canonical config、patch crop + patch-local 2+1 已通过 review / phase1 Slurm gate）；当前关键路径转为 <strong>SP-B Step 3/4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。</p>
+    <p class="note warn">关键路径串行依赖（2026-05-25 状态同步）：<strong>SP-A 链路、CFG.CanonicalPhase1、SP-B Step 1/2/3 均已验收</strong>（动态采样 RNG、canonical config、patch crop + patch-local 2+1、positive prompt 25/75 均已通过 review / phase1 Slurm gate）；当前关键路径转为 <strong>SP-B Step 4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。</p>
   </section>
 
   <section>
@@ -365,8 +367,8 @@
         <tr>
           <td>11</td>
           <td><span class="tag bad">canonical/rephrase 比例</span></td>
-          <td>25/75 canonical/variant vs 当前对 prompt records 均匀采样。</td>
-          <td><a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 3 — 25/75 主名/改写</a></td>
+          <td>25/75 canonical/variant 已由 SP-B Step 3 实现；positive prompt 按 <code>canonical_prob=0.25</code> 选择主名，否则从 variant 采样。</td>
+          <td><span class="tag ok">已完成</span> <a class="child-link" href="bodytell_sampling_vocabulary_optimization_report.html">SP-B Step 3 — 25/75 主名/改写</a>；证据见 <code>runs/SP-B.Step3/REVIEW.html</code></td>
         </tr>
         <tr>
           <td>12</td>
@@ -401,7 +403,7 @@
 
   <section>
     <h2>关键依赖</h2>
-    <p class="note">关键串行依赖（2026-05-25 状态同步）：<strong>SP-A P0-P6-lite、CFG.CanonicalPhase1 与 SP-B Step 1/2 已完成</strong>，结构、权重加载、canonical config、动态采样 RNG 与 patch-level 2+1 闸门不再阻塞后续任务。当前剩余串行依赖是 <strong>SP-B Step 3 / Step 4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5 → Task 6/7</strong>。</p>
+    <p class="note">关键串行依赖（2026-05-25 状态同步）：<strong>SP-A P0-P6-lite、CFG.CanonicalPhase1 与 SP-B Step 1/2/3 已完成</strong>，结构、权重加载、canonical config、动态采样 RNG、patch-level 2+1 与 positive prompt 25/75 闸门不再阻塞后续任务。当前剩余串行依赖是 <strong>SP-B Step 4 → Step 5 → Step 6</strong>，以及 <strong>SP-C Task 0 → Task 1/2/3 → Task 4 → Task 5 → Task 6/7</strong>。</p>
   </section>
 
   <section>
@@ -425,9 +427,9 @@
 
   <section>
     <h2>当前结论</h2>
-    <p><strong>SP-A、CFG.CanonicalPhase1、SP-B Step 1/2 已完成，当前进入 SP-B Step 3/4。</strong> 13 项明确不一致仍按原分工维护：SP-A 覆盖的结构类与 #13 <code>num_heads</code> 已验收；SP-B 继续覆盖数据构造类；SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。</p>
-    <p>短期优先顺序更新为：<strong>SP-B Step 3/4</strong> 推进 25/75 positive prompt 采样与 aggregate / combined-label sampler；SP-C Task 0 可并行启动，但其目标是 paper-mechanics profile 与训练预算/日志控制面，不是直接性能优化。随后推进 SP-B Step 5/6 做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
-    <p class="small">本报告同步 SP-A 完成状态、canonical config、SP-B Step 1/2 accepted 证据路径与 <code>Body-Tell/train.py</code> epoch propagation 更新。2026-05-25 状态：SP-A P0-P6-lite accepted；CFG.CanonicalPhase1 accepted；SP-B.Step1/2 accepted；workflow next task 为 SP-B.Step3，SP-B.Step4 与 SP-C.Task0 也 ready。</p>
+    <p><strong>SP-A、CFG.CanonicalPhase1、SP-B Step 1/2/3 已完成，当前进入 SP-B Step 4。</strong> 13 项明确不一致仍按原分工维护：SP-A 覆盖的结构类与 #13 <code>num_heads</code> 已验收；SP-B 继续覆盖数据构造类；SP-C 覆盖训练机制、checkpoint、评估协议和测试矩阵（含 #12 loss 等价性 audit）。</p>
+    <p>短期优先顺序更新为：<strong>SP-B Step 4</strong> 推进 aggregate / combined-label sampler；SP-C Task 0 可并行启动，但其目标是 paper-mechanics profile 与训练预算/日志控制面，不是直接性能优化。随后推进 SP-B Step 5/6 做 vocabulary/cache 对齐；SP-C Task 5 的 SP-A P3 前置已满足，但需等 SP-C Task 4。</p>
+    <p class="small">本报告同步 SP-A 完成状态、canonical config、SP-B Step 1/2/3 accepted 证据路径与 <code>Body-Tell/train.py</code> epoch propagation 更新。2026-05-25 状态：SP-A P0-P6-lite accepted；CFG.CanonicalPhase1 accepted；SP-B.Step1/2/3 accepted；workflow next task 为 SP-B.Step4，SP-C.Task0 也 ready。</p>
   </section>
 </main>
 
@@ -516,6 +518,16 @@
 <p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-B.Step2/RESULT.html</p>
 <p><strong>Review:</strong> Body-Tell/reports/26-05-24/runs/SP-B.Step2/REVIEW.html</p>
 <p><strong>Note:</strong> Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37959 COMPLETED with exit code 0:0. Patch crop and patch-local 2+1 sampling now use <code>phase1_voxtell_aligned.yaml</code>; SP-B.Step3 and SP-B.Step4 are ready.</p>
+</article>
+
+<article class="workflow-progress-entry">
+<h3>2026-05-25 23:29:09 - SP-B.Step3 - accepted</h3>
+<p><strong>Title:</strong> Implement 25/75 canonical versus variant positive prompt sampling</p>
+<p><strong>Owner:</strong> sp_b_sampling_vocab_worker</p>
+<p><strong>Result:</strong> Body-Tell/reports/26-05-24/runs/SP-B.Step3/RESULT.html</p>
+<p><strong>Review:</strong> Body-Tell/reports/26-05-24/runs/SP-B.Step3/REVIEW.html</p>
+<p><strong>Post-accept:</strong> Body-Tell/reports/26-05-24/runs/SP-B.Step3/POST_ACCEPT.html</p>
+<p><strong>Note:</strong> Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37997 COMPLETED with exit code 0:0. Positive prompts now use <code>canonical_prob=0.25</code> for canonical/variant sampling, with fallback metadata for classes without variants. SP-B.Step4 and SP-C.Task0 remain ready.</p>
 </article>
 <!-- WORKFLOW_PROGRESS_LOG_END -->
 </section>

@@ -341,6 +341,75 @@ def test_prompt_dataset_set_epoch_changes_prompt_text_deterministically(
     assert another_rank_dataset[0]["prompt_texts"] == epoch1_first
 
 
+def test_positive_prompt_canonical_variant_ratio_is_auditable(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    vocab_path = root / "configs" / "label_vocab.json"
+    vocab = json.loads(vocab_path.read_text(encoding="utf-8"))
+    vocab["classes"][1]["prompts"] = ["liver", "hepatic organ", "liver parenchyma"]
+    vocab["classes"][2]["prompts"] = ["spleen", "splenic organ", "spleen tissue"]
+    vocab["classes"][3]["prompts"] = ["pancreas", "pancreatic organ", "pancreas tissue"]
+    _write_json(vocab_path, vocab)
+    _write_prompt_embedding_cache(root, vocab)
+
+    presence = json.loads(
+        (root / "artifacts" / "data_stats" / "class_presence.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    case_record = presence["cases"]["CASE_0001"]
+
+    canonical_count = 0
+    variant_count = 0
+    for seed in range(2000):
+        sampled = sample_prompts_for_case(
+            case_record,
+            vocab,
+            num_positive=2,
+            num_negative=1,
+            min_voxels=1,
+            rng=random.Random(seed),
+            canonical_prob=0.25,
+            prompt_index=prompt_records_by_class(vocab),
+        )
+        positive_records = [record for record in sampled if not record["target_empty"]]
+        canonical_count += sum(
+            record["prompt_sampling_mode"] == "canonical" for record in positive_records
+        )
+        variant_count += sum(
+            record["prompt_sampling_mode"] == "variant" for record in positive_records
+        )
+
+    canonical_ratio = canonical_count / (canonical_count + variant_count)
+    assert 0.22 <= canonical_ratio <= 0.28
+
+
+def test_prompt_dataset_counts_positive_canonical_fallbacks(tmp_path: Path) -> None:
+    root = _make_tiny_body_tell_root(tmp_path)
+    vocab_path = root / "configs" / "label_vocab.json"
+    vocab = json.loads(vocab_path.read_text(encoding="utf-8"))
+    vocab["classes"][2]["prompts"] = ["spleen", "splenic organ"]
+    _write_json(vocab_path, vocab)
+    _write_prompt_embedding_cache(root, vocab)
+
+    dataset = HyperBodyPromptDataset(
+        root=root,
+        split="train",
+        volume_size=(4, 5, 6),
+        num_positive=2,
+        num_negative=0,
+        canonical_prob=0.0,
+        seed=3,
+    )
+
+    sample = dataset[0]
+
+    assert sample["prompt_texts"] == ["liver", "splenic organ"]
+    assert sample["prompt_sampling"]["positive_variant_count"] == 1
+    assert sample["prompt_sampling"]["positive_canonical_fallback_count"] == 1
+    assert sample["prompt_sampling"]["positive_without_variant_count"] == 1
+    assert sample["prompt_sampling"]["positive_classes_without_variants"] == [1]
+
+
 def test_training_epoch_setter_updates_sampler_and_smoke_subset(tmp_path: Path) -> None:
     root = _make_tiny_body_tell_root(tmp_path)
     dataset = HyperBodyPromptDataset(

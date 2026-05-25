@@ -322,15 +322,23 @@ def sample_prompts_for_case(
     num_positive: int = 2,
     num_negative: int = 1,
     min_voxels: int = 1,
+    canonical_prob: float = 0.25,
     rng: Optional[random.Random] = None,
     prompt_index: Optional[Mapping[int, Sequence[Mapping[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Sample prompt records for a case.
 
     Positive records are sampled from present foreground classes with at least
-    ``min_voxels``. Negative records are sampled from absent trainable classes
-    and are marked with ``target_empty=true``.
+    ``min_voxels``. Positive prompt text uses ``canonical_prob`` for canonical
+    terms and otherwise samples non-canonical variants. If a positive class has
+    no variants, the canonical record is used and marked as an explicit
+    fallback. Negative records are sampled from absent trainable classes, keep
+    ordinary random prompt selection, and are marked with ``target_empty=true``.
     """
+
+    canonical_prob = float(canonical_prob)
+    if not 0.0 <= canonical_prob <= 1.0:
+        raise ValueError("canonical_prob must be between 0 and 1")
 
     rng = rng or random.Random()
     counts = {int(k): int(v) for k, v in case_record.get("voxel_counts", {}).items()}
@@ -348,13 +356,17 @@ def sample_prompts_for_case(
     negative_classes = _sample_without_replacement(sorted(absent), num_negative, rng)
 
     for class_id in positive_classes:
-        record = dict(rng.choice(grouped[class_id]))
+        record = _sample_positive_prompt_record(grouped[class_id], canonical_prob, rng)
         record["target_empty"] = False
         record["target_class_ids"] = [class_id]
         sampled.append(record)
 
     for class_id in negative_classes:
         record = dict(rng.choice(grouped[class_id]))
+        record["prompt_sampling_role"] = "negative"
+        record["prompt_sampling_mode"] = "random"
+        record["has_variants"] = _has_noncanonical_variant(grouped[class_id])
+        record["canonical_fallback"] = False
         record["target_empty"] = True
         record["target_class_ids"] = [class_id]
         sampled.append(record)
@@ -369,6 +381,41 @@ def build_target_mask(labels: np.ndarray, class_ids: Iterable[int]) -> np.ndarra
     if not class_ids:
         return np.zeros_like(labels, dtype=bool)
     return np.isin(labels, class_ids)
+
+
+def _sample_positive_prompt_record(
+    records: Sequence[Mapping[str, Any]],
+    canonical_prob: float,
+    rng: random.Random,
+) -> Dict[str, Any]:
+    canonical_records = [
+        record for record in records if bool(record.get("is_canonical", False))
+    ]
+    variant_records = [
+        record for record in records if not bool(record.get("is_canonical", False))
+    ]
+    canonical_record = canonical_records[0] if canonical_records else records[0]
+    use_canonical = rng.random() < canonical_prob
+
+    if use_canonical:
+        selected = dict(canonical_record)
+        mode = "canonical"
+    elif variant_records:
+        selected = dict(rng.choice(variant_records))
+        mode = "variant"
+    else:
+        selected = dict(canonical_record)
+        mode = "canonical_fallback"
+
+    selected["prompt_sampling_role"] = "positive"
+    selected["prompt_sampling_mode"] = mode
+    selected["has_variants"] = bool(variant_records)
+    selected["canonical_fallback"] = mode == "canonical_fallback"
+    return selected
+
+
+def _has_noncanonical_variant(records: Sequence[Mapping[str, Any]]) -> bool:
+    return any(not bool(record.get("is_canonical", False)) for record in records)
 
 
 def _sample_without_replacement(

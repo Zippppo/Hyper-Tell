@@ -441,7 +441,7 @@ tasks:
     title: Implement 25/75 canonical versus variant positive prompt sampling
     owner: sp_b_sampling_vocab_worker
     phase: 2
-    status: ready
+    status: accepted
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step2
@@ -452,12 +452,18 @@ tasks:
     - Classes without variants fall back explicitly and are counted.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py
-    updated_at: '2026-05-25T14:00:10+00:00'
-    last_note: SP-B.Step2 accepted; dependencies satisfied.
+    updated_at: '2026-05-25T15:29:09+00:00'
+    last_note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37997
+      COMPLETED with exit code 0:0. Positive prompts now use canonical_prob=0.25 for canonical/variant sampling;
+      residual risk: train.py relies on the dataset default rather than forwarding data.canonical_prob.'
     history:
     - at: '2026-05-25T14:00:10+00:00'
       status: ready
       note: SP-B.Step2 accepted; dependencies satisfied.
+    - at: '2026-05-25T15:29:09+00:00'
+      status: accepted
+      note: 'Accepted after reviewer recorded Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 37997
+        COMPLETED with exit code 0:0. Positive prompt 25/75 sampling evidence is in runs/SP-B.Step3/REVIEW.html.'
   SP-B.Step4:
     title: Support aggregate and combined-label concepts in sampler
     owner: sp_b_sampling_vocab_worker

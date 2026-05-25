@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step3 Post-Accept</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.5; margin: 32px; color: #172033; }
+    h1, h2 { margin-bottom: 8px; }
+    code, pre { background: #f2f4f7; border-radius: 4px; }
+    code { padding: 1px 4px; }
+    pre { padding: 12px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #d7dce5; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .pass { color: #176b43; font-weight: 700; }
+    .risk { color: #8a5a00; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step3 Post-Accept</h1>
+  <p><strong>Verdict:</strong> <span class="pass">committed</span></p>
+  <p><strong>Task:</strong> Implement 25/75 canonical versus variant positive prompt sampling.</p>
+
+  <h2>Gate Evidence Verified From REVIEW.html</h2>
+  <table>
+    <tr><th>Required evidence</th><th>Verified value</th></tr>
+    <tr><td>Verdict</td><td><span class="pass">accept</span></td></tr>
+    <tr><td>Test quality</td><td><span class="pass">pass</span></td></tr>
+    <tr><td>Targeted pytest</td><td><span class="pass">pass</span></td></tr>
+    <tr><td>Phase1 Slurm gate</td><td><span class="pass">pass</span></td></tr>
+    <tr><td>Slurm command</td><td><code>sbatch slurm/body-tell-phase1.sh</code></td></tr>
+    <tr><td>Main Slurm job</td><td><code>37997</code> / <code>COMPLETED</code> / <code>0:0</code></td></tr>
+  </table>
+
+  <h2>Manifest Updates</h2>
+  <ul>
+    <li><code>workflow_manifest.yaml</code> marks <code>SP-B.Step3</code> as <code>accepted</code>.</li>
+    <li><code>updated_at</code>, <code>last_note</code>, and <code>history</code> record reviewer gate evidence and residual risk.</li>
+    <li>No newly unblocked dependency chain was found; <code>SP-B.Step4</code> and <code>SP-C.Task0</code> remain ready.</li>
+  </ul>
+
+  <h2>Lead And Report Sync</h2>
+  <ul>
+    <li><code>lead.html</code> now records SP-B Step 3 as accepted, appends a compact progress entry, and sets the default next task to <code>SP-B.Step4</code>.</li>
+    <li><code>bodytell_sampling_vocabulary_optimization_report.html</code> now records Step 3 accepted evidence, <code>canonical_prob=0.25</code>, fallback counting, and the residual config-forwarding risk.</li>
+    <li>Current-state summaries and next-task statements now point to <code>SP-B.Step4</code> and <code>SP-C.Task0</code>.</li>
+  </ul>
+
+  <h2>Consistency Checks</h2>
+  <table>
+    <tr><th>Command</th><th>Important output</th></tr>
+    <tr>
+      <td><code>grep -n -E "Verdict:|Test quality: pass|Targeted pytest: pass|Phase1 Slurm gate: pass|Slurm command:|Slurm job id:|sacct final state:|sacct exit code:" Body-Tell/reports/26-05-24/runs/SP-B.Step3/REVIEW.html</code></td>
+      <td>Found accept verdict, Test quality pass, Targeted pytest pass, Phase1 Slurm gate pass, command <code>sbatch slurm/body-tell-phase1.sh</code>, job <code>37997</code>, state <code>COMPLETED</code>, exit code <code>0:0</code>.</td>
+    </tr>
+    <tr>
+      <td><code>grep -RIn --exclude='events.jsonl' --exclude='review-events.jsonl' --exclude-dir='archive' --exclude='RESULT.html' --exclude='POST_ACCEPT.html' -E "next task (for|is).*SP-B\.Step3|default manager next task.*SP-B\.Step3|Step 3/4 ready|SP-B Step 3/4" Body-Tell/reports/26-05-24</code></td>
+      <td>No stale current-state next-task matches. Historical worker result text was left unchanged.</td>
+    </tr>
+    <tr>
+      <td><code>git diff --check -- [task files]</code></td>
+      <td>No whitespace errors.</td>
+    </tr>
+    <tr>
+      <td><code>git status --short</code></td>
+      <td>Only task-scoped implementation/config/test/report files were dirty before commit.</td>
+    </tr>
+  </table>
+
+  <h2>Git Commit</h2>
+  <p><strong>Commit subject:</strong> <code>Body-Tell: accept SP-B.Step3</code></p>
+  <p><strong>Commit hash:</strong> recorded in the maintainer final status after this artifact is included in the commit.</p>
+
+  <h2>Files Included</h2>
+  <ul>
+    <li><code>Body-Tell/body_tell/data/dataset.py</code></li>
+    <li><code>Body-Tell/body_tell/data/vocabulary.py</code></li>
+    <li><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code></li>
+    <li><code>Body-Tell/tests/test_dataset_prompt_masks.py</code></li>
+    <li><code>Body-Tell/reports/26-05-24/workflow_manifest.yaml</code></li>
+    <li><code>Body-Tell/reports/26-05-24/lead.html</code></li>
+    <li><code>Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html</code></li>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step3/RESULT.html</code></li>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step3/REVIEW.html</code></li>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step3/POST_ACCEPT.html</code></li>
+  </ul>
+
+  <h2>Unrelated Dirty Files</h2>
+  <p>None detected.</p>
+
+  <h2>Next Ready Tasks</h2>
+  <p><code>SP-B.Step4</code> and <code>SP-C.Task0</code>.</p>
+
+  <h2>Blockers Or Residual Risks</h2>
+  <p>No blockers. <span class="risk">Residual risk:</span> <code>train.py</code> relies on the dataset default for <code>canonical_prob=0.25</code> rather than forwarding <code>data.canonical_prob</code>; non-default experiments should add config plumbing in a later task.</p>
+</body>
+</html>
