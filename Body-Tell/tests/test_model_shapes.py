@@ -12,6 +12,7 @@ from body_tell.models.voxtell_body_model import (
     VOXTELL_V1_1_N_BLOCKS_PER_STAGE,
     VoxTellBodyConfig,
     VoxTellBodyModel,
+    load_voxtell_transformer_decoder_prefix,
 )
 
 
@@ -170,6 +171,130 @@ def test_voxtell_body_model_preserves_non_cubic_dhw_axes() -> None:
     ]
 
 
+def test_runtime_memory_and_pos_use_voxtell_hwd_flatten_contract() -> None:
+    torch.manual_seed(0)
+    model = VoxTellBodyModel(
+        VoxTellBodyConfig(
+            input_channels=1,
+            encoder_channels=(4, 8, 16),
+            text_embedding_dim=8,
+            query_dim=16,
+            text_projection_hidden_dim=16,
+            transformer_num_heads=4,
+            transformer_layers=1,
+            transformer_feedforward_dim=32,
+            num_maskformer_stages=3,
+            num_heads=2,
+            deep_supervision=False,
+        )
+    )
+    model.eval()
+
+    projected_bottleneck: list[torch.Tensor] = []
+    captured: dict[str, torch.Tensor] = {}
+
+    def capture_projected_bottleneck(
+        _module: nn.Module,
+        _inputs: tuple[torch.Tensor, ...],
+        output: torch.Tensor,
+    ) -> None:
+        projected_bottleneck.append(output.detach())
+
+    class CaptureTransformer(nn.Module):
+        def __init__(self, wrapped: nn.Module) -> None:
+            super().__init__()
+            self.wrapped = wrapped
+
+        def forward(
+            self,
+            tgt: torch.Tensor,
+            memory: torch.Tensor,
+            *args,
+            **kwargs,
+        ):
+            captured["memory"] = memory.detach()
+            captured["pos"] = kwargs["pos"].detach()
+            return self.wrapped(tgt, memory, *args, **kwargs)
+
+    hook = model.project_bottleneck_embed.register_forward_hook(
+        capture_projected_bottleneck
+    )
+    model.transformer_decoder = CaptureTransformer(model.transformer_decoder)
+    try:
+        occupancy = torch.randn(2, 1, 16, 32, 48)
+        text_embeddings = torch.randn(2, 3, 8)
+        with torch.no_grad():
+            model(occupancy, text_embeddings)
+    finally:
+        hook.remove()
+
+    projected = projected_bottleneck[0]
+    batch_size, height, width, depth, channels = projected.shape
+    expected_memory = projected.permute(1, 2, 3, 0, 4).reshape(
+        height * width * depth,
+        batch_size,
+        channels,
+    )
+
+    torch.testing.assert_close(captured["memory"], expected_memory)
+    assert captured["pos"].shape == captured["memory"].shape
+    assert captured["pos"].dtype == captured["memory"].dtype
+    assert captured["pos"].device == captured["memory"].device
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA AMP smoke requires a GPU")
+def test_runtime_position_dtype_matches_memory_under_cuda_bfloat16_autocast() -> None:
+    torch.manual_seed(0)
+    device = torch.device("cuda")
+    model = VoxTellBodyModel(
+        VoxTellBodyConfig(
+            input_channels=1,
+            encoder_channels=(4, 8, 16),
+            text_embedding_dim=8,
+            query_dim=16,
+            text_projection_hidden_dim=16,
+            transformer_num_heads=4,
+            transformer_layers=1,
+            transformer_feedforward_dim=32,
+            num_maskformer_stages=3,
+            num_heads=2,
+            deep_supervision=False,
+        )
+    ).to(device)
+    captured: dict[str, torch.Tensor] = {}
+
+    class CaptureTransformer(nn.Module):
+        def __init__(self, wrapped: nn.Module) -> None:
+            super().__init__()
+            self.wrapped = wrapped
+
+        def forward(
+            self,
+            tgt: torch.Tensor,
+            memory: torch.Tensor,
+            *args,
+            **kwargs,
+        ):
+            captured["memory"] = memory.detach()
+            captured["pos"] = kwargs["pos"].detach()
+            return self.wrapped(tgt, memory, *args, **kwargs)
+
+    model.transformer_decoder = CaptureTransformer(model.transformer_decoder)
+
+    occupancy = torch.randn(1, 1, 16, 32, 48, device=device)
+    text_embeddings = torch.randn(1, 2, 8, device=device)
+    with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+        logits = model(occupancy, text_embeddings)
+        loss = logits.float().square().mean()
+    loss.backward()
+
+    assert captured["memory"].dtype == torch.bfloat16
+    assert captured["pos"].shape == captured["memory"].shape
+    assert captured["pos"].dtype == captured["memory"].dtype
+    assert captured["pos"].device == captured["memory"].device
+    assert any(parameter.grad is not None for parameter in model.parameters())
+
+
 def test_voxtell_decoder_rejects_stride_mismatched_inputs() -> None:
     torch.manual_seed(0)
     model = VoxTellBodyModel(
@@ -323,3 +448,71 @@ def test_voxtell_body_model_retains_decoder_seg_layers_without_deep_supervision(
         "decoder.seg_layers.1.weight",
         "decoder.seg_layers.1.bias",
     ]
+
+
+def test_voxtell_transformer_decoder_prefix_loader_filters_exact_keys(
+    tmp_path: Path,
+) -> None:
+    torch.manual_seed(0)
+    model = VoxTellBodyModel(
+        VoxTellBodyConfig(
+            input_channels=1,
+            encoder_channels=(4, 8, 16),
+            text_embedding_dim=8,
+            query_dim=16,
+            text_projection_hidden_dim=16,
+            transformer_num_heads=4,
+            transformer_layers=1,
+            transformer_feedforward_dim=32,
+            num_maskformer_stages=3,
+            num_heads=2,
+            deep_supervision=False,
+        )
+    )
+    original_text_projection = model.project_text_embed[0].weight.detach().clone()
+
+    prefix_tensors = {}
+    for index, (key, tensor) in enumerate(model.transformer_decoder.state_dict().items()):
+        prefix_tensors[f"transformer_decoder.{key}"] = torch.full_like(
+            tensor,
+            fill_value=(index + 1) / 1000.0,
+        )
+
+    voxtell_dir = tmp_path / "voxtell_v1.1"
+    checkpoint_path = voxtell_dir / "fold_0" / "checkpoint_final.pth"
+    checkpoint_path.parent.mkdir(parents=True)
+    torch.save(
+        {
+            "network_weights": prefix_tensors
+            | {
+                "encoder.stem.convs.0.conv.weight": torch.ones(1),
+                "decoder.seg_layers.0.weight": torch.ones(1),
+                "project_bottleneck_embed.0.weight": torch.ones(1),
+                "project_text_embed.0.weight": torch.full_like(
+                    model.project_text_embed[0].weight,
+                    77.0,
+                ),
+                "project_to_decoder_channels.0.2.weight": torch.ones(1),
+                "pos_embed": torch.ones(1, 1, model.config.query_dim),
+            }
+        },
+        checkpoint_path,
+    )
+
+    metadata = load_voxtell_transformer_decoder_prefix(model, voxtell_dir)
+
+    assert metadata["checkpoint_path"] == str(checkpoint_path)
+    assert metadata["prefix"] == "transformer_decoder."
+    assert metadata["loaded_tensor_count"] == len(prefix_tensors)
+    assert metadata["loaded_parameter_count"] == sum(
+        tensor.numel() for tensor in prefix_tensors.values()
+    )
+    assert metadata["missing_keys"] == []
+    assert metadata["unexpected_keys"] == []
+    assert metadata["shape_mismatches"] == []
+    for key, tensor in model.transformer_decoder.state_dict().items():
+        torch.testing.assert_close(tensor, prefix_tensors[f"transformer_decoder.{key}"])
+    torch.testing.assert_close(
+        model.project_text_embed[0].weight,
+        original_text_projection,
+    )

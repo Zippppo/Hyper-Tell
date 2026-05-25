@@ -31,7 +31,11 @@ from tqdm import tqdm
 from body_tell.data.dataset import HyperBodyPromptDataset, prompt_collate_fn
 from body_tell.losses.prompt_losses import PromptSegmentationLoss
 from body_tell.metrics.prompt_metrics import compute_prompt_metrics
-from body_tell.models.voxtell_body_model import VoxTellBodyConfig, VoxTellBodyModel
+from body_tell.models.voxtell_body_model import (
+    VoxTellBodyConfig,
+    VoxTellBodyModel,
+    load_voxtell_transformer_decoder_prefix,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,6 +96,8 @@ def _init_wandb(args: argparse.Namespace, cfg: dict[str, Any]):
             "cli.batch_size": args.batch_size,
             "cli.epochs": args.epochs,
             "cli.amp": args.amp,
+            "cli.amp_dtype": args.amp_dtype,
+            "cli.grad_clip_norm": args.grad_clip_norm,
             "cli.smoke": args.smoke,
             "cli.volume_size": args.volume_size,
         },
@@ -171,6 +177,14 @@ def build_loss(cfg: dict[str, Any]) -> PromptSegmentationLoss:
     )
 
 
+def _resolve_amp_dtype(name: str) -> torch.dtype:
+    if name == "float16":
+        return torch.float16
+    if name == "bfloat16":
+        return torch.bfloat16
+    raise ValueError(f"unsupported AMP dtype: {name}")
+
+
 def train_one_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -180,6 +194,8 @@ def train_one_epoch(
     epoch: int,
     scaler: GradScaler | None = None,
     use_amp: bool = False,
+    amp_dtype: torch.dtype | None = None,
+    grad_clip_norm: float | None = None,
 ) -> dict[str, float]:
     model.train()
     total_loss = 0.0
@@ -204,16 +220,21 @@ def train_one_epoch(
 
         optimizer.zero_grad()
 
-        with autocast("cuda", enabled=use_amp):
+        with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
             logits = model(occupancy, text_embeddings)
             result = criterion(logits, target_masks, prompt_valid=prompt_valid)
 
         if scaler is not None:
             scaler.scale(result["loss"]).backward()
+            if grad_clip_norm is not None:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             scaler.step(optimizer)
             scaler.update()
         else:
             result["loss"].backward()
+            if grad_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             optimizer.step()
 
         with torch.no_grad():
@@ -258,6 +279,7 @@ def evaluate(
     criterion: PromptSegmentationLoss,
     device: torch.device,
     use_amp: bool = False,
+    amp_dtype: torch.dtype | None = None,
 ) -> dict[str, float]:
     model.eval()
     total_loss = 0.0
@@ -278,7 +300,7 @@ def evaluate(
         if prompt_valid is not None:
             prompt_valid = prompt_valid.to(device)
 
-        with autocast("cuda", enabled=use_amp):
+        with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
             logits = model(occupancy, text_embeddings)
             result = criterion(logits, target_masks, prompt_valid=prompt_valid)
 
@@ -327,7 +349,28 @@ def main() -> None:
     parser.add_argument("--smoke-samples", type=int, default=4)
     parser.add_argument("--amp", action="store_true")
     parser.add_argument(
+        "--amp-dtype",
+        choices=("float16", "bfloat16"),
+        default="float16",
+        help="CUDA autocast dtype used when --amp is enabled.",
+    )
+    parser.add_argument(
+        "--grad-clip-norm",
+        type=float,
+        default=None,
+        help="Clip gradient norm before optimizer step when set.",
+    )
+    parser.add_argument(
         "--volume-size", type=int, nargs=3, default=None, metavar=("D", "H", "W"),
+    )
+    parser.add_argument(
+        "--init-transformer-from-voxtell",
+        type=str,
+        default=None,
+        help=(
+            "Load only transformer_decoder.* tensors from "
+            "VOXTELL_DIR/fold_0/checkpoint_final.pth before optimizer construction."
+        ),
     )
     parser.add_argument("--wandb", action="store_true", help="Enable W&B (rank-0 only)")
     parser.add_argument("--wandb-offline", action="store_true")
@@ -344,6 +387,8 @@ def main() -> None:
         "--wandb-resume-id", type=str, default=None, help="Resume crashed run by ID",
     )
     args = parser.parse_args()
+    if args.grad_clip_norm is not None and args.grad_clip_norm <= 0:
+        parser.error("--grad-clip-norm must be positive when set")
 
     # DDP setup
     distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
@@ -367,9 +412,12 @@ def main() -> None:
 
     try:
         use_amp = args.amp and device.type == "cuda"
-        scaler = GradScaler("cuda") if use_amp else None
+        amp_dtype = _resolve_amp_dtype(args.amp_dtype) if use_amp else None
+        scaler = GradScaler("cuda") if use_amp and amp_dtype == torch.float16 else None
         if use_amp and is_main_process():
-            log.info("Mixed precision (AMP) enabled")
+            log.info("Mixed precision (AMP) enabled: dtype=%s", args.amp_dtype)
+        if args.grad_clip_norm is not None and is_main_process():
+            log.info("Gradient clipping enabled: max_norm=%s", args.grad_clip_norm)
 
         epochs = args.epochs if args.epochs is not None else (200 if args.smoke else 50)
         batch_size = args.batch_size
@@ -416,6 +464,22 @@ def main() -> None:
                 log.info("Val dataset: %d samples", len(val_dataset))
 
         model = build_model(cfg).to(device)
+        init_transformer_metadata: dict[str, Any] | None = None
+        if args.init_transformer_from_voxtell:
+            init_transformer_metadata = load_voxtell_transformer_decoder_prefix(
+                model,
+                args.init_transformer_from_voxtell,
+            )
+            cfg["init_transformer_from_voxtell"] = init_transformer_metadata
+            if is_main_process():
+                log.info(
+                    "Loaded VoxTell transformer decoder prefix: checkpoint=%s prefix=%s "
+                    "tensors=%d params=%d",
+                    init_transformer_metadata["checkpoint_path"],
+                    init_transformer_metadata["prefix"],
+                    init_transformer_metadata["loaded_tensor_count"],
+                    init_transformer_metadata["loaded_parameter_count"],
+                )
         if distributed:
             model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
@@ -424,12 +488,30 @@ def main() -> None:
             log.info("Model parameters: %s (%.2fM)", f"{n_params:,}", n_params / 1e6)
 
         if wb_run is not None:
+            wandb_payload: dict[str, Any] = {
+                "n_params": n_params,
+                "world_size": int(os.environ.get("WORLD_SIZE", 1)),
+                "use_amp_effective": use_amp,
+            }
+            if init_transformer_metadata is not None:
+                wandb_payload.update(
+                    {
+                        "init_transformer_from_voxtell.checkpoint_path": init_transformer_metadata[
+                            "checkpoint_path"
+                        ],
+                        "init_transformer_from_voxtell.prefix": init_transformer_metadata[
+                            "prefix"
+                        ],
+                        "init_transformer_from_voxtell.loaded_tensor_count": init_transformer_metadata[
+                            "loaded_tensor_count"
+                        ],
+                        "init_transformer_from_voxtell.loaded_parameter_count": init_transformer_metadata[
+                            "loaded_parameter_count"
+                        ],
+                    }
+                )
             wb_run.config.update(
-                {
-                    "n_params": n_params,
-                    "world_size": int(os.environ.get("WORLD_SIZE", 1)),
-                    "use_amp_effective": use_amp,
-                },
+                wandb_payload,
                 allow_val_change=True,
             )
 
@@ -450,7 +532,8 @@ def main() -> None:
 
             train_metrics = train_one_epoch(
                 model, train_loader, criterion, optimizer, device, epoch,
-                scaler=scaler, use_amp=use_amp,
+                scaler=scaler, use_amp=use_amp, amp_dtype=amp_dtype,
+                grad_clip_norm=args.grad_clip_norm,
             )
             history.append(train_metrics)
 
@@ -461,7 +544,14 @@ def main() -> None:
                 wb_run.log(payload)
 
             if val_loader is not None:
-                val_metrics = evaluate(model, val_loader, criterion, device, use_amp=use_amp)
+                val_metrics = evaluate(
+                    model,
+                    val_loader,
+                    criterion,
+                    device,
+                    use_amp=use_amp,
+                    amp_dtype=amp_dtype,
+                )
                 if wb_run is not None:
                     val_payload = {f"val/{k}": v for k, v in val_metrics.items()}
                     val_payload["epoch"] = epoch

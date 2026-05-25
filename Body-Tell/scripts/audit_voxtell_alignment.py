@@ -302,6 +302,62 @@ def compare_state_shapes(
     }
 
 
+def audit_transformer_decoder_prefix(
+    checkpoint_shapes: dict[str, tuple[int, ...]] | None,
+    body_shapes: dict[str, tuple[int, ...]] | None,
+    prefix: str = "transformer_decoder.",
+) -> dict[str, Any]:
+    if checkpoint_shapes is None or body_shapes is None:
+        return {
+            "available": False,
+            "prefix": prefix,
+            "status": "unavailable",
+        }
+
+    source_shapes = {
+        name[len(prefix) :]: shape
+        for name, shape in checkpoint_shapes.items()
+        if name.startswith(prefix)
+    }
+    target_shapes = {
+        name[len(prefix) :]: shape
+        for name, shape in body_shapes.items()
+        if name.startswith(prefix)
+    }
+    missing = sorted(set(target_shapes) - set(source_shapes))
+    unexpected = sorted(set(source_shapes) - set(target_shapes))
+    shape_mismatches = [
+        {
+            "key": name,
+            "checkpoint_shape": source_shapes[name],
+            "model_shape": target_shapes[name],
+        }
+        for name in sorted(set(source_shapes) & set(target_shapes))
+        if source_shapes[name] != target_shapes[name]
+    ]
+    loaded_parameter_count = sum(_numel(shape) for shape in source_shapes.values())
+    passed = bool(source_shapes) and not missing and not unexpected and not shape_mismatches
+    return {
+        "available": True,
+        "prefix": prefix,
+        "status": "pass" if passed else "fail",
+        "loaded_tensor_count": len(source_shapes),
+        "loaded_parameter_count": loaded_parameter_count,
+        "target_tensor_count": len(target_shapes),
+        "missing_keys": missing,
+        "unexpected_keys": unexpected,
+        "shape_mismatches": shape_mismatches,
+        "excluded_prefixes": [
+            "encoder.",
+            "decoder.",
+            "project_bottleneck_embed.",
+            "project_text_embed.",
+            "project_to_decoder_channels.",
+            "pos_embed",
+        ],
+    }
+
+
 def build_whitelist_input(
     *,
     pos_embed_policy: str,
@@ -419,6 +475,10 @@ def make_audit(args: argparse.Namespace) -> dict[str, Any]:
         else None
     )
     state_compare = compare_state_shapes(checkpoint_shapes, body_shapes)
+    transformer_decoder_prefix = audit_transformer_decoder_prefix(
+        checkpoint_shapes,
+        body_shapes,
+    )
 
     whitelist_input = build_whitelist_input(
         pos_embed_policy=args.pos_embed_policy,
@@ -454,6 +514,7 @@ def make_audit(args: argparse.Namespace) -> dict[str, Any]:
             "checkpoint_num_heads": checkpoint_num_heads,
         },
         "state_compare_current_body_vs_checkpoint": state_compare,
+        "transformer_decoder_prefix_audit": transformer_decoder_prefix,
         "whitelist_input": whitelist_input,
     }
 
@@ -525,6 +586,17 @@ def print_text_report(audit: dict[str, Any]) -> None:
         print(f"  missing in checkpoint: {compare['missing_in_checkpoint_count']}")
         print(f"  unexpected in checkpoint: {compare['unexpected_in_checkpoint_count']}")
         print(f"  matched params: {compare['matched_param_count']:,} / {compare['body_param_count']:,}")
+    prefix_audit = audit["transformer_decoder_prefix_audit"]
+    print()
+    print("Transformer decoder prefix audit")
+    print(f"  status: {prefix_audit['status'].upper()}")
+    print(f"  prefix: {prefix_audit['prefix']}")
+    if prefix_audit["available"]:
+        print(f"  loaded tensors: {prefix_audit['loaded_tensor_count']}")
+        print(f"  loaded params: {prefix_audit['loaded_parameter_count']:,}")
+        print(f"  missing: {len(prefix_audit['missing_keys'])}")
+        print(f"  unexpected: {len(prefix_audit['unexpected_keys'])}")
+        print(f"  shape mismatches: {len(prefix_audit['shape_mismatches'])}")
 
 
 def table_row(cells: list[Any], code_first: bool = False) -> str:
@@ -562,6 +634,7 @@ def render_html_report(audit: dict[str, Any]) -> str:
     body = audit["body"]
     voxtell = audit["voxtell"]
     compare = audit["state_compare_current_body_vs_checkpoint"]
+    prefix_audit = audit["transformer_decoder_prefix_audit"]
     whitelist = audit["whitelist_input"]
     checkpoint = voxtell["checkpoint"]
     checkpoint_rows = (
@@ -602,6 +675,20 @@ def render_html_report(audit: dict[str, Any]) -> str:
     no_skip_notes = "".join(
         f"<li>{html.escape(note)}</li>" for note in whitelist["no_skip_notes"]
     )
+    prefix_status_class = "ok" if prefix_audit["status"] == "pass" else "warn"
+    prefix_shape_rows = "\n".join(
+        table_row(
+            [
+                item["key"],
+                fmt_shape(item["checkpoint_shape"]),
+                fmt_shape(item["model_shape"]),
+            ],
+            code_first=True,
+        )
+        for item in prefix_audit.get("shape_mismatches", [])
+    )
+    if not prefix_shape_rows:
+        prefix_shape_rows = "<tr><td colspan=\"3\">None</td></tr>"
 
     embedded_json = html.escape(json.dumps(audit, indent=2, sort_keys=True, default=str))
     return f"""<!doctype html>
@@ -649,6 +736,13 @@ def render_html_report(audit: dict[str, Any]) -> str:
     <p>Current Body-Tell can only directly reuse same-name/same-shape subsets before SP-A architecture work. This table is a baseline input for P6, not a claim that current Body-Tell is already checkpoint-compatible.</p>
     {prefix_table}
     <p>Same-name compatible current Body-Tell keys: <code>{compare.get('matching_count', 'n/a')}</code>; shape mismatches: <code>{compare.get('mismatch_count', 'n/a')}</code>; checkpoint keys unexpected to current Body-Tell: <code>{compare.get('unexpected_in_checkpoint_count', 'n/a')}</code>.</p>
+  </section>
+
+  <section>
+    <h2>Transformer Decoder Prefix Audit</h2>
+    <p class="{prefix_status_class}"><strong>Status:</strong> <code>{html.escape(prefix_audit['status'])}</code>; prefix <code>{html.escape(prefix_audit['prefix'])}</code>; loaded tensors <code>{prefix_audit.get('loaded_tensor_count', 'n/a')}</code>; loaded params <code>{prefix_audit.get('loaded_parameter_count', 'n/a')}</code>.</p>
+    <p>Missing keys: <code>{len(prefix_audit.get('missing_keys', []))}</code>; unexpected keys: <code>{len(prefix_audit.get('unexpected_keys', []))}</code>; shape mismatches: <code>{len(prefix_audit.get('shape_mismatches', []))}</code>. The audited load target is only <code>model.transformer_decoder.state_dict()</code>; excluded prefixes include <code>encoder.</code>, <code>decoder.</code>, <code>project_bottleneck_embed.</code>, <code>project_text_embed.</code>, <code>project_to_decoder_channels.</code>, and <code>pos_embed</code>.</p>
+    <table><thead><tr><th>Key</th><th>Checkpoint shape</th><th>Model shape</th></tr></thead><tbody>{prefix_shape_rows}</tbody></table>
   </section>
 
   <section>
@@ -722,6 +816,9 @@ def main(argv: list[str] | None = None) -> int:
         args.html_output.write_text(render_html_report(audit), encoding="utf-8")
         print()
         print(f"Wrote HTML report: {args.html_output}")
+    prefix_audit = audit["transformer_decoder_prefix_audit"]
+    if prefix_audit["available"] and prefix_audit["status"] != "pass":
+        return 1
     return 0
 
 

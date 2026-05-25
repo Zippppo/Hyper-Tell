@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from pathlib import Path
+from typing import Any, List, Mapping, Sequence, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -161,7 +162,18 @@ class VoxTellBodyModel(nn.Module):
             self.config.query_dim,
             device=memory.device,
             dtype=memory.dtype,
+            batch_size=batch_size,
         )
+        if (
+            pos.shape != memory.shape
+            or pos.dtype != memory.dtype
+            or pos.device != memory.device
+        ):
+            raise RuntimeError(
+                "runtime position encoding contract violated: "
+                f"memory shape={tuple(memory.shape)} dtype={memory.dtype} device={memory.device}; "
+                f"pos shape={tuple(pos.shape)} dtype={pos.dtype} device={pos.device}"
+            )
 
         text_queries = text_embeddings.permute(1, 0, 2)
         text_queries = self.project_text_embed(text_queries)
@@ -522,18 +534,19 @@ def sinusoidal_position_encoding_3d(
     dim: int,
     device: torch.device,
     dtype: torch.dtype,
+    batch_size: int = 1,
     temperature: float = 10000.0,
 ) -> Tensor:
-    """Return ``(D*H*W, 1, dim)`` deterministic 3D sine/cosine positions."""
+    """Return ``(H*W*D, batch_size, dim)`` positions in VoxTell flatten order."""
 
-    depth, height, width = (int(x) for x in spatial_shape)
-    z, y, x = torch.meshgrid(
-        torch.linspace(0, 1, depth, device=device, dtype=dtype),
+    height, width, depth = (int(x) for x in spatial_shape)
+    y, x, z = torch.meshgrid(
         torch.linspace(0, 1, height, device=device, dtype=dtype),
         torch.linspace(0, 1, width, device=device, dtype=dtype),
+        torch.linspace(0, 1, depth, device=device, dtype=dtype),
         indexing="ij",
     )
-    coords = torch.stack((z, y, x), dim=-1).reshape(-1, 3)
+    coords = torch.stack((y, x, z), dim=-1).reshape(-1, 3)
     num_frequencies = max(1, math.ceil(dim / 6))
     frequencies = torch.exp(
         -torch.arange(num_frequencies, device=device, dtype=dtype)
@@ -548,7 +561,103 @@ def sinusoidal_position_encoding_3d(
     if encoded.shape[1] < dim:
         padding = torch.zeros(encoded.shape[0], dim - encoded.shape[1], device=device, dtype=dtype)
         encoded = torch.cat((encoded, padding), dim=1)
-    return encoded[:, :dim].unsqueeze(1)
+    encoded = encoded[:, :dim].to(device=device, dtype=dtype)
+    return encoded.unsqueeze(1).expand(-1, int(batch_size), -1)
+
+
+def load_voxtell_transformer_decoder_prefix(
+    model: VoxTellBodyModel,
+    voxtell_path: str | Path,
+    prefix: str = "transformer_decoder.",
+) -> dict[str, Any]:
+    """Load only VoxTell ``transformer_decoder.*`` tensors into ``model``."""
+
+    if prefix != "transformer_decoder.":
+        raise ValueError("P6-lite only supports loading the transformer_decoder. prefix")
+
+    checkpoint_path = _resolve_voxtell_checkpoint_path(voxtell_path)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"VoxTell checkpoint does not exist: {checkpoint_path}")
+
+    checkpoint = _load_checkpoint_cpu(checkpoint_path)
+    if not isinstance(checkpoint, Mapping) or "network_weights" not in checkpoint:
+        raise KeyError(
+            "VoxTell checkpoint must contain a 'network_weights' state dict; "
+            "full-checkpoint fallback loading is intentionally not supported"
+        )
+    network_weights = checkpoint["network_weights"]
+    if not isinstance(network_weights, Mapping):
+        raise TypeError("VoxTell checkpoint field 'network_weights' must be a mapping")
+
+    source_state = {
+        key[len(prefix) :]: tensor
+        for key, tensor in network_weights.items()
+        if isinstance(key, str) and key.startswith(prefix)
+    }
+    target_state = model.transformer_decoder.state_dict()
+
+    missing_keys = sorted(set(target_state) - set(source_state))
+    unexpected_keys = sorted(set(source_state) - set(target_state))
+    shape_mismatches = [
+        {
+            "key": key,
+            "checkpoint_shape": tuple(int(value) for value in source_state[key].shape),
+            "model_shape": tuple(int(value) for value in target_state[key].shape),
+        }
+        for key in sorted(set(source_state) & set(target_state))
+        if tuple(source_state[key].shape) != tuple(target_state[key].shape)
+    ]
+
+    metadata: dict[str, Any] = {
+        "checkpoint_path": str(checkpoint_path),
+        "prefix": prefix,
+        "loaded_tensor_count": len(source_state),
+        "loaded_parameter_count": sum(int(tensor.numel()) for tensor in source_state.values()),
+        "missing_keys": missing_keys,
+        "unexpected_keys": unexpected_keys,
+        "shape_mismatches": shape_mismatches,
+        "excluded_prefixes": [
+            "encoder.",
+            "decoder.",
+            "project_bottleneck_embed.",
+            "project_text_embed.",
+            "project_to_decoder_channels.",
+            "pos_embed",
+        ],
+    }
+
+    if missing_keys or unexpected_keys or shape_mismatches:
+        raise RuntimeError(
+            "VoxTell transformer decoder prefix is not load-compatible: "
+            f"missing={len(missing_keys)}, unexpected={len(unexpected_keys)}, "
+            f"shape_mismatches={len(shape_mismatches)}"
+        )
+
+    model.transformer_decoder.load_state_dict(source_state, strict=True)
+    return metadata
+
+
+def _resolve_voxtell_checkpoint_path(voxtell_path: str | Path) -> Path:
+    path = Path(voxtell_path)
+    if path.is_dir():
+        return path / "fold_0" / "checkpoint_final.pth"
+    return path
+
+
+def _load_checkpoint_cpu(checkpoint_path: Path) -> Mapping[str, Any]:
+    try:
+        return torch.load(
+            str(checkpoint_path),
+            map_location="cpu",
+            weights_only=False,
+            mmap=True,
+        )
+    except TypeError:
+        return torch.load(
+            str(checkpoint_path),
+            map_location="cpu",
+            weights_only=False,
+        )
 
 
 __all__ = [
@@ -557,5 +666,6 @@ __all__ = [
     "VoxTellBodyConfig",
     "VoxTellDecoder",
     "VoxTellBodyModel",
+    "load_voxtell_transformer_decoder_prefix",
     "sinusoidal_position_encoding_3d",
 ]

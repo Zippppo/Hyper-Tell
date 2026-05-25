@@ -245,26 +245,56 @@ tasks:
     title: Load VoxTell transformer decoder prefix
     owner: sp_a_architecture_worker
     phase: 3
-    status: todo
+    status: accepted
     plan_file: bodytell_voxtell_alignment_plan_2026-05-24.html
     depends_on:
     - SP-A.P4
     result_file: runs/SP-A.P5-P6-lite/RESULT.html
-    scope: 'SP-A P5/P6-lite: runtime HWD position/memory contract plus --init-transformer-from-voxtell transformer_decoder.* prefix loading.'
+    scope: 'SP-A P5/P6-lite: runtime HWD position/memory contract plus --init-transformer-from-voxtell transformer_decoder.*
+      prefix loading.'
     acceptance:
     - P5 is not an independent pos_embed implementation stage.
     - Do not implement fixed_voxtell_192 and do not add a pos_embed state-dict loading path.
-    - Runtime position encoding is generated from the selected feature's actual H,W,D and matches memory token count, batch, dtype, device, and channel dimension.
+    - Runtime position encoding is generated from the selected feature's actual H,W,D and matches memory token count, batch,
+      dtype, device, and channel dimension.
     - Non-cubic input coverage verifies the VoxTell-compatible flatten contract b c d h w -> b h w d c -> (h w d) b c.
     - Loader reads fold_0/checkpoint_final.pth network_weights and filters only transformer_decoder.* keys.
     - Filtered keys map exactly to model.transformer_decoder.state_dict() with no missing, unexpected, or shape mismatch entries.
     - Loading uses model.transformer_decoder.load_state_dict(..., strict=True).
-    - Loader explicitly does not load encoder.*, decoder.*, project_bottleneck_embed.*, project_text_embed.*, project_to_decoder_channels.*, or pos_embed; no full-model whitelist is used.
-    - 'Logs and saved checkpoint config record init_transformer_from_voxtell metadata: checkpoint path, prefix, loaded tensor count, and loaded parameter count.'
+    - Loader explicitly does not load encoder.*, decoder.*, project_bottleneck_embed.*, project_text_embed.*, project_to_decoder_channels.*,
+      or pos_embed; no full-model whitelist is used.
+    - 'Logs and saved checkpoint config record init_transformer_from_voxtell metadata: checkpoint path, prefix, loaded tensor
+      count, and loaded parameter count.'
     - CPU prefix audit passes; at least one forward/loss/backward smoke passes if GPU is available.
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
     - conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml
+    updated_at: '2026-05-25T07:18:49.911813+00:00'
+    last_note: 'SP-A.P5-P6-lite accepted after current review recorded phase1 Slurm gate job 37779 as COMPLETED with exit
+      code 0:0. Phase1 Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.'
+    history:
+    - at: '2026-05-25T04:15:40.905078+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/PROMPT.md
+    - at: '2026-05-25T04:32:51.227556+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists.
+    - at: '2026-05-25T04:48:02.645935+00:00'
+      status: needs_fix
+      note: 'Reviewer verdict: needs_fix. See Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/REVIEW.html.'
+    - at: '2026-05-25T04:57:12.736295+00:00'
+      status: assigned
+      note: Started Codex worker with Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/PROMPT.md
+    - at: '2026-05-25T06:01:25.668170+00:00'
+      status: submitted
+      note: Worker finished and RESULT.html exists.
+    - at: '2026-05-25T06:23:37.604591+00:00'
+      status: needs_fix
+      note: Reviewer exited with code 1.
+    - at: '2026-05-25T07:18:49.911813+00:00'
+      status: accepted
+      note: 'SP-A.P5-P6-lite accepted after current review recorded phase1 Slurm gate job 37779 as COMPLETED with exit code
+        0:0. Phase1 Slurm gate verified: Phase1 Slurm gate evidence shows COMPLETED with exit code 0:0.'
   SP-B.Step1:
     title: Add dynamic sampling RNG infrastructure
     owner: sp_b_sampling_vocab_worker
@@ -289,11 +319,15 @@ tasks:
     depends_on:
     - SP-B.Step1
     result_file: runs/SP-B.Step2/RESULT.html
-    scope: 'SP-B Step 2: 85/15 foreground/random crop, patch-local present/absent, full 2+1 sampling.'
+    scope: 'SP-B Step 2: sub-volume crop inside the on-disk 128x128x256 case (default patch_size=[128,128,128], yaml-configurable;
+      do not hardcode VoxTell 192^3), 85/15 foreground/random sampling, patch-local present/absent recomputation, full 2+1
+      sampling.'
     acceptance:
-    - Output patch shape matches config.
-    - Foreground/random crop ratio is auditable.
+    - patch_size, foreground_oversample_prob live in phase1_voxtell_body.yaml (no hardcoded 192).
+    - Output patch shape equals configured patch_size.
+    - Foreground/random crop ratio is auditable and close to 85/15.
     - Positive masks are not empty inside the sampled patch.
+    - Setting patch_size=[128,128,256] degrades sampler to whole-case behavior (regression path).
     verification:
     - conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_crop_s2i_dataset.py
   SP-B.Step3:
