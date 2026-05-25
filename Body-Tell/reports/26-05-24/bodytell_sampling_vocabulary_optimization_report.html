@@ -248,18 +248,28 @@
 
     <h3>Step 2. 同步实现 patch crop 与 patch 内 2 positive + 1 negative</h3>
     <div class="callout warn">
-      <strong>边界说明：</strong>当前已有的离线 <code>crop129</code> 数据包只是显存与输入尺寸适配，它把整套 S2I 样本中心裁剪/填充到固定 shape；这不等价于 VoxTell 训练时的 <code>85%</code> foreground patch oversampling。VoxTell-aligned sampling 仍需要在训练 <code>__getitem__</code> 内按随机分支采样 crop window，并在裁出的 patch 上重新计算 present/absent，再基于 patch 内语义采样 2 positive + 1 negative。
+      <strong>当前形状现状：</strong>Body-Tell 的 <code>S2I-Dataset-70cls/data/*.npz</code> 已在离线 <code>scripts/crop_s2i_dataset.py</code> 中固化为 <code>(128, 128, 256) uint8</code>。yaml 中的 <code>volume_size: [128, 128, 256]</code> 仅在 <code>HyperBodyPromptDataset.__getitem__</code> 里通过 <code>fit_array_to_shape()</code> 做 center crop/pad，本质是 on-disk safety net；当前 <code>__getitem__</code> 没有任何随机 crop，训练单位就是整 case 的 128×128×256 体，present/absent 完全沿用 <code>class_presence.json</code> 的整 case 统计。
+    </div>
+    <div class="callout warn">
+      <strong>边界说明：</strong>离线 <code>crop_s2i_dataset.py</code> 只是显存与输入尺寸适配，不等价于 VoxTell 训练时的 85% foreground patch oversampling，也不能直接套用论文的 192³ 窗口——Body-Tell 是 anisotropic 的 128×128×256，z 轴是 x/y 的 2 倍。VoxTell-aligned sampling 需要在训练 <code>__getitem__</code> 内、在 128×128×256 体内按随机分支采 sub-volume 窗口，并在裁出的 patch 上重新计算 present/absent，再基于 patch 内语义采样 2 positive + 1 negative。
     </div>
     <p><strong>依赖：</strong>Step 1。<strong>对应 VoxTell：</strong>输入训练 patch，85% foreground patch oversampling，并在每个训练 patch 上查询 2 条 present structure prompt 和 1 条 absent structure prompt。这个步骤必须整体实现；如果只先裁 patch、但 prompt 仍按 whole-case presence 抽，会产生 target 语义错配。</p>
+    <p><strong>窗口尺寸决定：</strong>采用 <code>patch_size: [128, 128, 128]</code> ——保留 x/y 全幅，只在 z 轴上裁出长度 128 的 sub-volume，等价于"沿身体长轴随机选取一段"。x/y 不丢能避免肝/肺等大结构被切碎，符合 Body-Tell 数据的 anisotropy。该尺寸通过 yaml 配置可改；将 <code>patch_size</code> 临时设为 <code>[128, 128, 256]</code> 即退化为"整 case 即 patch"的方案，便于消融对比。</p>
     <ol>
-      <li>新增训练配置：<code>patch_size</code>、<code>foreground_oversample_prob: 0.85</code>。</li>
-      <li>在 <code>__getitem__</code> 中按顺序执行：读取整 case → 采样 crop window → 裁出 occupancy/labels patch → 后续 target mask 和 present/absent 全部基于 patch。</li>
-      <li>85% 概率裁到包含 foreground voxel 的 patch；15% 概率随机裁 patch；crop 策略和随机分支写入可审计字段。</li>
-      <li>对裁出的 patch 重新统计 foreground class voxel counts。</li>
+      <li>新增训练配置（全部写入 <code>phase1_voxtell_body.yaml</code> 的 <code>data</code> 段，不硬编码）：
+        <ul>
+          <li><code>volume_size: [128, 128, 256]</code>（保留，on-disk safety net）</li>
+          <li><code>patch_size: [128, 128, 128]</code></li>
+          <li><code>foreground_oversample_prob: 0.85</code></li>
+        </ul>
+      </li>
+      <li>在 <code>__getitem__</code> 中按顺序执行：读取整 128×128×256 case → 采样 crop window → 裁出 occupancy/labels patch → 后续 target mask 和 present/absent 全部基于 patch。</li>
+      <li>85% 概率让 crop 窗口覆盖任意 trainable foreground voxel（沿 z 轴随机选含 foreground 的起点）；15% 概率沿 z 轴随机裁；crop 策略和随机分支写入可审计字段。</li>
+      <li>对裁出的 patch 重新统计 foreground class voxel counts（不要复用 <code>class_presence.json</code> 的整 case 统计）。</li>
       <li>positive classes 从 patch-present classes 中采 2 个。</li>
       <li>negative class 从 patch-absent trainable classes 中采 1 个。</li>
-      <li>negative target 仍为空 mask；positive target 是对应 class mask。</li>
-      <li>验收：输出 patch shape 与配置一致；foreground/random crop 比例接近 85/15；完整 3 prompt 样本比例高于当前 9,520/10,070；不存在 sampled positive 在 patch 内为空 mask 的样本。</li>
+      <li>negative target 仍为空 mask；positive target 是基于裁后 labels patch 计算的 class mask。</li>
+      <li>验收：输出 patch shape 等于配置的 <code>patch_size</code>；foreground/random crop 比例接近 85/15；完整 3 prompt 样本比例高于当前 9,520/10,070；不存在 sampled positive 在 patch 内为空 mask 的样本；将 <code>patch_size</code> 临时设为 <code>[128, 128, 256]</code> 时 sampler 应退化为整 case 行为，以验证回退路径。</li>
     </ol>
 
     <h3>Step 3. 对 positive prompt 实现 25/75 主名/改写采样</h3>
@@ -353,8 +363,8 @@
         <td><span class="tag green">2</span></td>
         <td>Patch crop + patch 内 2 positive + 1 negative</td>
         <td>Step 1</td>
-        <td>实现 patch crop，85% foreground / 15% random，并基于 patch-present/patch-absent 采 2+1。</td>
-        <td>patch shape 正确；foreground/random 比例接近 85/15；positive mask 非空；完整 3 prompt 比例提升。</td>
+        <td>在 <code>__getitem__</code> 内对 128×128×256 体做 sub-volume crop，<code>patch_size=[128,128,128]</code>（yaml 可配），85% foreground / 15% random，并基于 patch-present/patch-absent 采 2+1。</td>
+        <td>patch shape 等于 <code>patch_size</code>；foreground/random 比例接近 85/15；positive mask 非空；完整 3 prompt 比例提升；<code>patch_size=[128,128,256]</code> 时退化为整 case 方案。</td>
       </tr>
       <tr>
         <td><span class="tag green">3</span></td>
@@ -391,10 +401,11 @@
     <h2>实现注意点</h2>
     <ul>
       <li><strong>patch crop 和 patch-level 2+1 必须同一阶段完成</strong>：不能先裁 patch 但继续用 whole-case presence 抽 prompt，否则 sampled positive 可能在 patch 内没有 target mask。</li>
-      <li><strong>离线 crop129 不等于 foreground oversampling</strong>：crop129 可以作为输入尺寸/显存 profile，但不能替代训练时 85/15 foreground/random patch sampler，也不能替代 patch-level present/absent 重算。</li>
+      <li><strong>离线 128×128×256 不等于 foreground oversampling</strong>：<code>crop_s2i_dataset.py</code> 产出的固定 (128,128,256) on-disk 形状只是输入尺寸/显存 profile，不能替代训练时 85/15 foreground/random patch sampler，也不能替代 patch-level present/absent 重算。</li>
+      <li><strong>不要照抄 VoxTell 的 192³ patch</strong>：Body-Tell 是 anisotropic 的 128×128×256，patch_size 选 <code>[128, 128, 128]</code>（保留 x/y 全幅，沿 z 随机裁），通过 yaml 配置；不在代码里硬编码。</li>
       <li><strong>aggregate sampler 支持必须早于扩词</strong>：当前 aggregates 虽然进入 embedding cache，但训练索引排除了 aggregates；直接扩 combined labels 不会改变训练分布。</li>
       <li><strong>扩词必须配套重建 embedding cache</strong>：当前 cache 对 prompt records 做 hash 校验，改 <code>label_vocab.json</code> 后旧 cache 会失效。</li>
-      <li><strong>采样比例要进 config</strong>：<code>foreground_oversample_prob=0.85</code>、<code>canonical_prob=0.25</code>、<code>num_positive=2</code>、<code>num_negative=1</code> 应可复现实验。</li>
+      <li><strong>采样比例要进 config</strong>：<code>patch_size=[128,128,128]</code>、<code>foreground_oversample_prob=0.85</code>、<code>canonical_prob=0.25</code>、<code>num_positive=2</code>、<code>num_negative=1</code> 应可复现实验。</li>
       <li><strong>combined labels 不能污染 base class</strong>：组合概念是额外 prompt target，不应把 base label 的 canonical 名称改成群组名。</li>
       <li><strong>patch present/absent 是核心</strong>：negative 应基于 patch absent，而不是 whole-case absent。</li>
       <li><strong>严格限定范围</strong>：本轮不实现论文未明确写到的 class-balanced、hard-negative、contrastive co-sampling。</li>

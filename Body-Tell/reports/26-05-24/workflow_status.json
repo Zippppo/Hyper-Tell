@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-05-25T07:21:52+00:00",
+  "generated_at": "2026-05-25T07:25:06+00:00",
   "source_manifest": "Body-Tell/reports/26-05-24/workflow_manifest.yaml",
   "lead_safe": true,
   "rule": "Leader agents must use this compact status and must not tail events.jsonl or review-events.jsonl.",
