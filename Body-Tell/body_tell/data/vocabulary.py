@@ -20,6 +20,7 @@ import numpy as np
 VOCAB_VERSION = "phase0-2026-05-20"
 TEXT_ENCODER = "Qwen/Qwen3-Embedding-4B"
 EMBEDDING_DIM = 2560
+MIN_TRAINABLE_PROMPTS = 5
 INSTRUCTION = (
     "Given an anatomical term query, retrieve the precise anatomical entity "
     "and location it represents"
@@ -188,6 +189,11 @@ def validate_label_vocab(
             errors.append(f"class {class_id} has no prompts")
         elif prompts[0] != canonical:
             errors.append(f"class {class_id} first prompt must equal canonical")
+        if bool(cls.get("train_as_positive", False)) and len(prompts) < MIN_TRAINABLE_PROMPTS:
+            errors.append(
+                f"class {class_id} trainable vocabulary must have at least "
+                f"{MIN_TRAINABLE_PROMPTS} prompts, got {len(prompts)}"
+            )
         if any(not prompt for prompt in prompts):
             errors.append(f"class {class_id} has an empty prompt")
 
@@ -218,6 +224,8 @@ def validate_label_vocab(
         components = [int(x) for x in aggregate.get("component_class_ids", [])]
         if not aggregate_id:
             errors.append("aggregate has empty id")
+        if not components:
+            errors.append(f"aggregate {aggregate_id} must define component_class_ids")
         if not prompts:
             errors.append(f"aggregate {aggregate_id} has no prompts")
         elif prompts[0] != canonical:
@@ -613,6 +621,7 @@ def _source_laterality(source_name: str) -> Optional[str]:
 __all__ = [
     "EMBEDDING_DIM",
     "INSTRUCTION",
+    "MIN_TRAINABLE_PROMPTS",
     "TEXT_ENCODER",
     "VOCAB_VERSION",
     "VocabularyValidationError",

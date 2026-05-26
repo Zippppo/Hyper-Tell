@@ -36,14 +36,14 @@
   <ul>
     <li><code>workflow_manifest.yaml</code> marks <code>SP-B.Step4</code> as <code>accepted</code>.</li>
     <li><code>updated_at</code>, <code>last_note</code>, and <code>history</code> record reviewer gate evidence and aggregate sampler acceptance.</li>
-    <li><code>SP-B.Step5</code> is now <code>ready</code> because its sole dependency, <code>SP-B.Step4</code>, is accepted.</li>
+    <li>At the time of this SP-B.Step4 post-accept, <code>SP-B.Step5</code> became <code>ready</code> because its sole dependency, <code>SP-B.Step4</code>, was accepted. <code>SP-B.Step5</code> and the cache-unblocker <code>SP-B.Step6</code> have since been accepted together.</li>
   </ul>
 
   <h2>Lead And Report Sync</h2>
   <ul>
-    <li><code>lead.html</code> records SP-B Step 4 as accepted, appends a compact progress entry, and sets the default next task to <code>SP-B.Step5</code>.</li>
+    <li><code>lead.html</code> recorded SP-B Step 4 as accepted, appended a compact progress entry, and set the then-default next task to <code>SP-B.Step5</code>.</li>
     <li><code>bodytell_sampling_vocabulary_optimization_report.html</code> records Step 4 accepted evidence and updates current-state, implementation order, table, and final-judgement text.</li>
-    <li><code>bodytell_training_loop_eval_alignment_plan_2026-05-24.html</code> now treats SP-B Step 4 aggregate metadata as an accepted SP-C input and leaves vocabulary/cache gating on SP-B Step 5/6.</li>
+    <li><code>bodytell_training_loop_eval_alignment_plan_2026-05-24.html</code> treated SP-B Step 4 aggregate metadata as an accepted SP-C input and, at the time, left vocabulary/cache gating on SP-B Step 5/6. That gating has since been resolved.</li>
     <li><code>runs/SP-B.Step3/POST_ACCEPT.html</code> was revised only to make its stale next-task statements explicitly historical.</li>
   </ul>
 
@@ -94,10 +94,10 @@
   <h2>Unrelated Dirty Files</h2>
   <p>No unrelated non-ignored dirty files were detected. Ignored local data, cache, Slurm log, and W&B output files existed and were not staged.</p>
 
-  <h2>Next Ready Tasks</h2>
-  <p><code>SP-B.Step5</code> and <code>SP-C.Task0</code>.</p>
+  <h2>Historical Next Ready Tasks</h2>
+  <p>At the time of this artifact: <code>SP-B.Step5</code> and <code>SP-C.Task0</code>. Current next ready tasks are tracked in the latest manifest and post-accept artifact.</p>
 
   <h2>Blockers Or Residual Risks</h2>
-  <p>No blockers. <span class="risk">Residual risk:</span> aggregate sampling frequency is now legal and tested, but no target distribution tuning is defined; vocabulary expansion and embedding cache rebuild remain SP-B Step 5 and Step 6.</p>
+  <p>No blockers. <span class="risk">Historical residual risk:</span> aggregate sampling frequency was legal and tested, but no target distribution tuning was defined; vocabulary expansion and embedding cache rebuild remained SP-B Step 5 and Step 6 at the time. Step 5 and Step 6 have since been accepted together.</p>
 </body>
 </html>

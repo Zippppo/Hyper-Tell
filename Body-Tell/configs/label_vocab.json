@@ -1,6 +1,6 @@
 {
   "version": "phase0-2026-05-20",
-  "source_dataset_info": "Body-Tell/Dataset/dataset_info.json",
+  "source_dataset_info": "Body-Tell/S2I-Dataset-70cls/dataset_info.json",
   "language": "en",
   "text_encoder": "Qwen/Qwen3-Embedding-4B",
   "instruction": "Given an anatomical term query, retrieve the precise anatomical entity and location it represents",
@@ -25,11 +25,13 @@
       "prompts": [
         "liver",
         "hepatic organ",
-        "liver tissue"
+        "liver tissue",
+        "hepatic tissue",
+        "liver organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 2,
@@ -38,11 +40,13 @@
       "prompts": [
         "spleen",
         "splenic organ",
-        "spleen tissue"
+        "spleen tissue",
+        "splenic tissue",
+        "spleen organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 3,
@@ -51,11 +55,13 @@
       "prompts": [
         "left kidney",
         "left renal organ",
-        "left kidney tissue"
+        "left kidney tissue",
+        "left renal tissue",
+        "left kidney organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 4,
@@ -64,11 +70,13 @@
       "prompts": [
         "right kidney",
         "right renal organ",
-        "right kidney tissue"
+        "right kidney tissue",
+        "right renal tissue",
+        "right kidney organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 5,
@@ -77,11 +85,13 @@
       "prompts": [
         "stomach",
         "gastric organ",
-        "stomach wall"
+        "stomach structure",
+        "gastric structure",
+        "stomach organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 6,
@@ -90,11 +100,13 @@
       "prompts": [
         "pancreas",
         "pancreatic organ",
-        "pancreas tissue"
+        "pancreas tissue",
+        "pancreatic tissue",
+        "pancreas organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 7,
@@ -103,11 +115,13 @@
       "prompts": [
         "gallbladder",
         "gall bladder",
-        "biliary gallbladder"
+        "biliary gallbladder",
+        "biliary gall bladder",
+        "gallbladder organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 8,
@@ -116,11 +130,13 @@
       "prompts": [
         "urinary bladder",
         "bladder",
-        "urinary bladder wall"
+        "urinary bladder organ",
+        "vesical organ",
+        "urinary bladder structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 9,
@@ -129,11 +145,13 @@
       "prompts": [
         "prostate",
         "prostate gland",
-        "prostatic tissue"
+        "prostatic tissue",
+        "prostatic gland",
+        "prostate organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 10,
@@ -142,11 +160,13 @@
       "prompts": [
         "heart",
         "cardiac organ",
-        "myocardium and heart"
+        "heart tissue",
+        "cardiac structure",
+        "heart organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 11,
@@ -155,11 +175,13 @@
       "prompts": [
         "brain",
         "brain tissue",
-        "cerebral tissue"
+        "cerebral tissue",
+        "cerebral organ",
+        "brain organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 12,
@@ -168,11 +190,13 @@
       "prompts": [
         "thyroid gland",
         "thyroid",
-        "thyroid tissue"
+        "thyroid tissue",
+        "thyroid gland tissue",
+        "thyroid organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 13,
@@ -181,11 +205,13 @@
       "prompts": [
         "spinal cord",
         "spinal cord tissue",
-        "cord within spine"
+        "cord within spine",
+        "spinal neural cord",
+        "spinal cord structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 14,
@@ -194,11 +220,13 @@
       "prompts": [
         "lung",
         "lung tissue",
-        "pulmonary tissue"
+        "pulmonary tissue",
+        "lung organ",
+        "pulmonary structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 15,
@@ -207,11 +235,13 @@
       "prompts": [
         "esophagus",
         "oesophagus",
-        "esophageal tube"
+        "esophageal tube",
+        "esophageal structure",
+        "esophagus structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 16,
@@ -220,11 +250,13 @@
       "prompts": [
         "trachea",
         "windpipe",
-        "tracheal airway"
+        "tracheal airway",
+        "tracheal tube",
+        "trachea airway"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 17,
@@ -233,11 +265,13 @@
       "prompts": [
         "small bowel",
         "small intestine",
-        "small bowel loops"
+        "small bowel loops",
+        "small bowel structure",
+        "small intestinal loops"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 18,
@@ -246,11 +280,13 @@
       "prompts": [
         "duodenum",
         "duodenal segment",
-        "duodenal bowel"
+        "duodenal bowel",
+        "duodenum segment",
+        "duodenal structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 19,
@@ -259,11 +295,13 @@
       "prompts": [
         "colon",
         "large bowel",
-        "colon segment"
+        "colon segment",
+        "large intestine",
+        "colonic segment"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 20,
@@ -272,11 +310,13 @@
       "prompts": [
         "left adrenal gland",
         "left suprarenal gland",
-        "left adrenal gland tissue"
+        "left adrenal gland tissue",
+        "left adrenal tissue",
+        "left adrenal organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 21,
@@ -285,11 +325,13 @@
       "prompts": [
         "right adrenal gland",
         "right suprarenal gland",
-        "right adrenal gland tissue"
+        "right adrenal gland tissue",
+        "right adrenal tissue",
+        "right adrenal organ"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 22,
@@ -298,11 +340,13 @@
       "prompts": [
         "spine",
         "vertebral column",
-        "spinal column bones"
+        "spinal column bones",
+        "spinal bony column",
+        "spine structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 23,
@@ -312,11 +356,12 @@
         "left first rib",
         "left rib 1",
         "left first rib bone",
-        "left first costal bone"
+        "left first costal bone",
+        "left first rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 24,
@@ -326,11 +371,12 @@
         "left second rib",
         "left rib 2",
         "left second rib bone",
-        "left second costal bone"
+        "left second costal bone",
+        "left second rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 25,
@@ -340,11 +386,12 @@
         "left third rib",
         "left rib 3",
         "left third rib bone",
-        "left third costal bone"
+        "left third costal bone",
+        "left third rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 26,
@@ -354,11 +401,12 @@
         "left fourth rib",
         "left rib 4",
         "left fourth rib bone",
-        "left fourth costal bone"
+        "left fourth costal bone",
+        "left fourth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 27,
@@ -368,11 +416,12 @@
         "left fifth rib",
         "left rib 5",
         "left fifth rib bone",
-        "left fifth costal bone"
+        "left fifth costal bone",
+        "left fifth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 28,
@@ -382,11 +431,12 @@
         "left sixth rib",
         "left rib 6",
         "left sixth rib bone",
-        "left sixth costal bone"
+        "left sixth costal bone",
+        "left sixth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 29,
@@ -396,11 +446,12 @@
         "left seventh rib",
         "left rib 7",
         "left seventh rib bone",
-        "left seventh costal bone"
+        "left seventh costal bone",
+        "left seventh rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 30,
@@ -410,11 +461,12 @@
         "left eighth rib",
         "left rib 8",
         "left eighth rib bone",
-        "left eighth costal bone"
+        "left eighth costal bone",
+        "left eighth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 31,
@@ -424,11 +476,12 @@
         "left ninth rib",
         "left rib 9",
         "left ninth rib bone",
-        "left ninth costal bone"
+        "left ninth costal bone",
+        "left ninth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 32,
@@ -438,11 +491,12 @@
         "left tenth rib",
         "left rib 10",
         "left tenth rib bone",
-        "left tenth costal bone"
+        "left tenth costal bone",
+        "left tenth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 33,
@@ -452,11 +506,12 @@
         "left eleventh rib",
         "left rib 11",
         "left eleventh rib bone",
-        "left eleventh costal bone"
+        "left eleventh costal bone",
+        "left eleventh rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 34,
@@ -466,11 +521,12 @@
         "left twelfth rib",
         "left rib 12",
         "left twelfth rib bone",
-        "left twelfth costal bone"
+        "left twelfth costal bone",
+        "left twelfth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 35,
@@ -480,11 +536,12 @@
         "right first rib",
         "right rib 1",
         "right first rib bone",
-        "right first costal bone"
+        "right first costal bone",
+        "right first rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 36,
@@ -494,11 +551,12 @@
         "right second rib",
         "right rib 2",
         "right second rib bone",
-        "right second costal bone"
+        "right second costal bone",
+        "right second rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 37,
@@ -508,11 +566,12 @@
         "right third rib",
         "right rib 3",
         "right third rib bone",
-        "right third costal bone"
+        "right third costal bone",
+        "right third rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 38,
@@ -522,11 +581,12 @@
         "right fourth rib",
         "right rib 4",
         "right fourth rib bone",
-        "right fourth costal bone"
+        "right fourth costal bone",
+        "right fourth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 39,
@@ -536,11 +596,12 @@
         "right fifth rib",
         "right rib 5",
         "right fifth rib bone",
-        "right fifth costal bone"
+        "right fifth costal bone",
+        "right fifth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 40,
@@ -550,11 +611,12 @@
         "right sixth rib",
         "right rib 6",
         "right sixth rib bone",
-        "right sixth costal bone"
+        "right sixth costal bone",
+        "right sixth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 41,
@@ -564,11 +626,12 @@
         "right seventh rib",
         "right rib 7",
         "right seventh rib bone",
-        "right seventh costal bone"
+        "right seventh costal bone",
+        "right seventh rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 42,
@@ -578,11 +641,12 @@
         "right eighth rib",
         "right rib 8",
         "right eighth rib bone",
-        "right eighth costal bone"
+        "right eighth costal bone",
+        "right eighth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 43,
@@ -592,11 +656,12 @@
         "right ninth rib",
         "right rib 9",
         "right ninth rib bone",
-        "right ninth costal bone"
+        "right ninth costal bone",
+        "right ninth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 44,
@@ -606,11 +671,12 @@
         "right tenth rib",
         "right rib 10",
         "right tenth rib bone",
-        "right tenth costal bone"
+        "right tenth costal bone",
+        "right tenth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 45,
@@ -620,11 +686,12 @@
         "right eleventh rib",
         "right rib 11",
         "right eleventh rib bone",
-        "right eleventh costal bone"
+        "right eleventh costal bone",
+        "right eleventh rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 46,
@@ -634,11 +701,12 @@
         "right twelfth rib",
         "right rib 12",
         "right twelfth rib bone",
-        "right twelfth costal bone"
+        "right twelfth costal bone",
+        "right twelfth rib structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 47,
@@ -647,11 +715,13 @@
       "prompts": [
         "skull",
         "cranium",
-        "skull bone"
+        "skull bone",
+        "cranial bone",
+        "cranial structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 48,
@@ -660,11 +730,13 @@
       "prompts": [
         "sternum",
         "breastbone",
-        "sternal bone"
+        "sternal bone",
+        "sternum bone",
+        "sternal structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 49,
@@ -673,11 +745,13 @@
       "prompts": [
         "costal cartilages",
         "rib cartilages",
-        "costal cartilage structures"
+        "costal cartilage structures",
+        "rib cartilage structures",
+        "costal cartilage set"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 50,
@@ -686,11 +760,13 @@
       "prompts": [
         "left scapula",
         "left shoulder blade",
-        "left scapular bone"
+        "left scapular bone",
+        "left scapula bone",
+        "left scapular structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 51,
@@ -699,11 +775,13 @@
       "prompts": [
         "right scapula",
         "right shoulder blade",
-        "right scapular bone"
+        "right scapular bone",
+        "right scapula bone",
+        "right scapular structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 52,
@@ -712,11 +790,13 @@
       "prompts": [
         "left clavicle",
         "left collarbone",
-        "left clavicular bone"
+        "left clavicular bone",
+        "left clavicle bone",
+        "left clavicular structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 53,
@@ -725,11 +805,13 @@
       "prompts": [
         "right clavicle",
         "right collarbone",
-        "right clavicular bone"
+        "right clavicular bone",
+        "right clavicle bone",
+        "right clavicular structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 54,
@@ -738,11 +820,13 @@
       "prompts": [
         "left humerus",
         "left upper arm bone",
-        "left humeral bone"
+        "left humeral bone",
+        "left humerus bone",
+        "left upper arm skeletal bone"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 55,
@@ -751,11 +835,13 @@
       "prompts": [
         "right humerus",
         "right upper arm bone",
-        "right humeral bone"
+        "right humeral bone",
+        "right humerus bone",
+        "right upper arm skeletal bone"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 56,
@@ -764,11 +850,13 @@
       "prompts": [
         "left hip bone",
         "left pelvic bone",
-        "left os coxae"
+        "left os coxae",
+        "left pelvic osseous structure",
+        "left hip osseous structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 57,
@@ -777,11 +865,13 @@
       "prompts": [
         "right hip bone",
         "right pelvic bone",
-        "right os coxae"
+        "right os coxae",
+        "right pelvic osseous structure",
+        "right hip osseous structure"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 58,
@@ -790,11 +880,13 @@
       "prompts": [
         "left femur",
         "left thigh bone",
-        "left femoral bone"
+        "left femoral bone",
+        "left femur bone",
+        "left thigh skeletal bone"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 59,
@@ -803,11 +895,13 @@
       "prompts": [
         "right femur",
         "right thigh bone",
-        "right femoral bone"
+        "right femoral bone",
+        "right femur bone",
+        "right thigh skeletal bone"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 60,
@@ -816,11 +910,13 @@
       "prompts": [
         "left gluteus maximus muscle",
         "left gluteus maximus",
-        "left gluteus maximus tissue"
+        "left gluteus maximus tissue",
+        "left gluteus maximus structure",
+        "left gluteus maximus musculature"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 61,
@@ -829,11 +925,13 @@
       "prompts": [
         "right gluteus maximus muscle",
         "right gluteus maximus",
-        "right gluteus maximus tissue"
+        "right gluteus maximus tissue",
+        "right gluteus maximus structure",
+        "right gluteus maximus musculature"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 62,
@@ -842,11 +940,13 @@
       "prompts": [
         "left gluteus medius muscle",
         "left gluteus medius",
-        "left gluteus medius tissue"
+        "left gluteus medius tissue",
+        "left gluteus medius structure",
+        "left gluteus medius musculature"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 63,
@@ -855,11 +955,13 @@
       "prompts": [
         "right gluteus medius muscle",
         "right gluteus medius",
-        "right gluteus medius tissue"
+        "right gluteus medius tissue",
+        "right gluteus medius structure",
+        "right gluteus medius musculature"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 64,
@@ -868,11 +970,13 @@
       "prompts": [
         "left gluteus minimus muscle",
         "left gluteus minimus",
-        "left gluteus minimus tissue"
+        "left gluteus minimus tissue",
+        "left gluteus minimus structure",
+        "left gluteus minimus musculature"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 65,
@@ -881,11 +985,13 @@
       "prompts": [
         "right gluteus minimus muscle",
         "right gluteus minimus",
-        "right gluteus minimus tissue"
+        "right gluteus minimus tissue",
+        "right gluteus minimus structure",
+        "right gluteus minimus musculature"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 66,
@@ -894,11 +1000,13 @@
       "prompts": [
         "left autochthonous back muscles",
         "left intrinsic back muscles",
-        "left paraspinal autochthonous muscles"
+        "left paraspinal autochthonous muscles",
+        "left autochthonous spine muscles",
+        "left deep back muscles"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 67,
@@ -907,11 +1015,13 @@
       "prompts": [
         "right autochthonous back muscles",
         "right intrinsic back muscles",
-        "right paraspinal autochthonous muscles"
+        "right paraspinal autochthonous muscles",
+        "right autochthonous spine muscles",
+        "right deep back muscles"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 68,
@@ -920,11 +1030,13 @@
       "prompts": [
         "left iliopsoas muscle",
         "left iliopsoas",
-        "left psoas iliacus muscle"
+        "left psoas iliacus muscle",
+        "left iliopsoas musculature",
+        "left iliacus psoas muscle"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     },
     {
       "id": 69,
@@ -933,11 +1045,13 @@
       "prompts": [
         "right iliopsoas muscle",
         "right iliopsoas",
-        "right psoas iliacus muscle"
+        "right psoas iliacus muscle",
+        "right iliopsoas musculature",
+        "right iliacus psoas muscle"
       ],
       "train_as_positive": true,
       "eval_as_foreground": true,
-      "notes": "Base class label as provided by Body-Tell/Dataset/voxel_data."
+      "notes": "Base class label as provided by Body-Tell/S2I-Dataset-70cls/data."
     }
   ],
   "aggregates": [
@@ -947,7 +1061,9 @@
       "prompts": [
         "kidneys",
         "bilateral kidneys",
-        "renal organs"
+        "renal organs",
+        "both kidneys",
+        "left and right kidneys"
       ],
       "component_class_ids": [
         3,
@@ -963,7 +1079,9 @@
       "prompts": [
         "adrenal glands",
         "bilateral adrenal glands",
-        "suprarenal glands"
+        "suprarenal glands",
+        "both adrenal glands",
+        "left and right adrenal glands"
       ],
       "component_class_ids": [
         20,
@@ -979,7 +1097,9 @@
       "prompts": [
         "ribs",
         "left and right ribs",
-        "rib bones"
+        "rib bones",
+        "all ribs",
+        "bilateral rib bones"
       ],
       "component_class_ids": [
         23,
@@ -1017,7 +1137,9 @@
       "prompts": [
         "left ribs",
         "left rib bones",
-        "left costal bones"
+        "left costal bones",
+        "left rib set",
+        "left rib group"
       ],
       "component_class_ids": [
         23,
@@ -1043,7 +1165,9 @@
       "prompts": [
         "right ribs",
         "right rib bones",
-        "right costal bones"
+        "right costal bones",
+        "right rib set",
+        "right rib group"
       ],
       "component_class_ids": [
         35,
@@ -1069,7 +1193,9 @@
       "prompts": [
         "lungs",
         "whole lung label",
-        "pulmonary organ"
+        "pulmonary organ",
+        "combined lung structure",
+        "complete lung structure"
       ],
       "component_class_ids": [
         14
@@ -1084,7 +1210,9 @@
       "prompts": [
         "hip bones",
         "bilateral hip bones",
-        "pelvic hip bones"
+        "pelvic hip bones",
+        "left and right hip bones",
+        "paired hip bones"
       ],
       "component_class_ids": [
         56,
@@ -1100,7 +1228,9 @@
       "prompts": [
         "femurs",
         "bilateral femurs",
-        "thigh bones"
+        "thigh bones",
+        "left and right femurs",
+        "paired femur bones"
       ],
       "component_class_ids": [
         58,
@@ -1116,7 +1246,9 @@
       "prompts": [
         "gluteal muscles",
         "bilateral gluteal muscles",
-        "buttock muscles"
+        "buttock muscles",
+        "gluteus muscle group",
+        "gluteal musculature"
       ],
       "component_class_ids": [
         60,
@@ -1136,7 +1268,9 @@
       "prompts": [
         "iliopsoas muscles",
         "bilateral iliopsoas",
-        "psoas iliacus muscles"
+        "psoas iliacus muscles",
+        "left and right iliopsoas muscles",
+        "iliopsoas musculature"
       ],
       "component_class_ids": [
         68,
@@ -1145,15 +1279,91 @@
       "train_as_positive": false,
       "eval_as_foreground": false,
       "notes": "Composed from left and right iliopsoas labels."
+    },
+    {
+      "id": "agg_shoulder_girdle_bones",
+      "canonical": "shoulder girdle bones",
+      "prompts": [
+        "shoulder girdle bones",
+        "scapulae and clavicles",
+        "bilateral scapulae and clavicles",
+        "shoulder blade and collarbone bones",
+        "pectoral girdle bones"
+      ],
+      "component_class_ids": [
+        50,
+        51,
+        52,
+        53
+      ],
+      "train_as_positive": false,
+      "eval_as_foreground": false,
+      "notes": "Composed from left and right scapula and clavicle labels."
+    },
+    {
+      "id": "agg_humeri",
+      "canonical": "humeri",
+      "prompts": [
+        "humeri",
+        "bilateral humeri",
+        "upper arm bones",
+        "left and right humerus bones",
+        "paired humerus bones"
+      ],
+      "component_class_ids": [
+        54,
+        55
+      ],
+      "train_as_positive": false,
+      "eval_as_foreground": false,
+      "notes": "Composed from left and right humerus labels."
+    },
+    {
+      "id": "agg_hip_and_femur_bones",
+      "canonical": "hip and femur bones",
+      "prompts": [
+        "hip and femur bones",
+        "bilateral hip and femur bones",
+        "pelvic and thigh bones",
+        "proximal lower limb bones",
+        "paired hip bones and femurs"
+      ],
+      "component_class_ids": [
+        56,
+        57,
+        58,
+        59
+      ],
+      "train_as_positive": false,
+      "eval_as_foreground": false,
+      "notes": "Composed from left and right hip and femur labels."
+    },
+    {
+      "id": "agg_autochthonous_back_muscles",
+      "canonical": "autochthonous back muscles",
+      "prompts": [
+        "autochthonous back muscles",
+        "bilateral intrinsic back muscles",
+        "paraspinal autochthonous muscles",
+        "left and right autochthonous back muscles",
+        "deep back muscles"
+      ],
+      "component_class_ids": [
+        66,
+        67
+      ],
+      "train_as_positive": false,
+      "eval_as_foreground": false,
+      "notes": "Composed from left and right autochthonous back muscle labels."
     }
   ],
   "ignore_as_positive": [
     0
   ],
   "review": {
-    "status": "pending_manual_review",
-    "reviewed_by": null,
-    "reviewed_at": null,
-    "notes": "Auto-built Phase 0 vocabulary; review prompts and aggregates before Phase 1."
+    "status": "step5_static_review_complete",
+    "reviewed_by": "sp_b_sampling_vocab_worker",
+    "reviewed_at": "2026-05-26",
+    "notes": "Expanded under VoxTell Appendix C principles: anatomy-level synonyms and rephrasings only, laterality retained for left/right labels, and aggregate concepts limited to unions of existing component_class_ids. Independent clinical expert review is still recommended before publication claims."
   }
 }

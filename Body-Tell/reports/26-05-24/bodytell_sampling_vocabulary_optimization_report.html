@@ -144,7 +144,7 @@
   <header>
     <h1>Body-Tell Sampling 与 Vocabulary 优化思路</h1>
     <p class="muted">范围：<code>Body-Tell/</code> 当前 Phase 1 S2I 配置、既有采样审计报告、既有 vocabulary audit、<code>VoxTell/VoxTell.pdf</code> Supplementary A.3 与 C。生成/修订日期：2026-05-24；本版按重新配置后的 <code>S2I-Dataset-70cls</code> 复算。</p>
-    <div class="callout warn"><strong>执行状态（2026-05-26 同步）：</strong>SP-A P0-P6-lite、CFG.CanonicalPhase1、SP-B Step 1/2/3/4 已完成并通过 review / phase1 Slurm gate；<code>SP-B.Step5</code> 已产出扩词 artifacts，但 review phase1 Slurm gate 因 stale <code>prompt_embeddings.pt</code> 失败并进入 gate_failed；计划已调整为先运行 <code>SP-B.Step6</code> 重建 cache，再回头 rerun Step 5 review/gate。<code>SP-C.Task0</code>（paper-mechanics profile / 训练预算控制面，非论文复刻）仍处于 ready。</div>
+    <div class="callout"><strong>执行状态（2026-05-26 同步）：</strong>SP-A P0-P6-lite、CFG.CanonicalPhase1、SP-B Step 1/2/3/4/5/6 已完成并通过 review / phase1 Slurm gate；<code>SP-B.Step5</code> vocabulary expansion 与 <code>SP-B.Step6</code> cache-unblocker 已合并验收，<code>prompt_embeddings.pt</code> 已按 418 prompt records 重建。<code>SP-C.Task0</code>（paper-mechanics profile / 训练预算控制面，非论文复刻）仍处于 ready。</div>
   </header>
 
   <section>
@@ -157,7 +157,7 @@
       <li><strong>第二优先级 patch-level 训练样本对齐已验收</strong>：85% foreground patch oversampling、patch 内 present/absent 重算、2 positive + 1 negative sampling 已通过 SP-B Step 2 review / phase1 Slurm gate，并使用 canonical <code>phase1_voxtell_aligned.yaml</code>。</li>
       <li><strong>第三优先级 positive prompt 25/75 策略已验收</strong>：Step 3 已实现 25% 默认主名、75% 改写变体，并记录 classes-without-variants fallback metadata。</li>
       <li><strong>第四优先级 aggregate sampler 支持已验收</strong>：Step 4 已让训练 sampler 采到 combined-label concepts，并验证 aggregate union target mask 与 embedding row alignment。</li>
-      <li><strong>第五优先级是 vocabulary 与 embedding 对齐</strong>：Step 5 worker 已扩充 vocabulary 到 418 prompt records，静态 validation 无错误；但 Step 5 未验收，因为旧 <code>prompt_embeddings.pt</code> 仍为 264 prompts，phase1 Slurm gate 失败。现在 Step 6 作为 cache-unblocker 先执行。</li>
+      <li><strong>第五优先级 vocabulary 与 embedding 对齐已验收</strong>：Step 5 worker 已扩充 vocabulary 到 418 prompt records，静态 validation 无错误；Step 6 已按 418 prompt records 重建 <code>prompt_embeddings.pt</code>；Step5 rerun review 记录 phase1 Slurm gate job 38057 为 <code>COMPLETED</code> / <code>0:0</code>。</li>
       <li><strong>当前数据口径</strong>：本报告以当前 <code>S2I-Dataset-70cls/class_presence.json</code> 为准，共 11,070 cases，train/val/test 为 10,070/500/500。</li>
     </ol>
   </section>
@@ -167,7 +167,7 @@
     <div class="grid">
       <div class="card"><div class="muted">Active S2I cases</div><div class="metric">11,070</div><div class="small">train 10,070 / val 500 / test 500</div></div>
       <div class="card"><div class="muted">Base classes</div><div class="metric">70</div><div class="small">69 个 foreground trainable</div></div>
-      <div class="card"><div class="muted">Prompt records</div><div class="metric">418</div><div class="small">expanded vocab; cache still 264</div></div>
+      <div class="card"><div class="muted">Prompt records</div><div class="metric">418</div><div class="small">cache rows 418; shape (418, 2560)</div></div>
       <div class="card"><div class="muted">Aggregate sampler</div><div class="metric">on</div><div class="small">concept-level union masks</div></div>
     </div>
     <table>
@@ -185,12 +185,12 @@
       <tr>
         <td>prompt 选择</td>
         <td><code>sample_prompts_for_case()</code> 对 positive prompt 使用 <code>canonical_prob=0.25</code> 先选择 canonical/variant 分支；negative prompt 仍保持普通随机采样。</td>
-        <td>epoch-aware 动态采样、25/75 positive prompt 采样与 aggregate concept sampling 均已完成；当前剩余差距是扩词后的 cache 重建和 Slurm gate 通过。</td>
+        <td>epoch-aware 动态采样、25/75 positive prompt 采样、aggregate concept sampling、扩词与 cache 重建均已完成并通过 gate。</td>
       </tr>
       <tr>
         <td>aggregate</td>
         <td><code>prompt_records_by_concept()</code> 会把合法 aggregate 作为训练 concept，并用 <code>component_class_ids</code> 构造 union target masks。</td>
-        <td>VoxTell Appendix C 明确包含 combined-label alternatives；Body-Tell 当前已有组合概念 schema，并已进入训练 sampler，下一步扩充/审校更多组合概念。</td>
+        <td>VoxTell Appendix C 明确包含 combined-label alternatives；Body-Tell 当前已有组合概念 schema，并已进入训练 sampler；Step 5 已扩充/审校支持的组合概念。</td>
       </tr>
       <tr>
         <td>当前训练 split 复算</td>
@@ -221,13 +221,13 @@
       </tr>
       <tr>
         <td>训练时所有 text embedding 预计算；推理时可在线处理任意 prompt。</td>
-        <td>Body-Tell 已有 Qwen cache，维度和 instruction 一致；但 Step 5 扩词后 cache 已 stale，仍只有 264 prompts。</td>
-        <td>必须重新生成 <code>prompt_embeddings.pt</code>，使 418 prompt records、vocab hash 与 embedding shape 一致。</td>
+        <td>Body-Tell 已有 Qwen cache，维度和 instruction 一致；Step 6 已在 Step 5 扩词后重建 cache。</td>
+        <td>已完成：<code>prompt_embeddings.pt</code> 记录 418 prompts，shape <code>(418, 2560)</code>，vocab hash 与 <code>label_vocab.json</code> 一致。</td>
       </tr>
       <tr>
         <td>Vocabulary pipeline 包含 semantic expansion、cross-dataset harmonization、human expert validation；最终 1,087 concepts、9,682 rewritten labels，且每个 concept 至少 5 个变体。</td>
-        <td>Step 5 worker 已扩展到 70 classes、14 aggregates、418 prompt records，audit 记录 validation errors: none；但该步骤因 cache gate 尚未 accepted。</td>
-        <td>不要复制概念规模；复制构造原则：每个可监督概念至少 5 条审校 prompt，组合概念显式建模，并确保 cache 一致后通过 Slurm gate。</td>
+        <td>Step 5 worker 已扩展到 70 classes、14 aggregates、418 prompt records，audit 记录 validation errors: none；Step5 rerun review/gate 已 accepted。</td>
+        <td>已完成本轮构造原则：每个可监督概念至少 5 条审校 prompt，组合概念显式建模，cache 一致后通过 Slurm gate。</td>
       </tr>
     </table>
   </section>
@@ -235,7 +235,7 @@
   <section>
     <h2>实现顺序</h2>
     <div class="callout warn">
-      最优顺序是：动态 RNG → patch crop 与 patch 内 2+1 → 25/75 positive prompt → aggregate sampler 支持 → vocabulary expansion → embedding cache 重建。当前动态 RNG、patch crop / patch 内 2+1、25/75 positive prompt、aggregate sampler 支持均已验收；Step 5 vocabulary artifacts 已存在但未 accepted，原因是扩词后 embedding cache 未重建，phase1 Slurm gate 失败。计划例外允许 Step 6 先重建 cache，然后 rerun Step 5 gate。
+      最优顺序是：动态 RNG → patch crop 与 patch 内 2+1 → 25/75 positive prompt → aggregate sampler 支持 → vocabulary expansion → embedding cache 重建。当前动态 RNG、patch crop / patch 内 2+1、25/75 positive prompt、aggregate sampler 支持、Step 5 vocabulary expansion 与 Step 6 embedding cache 重建均已验收。Step 6 作为 cache-unblocker 先完成后，Step 5 rerun review/gate 已通过。
     </div>
 
     <h3>Step 1. 建立训练时动态采样基础设施</h3>
@@ -298,7 +298,7 @@
     </ol>
 
     <h3>Step 5. 按 VoxTell Appendix C 扩 vocabulary</h3>
-    <p class="small"><strong>执行状态：</strong>gate_failed。证据见 <code>runs/SP-B.Step5/RESULT.html</code>、<code>runs/SP-B.Step5/REVIEW.html</code> 与 <code>runs/SP-B.Step5/vocabulary_audit.html</code>。Worker 将 vocabulary 扩到 418 prompt records，静态 audit 记录 validation errors: none；review 记录 Test quality pass、Targeted pytest pass，但 phase1 Slurm gate job 38040 为 <code>FAILED</code> / <code>1:0</code>，原因是 <code>prompt_embeddings.pt</code> 仍为 264 prompt cache。现在不把 Step5 强行 accepted，而是先运行 Step6 重建 cache，随后 rerun Step5 review/gate。</p>
+    <p class="small"><strong>执行状态：</strong>accepted。证据见 <code>runs/SP-B.Step5/RESULT.html</code>、<code>runs/SP-B.Step5/REVIEW.html</code>、<code>runs/SP-B.Step5/vocabulary_audit.html</code>、<code>runs/SP-B.Step5/vocabulary_audit_review.html</code> 与 <code>runs/SP-B.Step5/POST_ACCEPT.html</code>。Worker 将 vocabulary 扩到 418 prompt records，静态 audit 记录 validation errors: none；Step6 cache rebuild 后的 Step5 rerun review 记录 Test quality pass、Targeted pytest pass，phase1 Slurm gate job 38057 为 <code>COMPLETED</code> / <code>0:0</code>。</p>
     <p><strong>依赖：</strong>Step 4。<strong>对应 VoxTell：</strong>semantic label expansion、cross-dataset harmonization、human expert validation、每个 concept 至少 5 个 variants、combined-label alternatives。Body-Tell 不需要复制 VoxTell 的 1,087 concepts 规模，但应复制构造原则。</p>
     <ol>
       <li>对 70 个 base classes 做 semantic label expansion，每类至少 5 条 validated prompts。</li>
@@ -309,7 +309,8 @@
     </ol>
 
     <h3>Step 6. 重新预计算 text embeddings</h3>
-    <p><strong>依赖：</strong>Step 5 vocabulary artifacts。<strong>对应 VoxTell：</strong>训练时所有 text embeddings 预计算。Body-Tell 已有 cache 机制，所以 vocabulary 变更后必须重建 cache。当前 workflow 对 Step 6 增加 dependency exception：Step 5 静态验证通过但因 stale cache gate_failed 时，Step 6 可先运行并写入 <code>Body-Tell/artifacts/text_embeddings/**</code>。</p>
+    <p class="small"><strong>执行状态：</strong>accepted。证据见 <code>runs/SP-B.Step6/RESULT.html</code>、<code>runs/SP-B.Step6/REVIEW.html</code> 与 <code>runs/SP-B.Step6/vocabulary_audit_after_cache.html</code>；review 记录 phase1 Slurm gate job 38056 为 <code>COMPLETED</code> / <code>0:0</code>。Step 6 已按 dependency exception 作为 Step5 cache-unblocker 完成，并随 Step5 post-accept 一起提交。</p>
+    <p><strong>依赖：</strong>Step 5 vocabulary artifacts。<strong>对应 VoxTell：</strong>训练时所有 text embeddings 预计算。Body-Tell 已有 cache 机制，所以 vocabulary 变更后必须重建 cache。Workflow 对 Step 6 的 dependency exception 已解决：Step 5 静态验证通过但因 stale cache gate_failed 时，Step 6 先运行并写入 <code>Body-Tell/artifacts/text_embeddings/**</code>，随后 Step 5 rerun review/gate 通过。</p>
     <ol>
       <li>使用同一 instruction：<code>Given an anatomical term query, retrieve the precise anatomical entity and location it represents</code>。</li>
       <li>用 Qwen3-Embedding-4B 对所有 class prompts 和 combined-label prompts 重新编码。</li>
@@ -387,18 +388,18 @@
         <td>accepted；已有 aggregate prompt 能被训练采到，union mask、prompt index 对齐与 base eval separation 已测试。</td>
       </tr>
       <tr>
-        <td><span class="tag amber">5</span></td>
+        <td><span class="tag green">5</span></td>
         <td>Vocabulary expansion / harmonization / expert validation</td>
         <td>Step 4</td>
         <td>每个 base class 至少 5 条审校 variants；增加合法 combined-label alternatives。</td>
-        <td>gate_failed；扩词 artifact 和 audit 已存在，validation errors: none；但 phase1 Slurm gate job 38040 因 stale 264-prompt cache 失败，等待 Step 6 cache rebuild 后复审。</td>
+        <td>accepted；扩词 artifact 和 audit 已存在，validation errors: none；Step5 rerun review 记录 job 38057 <code>COMPLETED</code> / <code>0:0</code>，cache 已匹配 418 prompt records。</td>
       </tr>
       <tr>
-        <td><span class="tag amber">6</span></td>
+        <td><span class="tag green">6</span></td>
         <td>Precomputed text embeddings</td>
-        <td>Step 5 artifacts / dependency exception</td>
+        <td>Step 5 artifacts / resolved dependency exception</td>
         <td>重建 Qwen3-Embedding-4B cache，保持 instruction 和 hash 校验。</td>
-        <td>ready as cache-unblocker；重建后需让 cache prompt_records、shape、vocab_hash 全部匹配，并触发 Step 5 review/gate rerun。</td>
+        <td>accepted；cache prompt_records=418、shape=(418, 2560)、vocab_hash 匹配，并触发 Step 5 review/gate rerun 通过。</td>
       </tr>
     </table>
   </section>
@@ -421,7 +422,7 @@
   <section>
     <h2>最终判断</h2>
     <div class="callout risk">
-      Body-Tell 靠近 VoxTell 的最短路径不是加入更多自定义技巧，而是严格复刻 VoxTell 明确写到的数据构造，并按依赖顺序落地：训练时动态采样、85% foreground patch oversampling、patch 内 2 positive + 1 negative、positive prompt 25/75 主名/改写、aggregate / combined-label concept sampler 均已完成。当前扩词 artifact 已产出但未验收，下一步按 Step 6 重建 <code>prompt_embeddings.pt</code>，再重新通过 Step 5 phase1 Slurm gate。其他增强项应等这些基础对齐后再单独讨论。
+      Body-Tell 靠近 VoxTell 的最短路径不是加入更多自定义技巧，而是严格复刻 VoxTell 明确写到的数据构造，并按依赖顺序落地：训练时动态采样、85% foreground patch oversampling、patch 内 2 positive + 1 negative、positive prompt 25/75 主名/改写、aggregate / combined-label concept sampler、vocabulary expansion 与 <code>prompt_embeddings.pt</code> 重建均已完成。其他增强项应等这些基础对齐后的 SP-C 训练控制面和评估协议落地后再单独讨论。
     </div>
   </section>
 </main>

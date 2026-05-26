@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SP-B.Step5 Rerun Review</title>
+  <style>
+    body { margin: 0; background: #f7f9fc; color: #172033; font: 14px/1.55 system-ui, sans-serif; }
+    main { width: min(980px, calc(100% - 36px)); margin: 0 auto; padding: 32px 0 56px; }
+    section { background: #fff; border: 1px solid #d8e1ea; border-radius: 8px; padding: 16px 18px; margin: 14px 0; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    code, pre { background: #edf4fb; border: 1px solid #c9d7e6; border-radius: 5px; }
+    code { padding: 1px 5px; }
+    pre { padding: 10px 12px; overflow: auto; white-space: pre-wrap; }
+    ul { margin: 8px 0 0 20px; padding: 0; }
+    .ok { color: #116329; font-weight: 700; }
+    .muted { color: #5f6d7e; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SP-B.Step5 Rerun Review</h1>
+  <p class="muted">Task: Expand vocabulary under VoxTell Appendix C principles. This is the required rerun after the SP-B.Step6 cache-unblocker.</p>
+
+  <section>
+    <h2>Verdict</h2>
+    <p><strong>Verdict: <span class="ok">accept</span></strong></p>
+    <p>The Step5 vocabulary acceptance criteria pass against the rebuilt 418-prompt cache. Test quality, targeted pytest, static validation, cache consistency, and the required phase1 Slurm gate all passed.</p>
+  </section>
+
+  <section>
+    <h2>Test Quality</h2>
+    <p><strong>Test quality: pass</strong></p>
+    <p><strong>Focused tests reviewed:</strong> <code>Body-Tell/tests/test_vocabulary_validation.py</code>; <code>Body-Tell/tests/test_prompt_embedding_cache.py</code></p>
+    <p><strong>Regression covered:</strong> yes - the vocabulary test checks the real static <code>label_vocab.json</code> for Step5 criteria and includes a negative fixture proving <code>validate_label_vocab()</code> rejects trainable classes with fewer than five prompts and aggregates without <code>component_class_ids</code>. The cache test covers the rerun blocker by loading the real <code>prompt_embeddings.pt</code> and comparing hash, prompt records, row count, model/instruction metadata, and embedding shape.</p>
+    <p><strong>Red evidence reviewed:</strong> yes - the rerun <code>RESULT.html</code> explains no new vocabulary logic was changed after the previous accepted test review, and records the stale-cache failure that blocked the prior gate. The cache-unblocker evidence records the stale 264-row cache failure before rebuild, and the Step5 test itself contains an explicit rejection fixture for the acceptance gaps.</p>
+    <p><strong>Targeted pytest: pass</strong></p>
+    <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_vocabulary_validation.py Body-Tell/tests/test_prompt_embedding_cache.py -q
+...                                                                      [100%]
+3 passed in 13.92s</pre>
+  </section>
+
+  <section>
+    <h2>Acceptance Evidence</h2>
+    <ul>
+      <li>Every trainable base class has at least five validated prompts: pass. Metadata check reported <code>classes=70</code> and <code>trainable_min_prompts=5</code>.</li>
+      <li>Combined labels have explicit <code>component_class_ids</code>: pass. Metadata check reported <code>aggregates=14</code> and <code>aggregate_component_gaps=[]</code>.</li>
+      <li>Static vocabulary validation passes: pass. Audit command wrote <code>Body-Tell/reports/26-05-24/runs/SP-B.Step5/vocabulary_audit_review.html</code>; direct metadata check reported <code>validation_errors=[]</code>.</li>
+      <li>Expanded vocabulary and rebuilt cache are aligned: pass. Metadata check reported <code>prompt_records=418</code>, <code>cache_num_prompts=418</code>, <code>cache_shape=(418, 2560)</code>, matching vocab/cache hash <code>511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09</code>, and <code>cache_validation_errors=[]</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Commands Run</h2>
+    <pre>sed -n '1,220p' Body-Tell/reports/26-05-24/templates/review_prompt.md
+sed -n '1,260p' Body-Tell/reports/26-05-24/AGENT_WORKFLOW.md
+sed -n '1,220p' Body-Tell/reports/26-05-24/runs/SP-B.Step5/RESULT.html
+git status --short
+grep -n -i -E "step 5|step5|appendix c|combined|component_class_ids|validated prompts|five" Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html
+sed -n '1,260p' Body-Tell/tests/test_vocabulary_validation.py
+sed -n '1,260p' Body-Tell/tests/test_prompt_embedding_cache.py
+git diff -- Body-Tell/body_tell/data/vocabulary.py
+git diff -- Body-Tell/scripts/audit_vocabulary.py Body-Tell/scripts/build_label_vocab.py
+git ls-files --others --exclude-standard Body-Tell/tests/test_vocabulary_validation.py Body-Tell/tests/test_prompt_embedding_cache.py
+sed -n '1,220p' Body-Tell/reports/26-05-24/runs/SP-B.Step6/REVIEW.html
+conda run -n voxtell python -m pytest Body-Tell/tests/test_vocabulary_validation.py Body-Tell/tests/test_prompt_embedding_cache.py -q
+conda run -n voxtell python Body-Tell/scripts/audit_vocabulary.py --output Body-Tell/reports/26-05-24/runs/SP-B.Step5/vocabulary_audit_review.html
+PYTHONPATH=Body-Tell conda run -n voxtell python -c "&lt;vocabulary and cache metadata check&gt;"
+sbatch slurm/body-tell-phase1.sh
+squeue -j 38057 -h -o "%i %T %M %R"  # polled until job left queue
+sacct -j 38057 --format=JobID,State,ExitCode,Elapsed -n</pre>
+    <p>Important non-gate note: an initial metadata one-liner without <code>PYTHONPATH=Body-Tell</code> failed with <code>ModuleNotFoundError: No module named 'body_tell'</code>; the same check succeeded with the explicit project path and is not treated as a code failure.</p>
+    <pre>classes=70
+aggregates=14
+prompt_records=418
+trainable_min_prompts=5
+aggregate_component_gaps=[]
+validation_errors=[]
+cache_validation_errors=[]
+vocab_hash=511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09
+cache_vocab_hash=511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09
+cache_num_prompts=418
+cache_shape=(418, 2560)</pre>
+  </section>
+
+  <section>
+    <h2>Phase1 Slurm Gate</h2>
+    <p><strong>Phase1 Slurm gate: pass</strong></p>
+    <p><strong>Slurm command: sbatch slurm/body-tell-phase1.sh</strong></p>
+    <p><strong>Slurm job id: 38057</strong></p>
+    <p><strong>sacct final state: COMPLETED</strong></p>
+    <p><strong>sacct exit code: 0:0</strong></p>
+    <pre>Submitted batch job 38057
+
+sacct -j 38057 --format=JobID,State,ExitCode,Elapsed -n
+38057         COMPLETED      0:0   00:28:52
+38057.batch   COMPLETED      0:0   00:28:52</pre>
+  </section>
+
+  <section>
+    <h2>Required Fixes</h2>
+    <p>None.</p>
+  </section>
+
+  <section>
+    <h2>Residual Risk</h2>
+    <p>The expanded vocabulary and rebuilt cache should be committed together by the post-accept subagent. No implementation files, <code>lead.html</code>, or <code>workflow_manifest.yaml</code> were edited by this review.</p>
+  </section>
+</main>
+</body>
+</html>

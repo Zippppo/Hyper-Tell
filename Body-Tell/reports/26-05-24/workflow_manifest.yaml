@@ -503,7 +503,7 @@ tasks:
     title: Expand vocabulary under VoxTell Appendix C principles
     owner: sp_b_sampling_vocab_worker
     phase: 3
-    status: gate_failed
+    status: accepted
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step4
@@ -515,11 +515,10 @@ tasks:
     - Static vocabulary validation passes.
     verification:
     - conda run -n voxtell python Body-Tell/scripts/audit_vocabulary.py
-    updated_at: '2026-05-25T22:04:03+00:00'
-    last_note: 'SP-B.Step5 vocabulary expansion artifacts exist and static validation passed, but review cannot accept:
-      phase1 Slurm gate job 38040 FAILED with exit code 1:0 because prompt_embeddings.pt is stale (264 cached prompts)
-      versus the expanded 418 prompt records. Workflow was adjusted to let SP-B.Step6 run next as the cache-unblocker before
-      rerunning SP-B.Step5 review/gate.'
+    updated_at: '2026-05-26T00:15:45+00:00'
+    last_note: 'Accepted after the required post-Step6 rerun review recorded Test quality pass, Targeted pytest pass, and
+      phase1 Slurm gate job 38057 COMPLETED with exit code 0:0. Vocabulary has 418 prompt records, cache has 418 rows with
+      shape (418, 2560), and vocab/cache hash 511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09 matches.'
     history:
     - at: '2026-05-25T16:37:07+00:00'
       status: ready
@@ -536,11 +535,16 @@ tasks:
       note: 'Plan updated per operator decision: Step5 remains unaccepted, but this is no longer a terminal blocker. Dispatch
         SP-B.Step6 next as a cache-unblocker, then rerun SP-B.Step5 reviewer/gate and post-accept only after the combined
         vocabulary/cache state passes.'
+    - at: '2026-05-26T00:15:45+00:00'
+      status: accepted
+      note: 'Accepted after the SP-B.Step6 cache-unblocker rebuilt prompt_embeddings.pt and the Step5 rerun reviewer recorded
+        Test quality pass, Targeted pytest pass, and phase1 Slurm gate job 38057 COMPLETED with exit code 0:0. Evidence:
+        runs/SP-B.Step5/REVIEW.html and runs/SP-B.Step5/vocabulary_audit_review.html.'
   SP-B.Step6:
     title: Rebuild text embedding cache
     owner: sp_b_sampling_vocab_worker
     phase: 3
-    status: ready
+    status: accepted
     plan_file: bodytell_sampling_vocabulary_optimization_report.html
     depends_on:
     - SP-B.Step4
@@ -562,20 +566,31 @@ tasks:
       post_accept_policy: 'Commit vocabulary and cache together after the rerun SP-B.Step5 reviewer accepts the combined
         state. If SP-B.Step6 itself needs a separate POST_ACCEPT.html, it must record that final workflow acceptance is deferred
         until SP-B.Step5 passes its gate.'
+      resolved_at: '2026-05-26T00:15:45+00:00'
+      resolved_by: SP-B.Step5 post-accept combined vocabulary/cache commit
+      resolved_evidence:
+      - runs/SP-B.Step6/REVIEW.html
+      - runs/SP-B.Step5/REVIEW.html
     acceptance:
     - Embedding row count equals prompt record count.
     - Vocabulary hash matches label_vocab.json.
     - Cache generation command and model/instruction are recorded.
     verification:
     - conda run -n voxtell python Body-Tell/scripts/build_prompt_embedding_cache.py --help
-    updated_at: '2026-05-25T22:04:03+00:00'
-    last_note: Ready as the explicit cache-unblocker for SP-B.Step5 gate_failed. Rebuild prompt_embeddings.pt for the 418-record
-      expanded vocabulary, then rerun SP-B.Step5 review/gate.
+    updated_at: '2026-05-26T00:15:45+00:00'
+    last_note: 'Accepted as the documented SP-B.Step5 cache-unblocker. Reviewer recorded Test quality pass, Targeted pytest
+      pass, phase1 Slurm gate job 38056 COMPLETED with exit code 0:0, and prompt_embeddings.pt rebuilt for 418 prompt records.
+      Final workflow acceptance is recorded in the SP-B.Step5 post-accept combined vocabulary/cache commit.'
     history:
     - at: '2026-05-25T22:04:03+00:00'
       status: ready
       note: 'Operator approved dependency exception: SP-B.Step6 may run before SP-B.Step5 acceptance because Step5 static
         vocabulary validation passed and the only recorded phase1 gate failure is stale prompt_embeddings.pt.'
+    - at: '2026-05-26T00:15:45+00:00'
+      status: accepted
+      note: 'Accepted under the cache-unblocker exception after rebuilding Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt
+        for 418 prompt records and reviewer gate job 38056 COMPLETED with exit code 0:0. Committed together with SP-B.Step5
+        after Step5 rerun review/gate passed.'
   SP-C.Task0:
     title: Add paper-mechanics profile skeleton
     owner: sp_c_training_eval_worker

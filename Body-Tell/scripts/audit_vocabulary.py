@@ -198,12 +198,16 @@ def render(args: argparse.Namespace) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset-info", type=Path, default=ROOT / "Dataset" / "dataset_info.json")
+    parser.add_argument(
+        "--dataset-info",
+        type=Path,
+        default=ROOT / "S2I-Dataset-70cls" / "dataset_info.json",
+    )
     parser.add_argument("--vocab", type=Path, default=ROOT / "configs" / "label_vocab.json")
     parser.add_argument(
         "--presence",
         type=Path,
-        default=ROOT / "artifacts" / "data_stats" / "class_presence.json",
+        default=ROOT / "S2I-Dataset-70cls" / "class_presence.json",
     )
     parser.add_argument(
         "--embedding-cache",
@@ -223,4 +227,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -179,7 +179,7 @@
     <div class="cards">
       <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9 #12</span></div>
       <div class="card"><strong>状态</strong><span class="tag warn">Task 0 ready</span></div>
-      <div class="card"><strong>硬依赖</strong><span class="tag ok">SP-A / SP-B Step 2 已满足</span></div>
+      <div class="card"><strong>硬依赖</strong><span class="tag ok">SP-A / SP-B Step 6 已满足</span></div>
       <div class="card"><strong>目标</strong><span class="tag info">paper-mechanics 训练控制面</span></div>
     </div>
   </header>
@@ -266,7 +266,7 @@
         <tr>
           <td>SP-B Step 2/4：patch-level 2+1 与 aggregate concept sampler（已完成）</td>
           <td>paper-mechanics profile 的 prompt 监督应基于 patch/concept present/absent，而不是 whole-case presence；combined labels 需要 component-union target masks。</td>
-          <td>Task 6 可直接基于 patch-level sampler 与 aggregate metadata 验证 prompt/negative 评估；最终 vocabulary/cache 一致性当前改由 SP-B Step 6 cache-unblocker 先重建 embedding cache，再 rerun Step 5 gate。</td>
+          <td>Task 6 可直接基于 patch-level sampler、aggregate metadata 与已验收的 vocabulary/cache metadata 验证 prompt/negative 评估；最终仍需等 SP-C Task 5 前置。</td>
         </tr>
       </tbody>
     </table>
@@ -414,10 +414,10 @@
       <li>先做 Task 0，让 paper-mechanics profile 有显式配置入口和非复刻预算声明，但不改变默认训练。</li>
       <li>随后做 Task 1、Task 2、Task 3，形成 fixed-update + SGD + poly 的最小训练闭环。</li>
       <li>再做 Task 4，确保中断恢复不会破坏 poly schedule。</li>
-      <li>SP-A P3 与 SP-B Step 1/2/4 已完成；Task 5 等 SP-C Task 4 后执行。Task 6 可基于 patch-level sampler 与 aggregate metadata 验证 prompt/negative 口径，但最终 vocabulary/cache 一致性需等 SP-B Step 6 重建 cache、再由 SP-B Step 5 rerun Slurm gate 通过。</li>
+      <li>SP-A P3 与 SP-B Step 1/2/4/5/6 已完成；Task 5 等 SP-C Task 4 后执行。Task 6 可基于 patch-level sampler、aggregate metadata 与已验收的 vocabulary/cache metadata 验证 prompt/negative 口径，但仍需等 SP-C Task 5。</li>
       <li>Task 7 贯穿每个阶段：每完成一项机制，就补对应测试，避免把长训当成唯一验收。</li>
     </ol>
-    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可先基于已验收的 SP-B patch-level 与 aggregate concept sampler 做 prompt/negative 评估框架，但最终指标必须等 SP-B Step 6 cache rebuild 完成，并由 SP-B Step 5 rerun phase1 Slurm gate 通过后再定稿。</p>
+    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可基于已验收的 SP-B patch-level sampler、aggregate concept sampler、vocabulary expansion 与 rebuilt cache metadata 做 prompt/negative 评估框架，但最终指标仍需等 SP-C Task 5。</p>
   </section>
 
   <section>
@@ -441,7 +441,7 @@ pytest Body-Tell/tests/test_deep_supervision.py -q</code></pre>
 
   <section>
     <h2>最终判定</h2>
-    <p>SP-C 已接管父报告中所有训练控制面与评估协议缺口。SP-A 已提供 aligned model 与 P6-lite 权重加载入口，SP-B Step 1/2/4 已提供动态采样 RNG、patch-level 2+1 prompt 口径与 aggregate concept sampler；SP-B Step 5 当前 gate_failed，SP-B Step 6 已按 dependency exception 准备先重建 stale embedding cache。SP-C 现在要补齐 optimizer/scheduler、deep supervision、checkpoint resume 与评估协议，形成可验证的 paper-mechanics 训练闭环。</p>
+    <p>SP-C 已接管父报告中所有训练控制面与评估协议缺口。SP-A 已提供 aligned model 与 P6-lite 权重加载入口，SP-B Step 1/2/4/5/6 已提供动态采样 RNG、patch-level 2+1 prompt 口径、aggregate concept sampler、expanded vocabulary 与 rebuilt embedding cache。SP-C 现在要补齐 optimizer/scheduler、deep supervision、checkpoint resume 与评估协议，形成可验证的 paper-mechanics 训练闭环。</p>
     <p class="small">本文件同步 SP-A 前置完成状态，未修改训练代码。</p>
   </section>
 </main>
