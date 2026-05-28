@@ -1,8 +1,8 @@
 schema_version: 1
 project: Body-Tell training loop/eval alignment
 created_at: "2026-05-28"
-updated_at: "2026-05-28T16:20:35+08:00"
-last_note: "T3 accepted after reviewer evidence verified; T4 is ready because its T3 dependency is now accepted."
+updated_at: "2026-05-28T16:44:21+08:00"
+last_note: "T4 accepted after reviewer evidence verified; all four plan tasks are accepted and no ready/todo tasks remain."
 source_plan: Body-Tell/reports/26-05-24/bodytell_training_loop_eval_alignment_plan_2026-05-24.html
 
 status_model:
@@ -146,9 +146,10 @@ tasks:
   T4:
     title: Reduce DDP metrics before logging and best checkpoint decisions
     owner: bodytell_training_loop_worker
-    status: ready
+    status: accepted
     ready_at: "2026-05-28T16:20:35+08:00"
-    last_note: "Ready after T3 accepted."
+    accepted_at: "2026-05-28T16:44:21+08:00"
+    last_note: "Reviewer accepted T4; focused test 1 passed, required pytest gate 18 passed, and test-train smoke entered DDP training through epoch 1 step 18/1259 before intentional smoke interruption."
     depends_on:
       - T3
     scope: All-reduce train/val metric numerators and counts across ranks before producing logs, W&B metrics, and best checkpoint decisions.
@@ -176,3 +177,7 @@ tasks:
         by: post_accept
         status: ready
         note: "Dependency T3 is accepted; T4 can now be assigned."
+      - at: "2026-05-28T16:44:21+08:00"
+        by: post_accept
+        status: accepted
+        note: "Verified REVIEW.html accept evidence, required pytest gate, and source-plan training smoke evidence; accepted and prepared task-scoped commit. No remaining ready/todo tasks in this plan."

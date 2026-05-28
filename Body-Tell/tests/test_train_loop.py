@@ -321,11 +321,10 @@ def test_evaluate_accepts_deep_supervision_outputs(monkeypatch) -> None:
 
     assert criterion.seen_output_shapes == [(1, 2, 4, 4, 4), (1, 2, 2, 2, 2)]
     assert metrics_seen == {"logits": (1, 2, 4, 4, 4), "targets": (1, 2, 4, 4, 4)}
-    assert result == {
-        "loss": result["loss"],
-        "foreground_mean_dice": 0.5,
-        "negative_fp_rate": 0.25,
-    }
+    assert result["loss"] == pytest.approx(result["bce_loss"])
+    assert result["loss"] == pytest.approx(result["dice_loss"])
+    assert result["foreground_mean_dice"] == 0.5
+    assert result["negative_fp_rate"] == 1.0
 
 
 def test_primary_logits_for_metrics_rejects_shape_mismatch() -> None:
@@ -334,6 +333,48 @@ def test_primary_logits_for_metrics_rejects_shape_mismatch() -> None:
 
     with pytest.raises(ValueError, match="primary logits shape"):
         train_module._primary_logits_for_metrics(model_outputs, targets)
+
+
+def test_ddp_metric_reduce_helper(monkeypatch) -> None:
+    local_totals = {
+        "loss_sum": 2.0,
+        "bce_loss_sum": 1.0,
+        "dice_loss_sum": 1.5,
+        "foreground_dice_sum": 0.4,
+        "foreground_dice_count": 1.0,
+        "negative_fp_sum": 3.0,
+        "negative_fp_count": 10.0,
+        "batch_count": 2.0,
+    }
+    other_rank_totals = torch.tensor(
+        [6.0, 5.0, 4.5, 1.6, 3.0, 1.0, 10.0, 1.0],
+        dtype=torch.float64,
+    )
+    all_reduce_calls = []
+
+    def fake_all_reduce(tensor: torch.Tensor, op: object | None = None) -> None:
+        all_reduce_calls.append((tensor.clone(), op))
+        tensor += other_rank_totals.to(device=tensor.device)
+
+    monkeypatch.setattr(train_module.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(train_module.dist, "all_reduce", fake_all_reduce)
+
+    reduced = train_module._reduce_ddp_metric_totals(
+        local_totals,
+        torch.device("cpu"),
+    )
+    metrics = train_module._metric_averages_from_totals(reduced)
+
+    assert len(all_reduce_calls) == 1
+    assert metrics == {
+        "loss": pytest.approx(8.0 / 3.0),
+        "bce_loss": pytest.approx(2.0),
+        "dice_loss": pytest.approx(2.0),
+        "foreground_mean_dice": pytest.approx(0.5),
+        "negative_fp_rate": pytest.approx(0.2),
+    }
+    assert local_totals["foreground_dice_sum"] / local_totals["foreground_dice_count"] == 0.4
+    assert metrics["foreground_mean_dice"] > 0.45
 
 
 def test_mini_overfit_loss_decreases(tmp_path: Path) -> None:

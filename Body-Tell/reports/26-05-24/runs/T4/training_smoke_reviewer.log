@@ -1,0 +1,44 @@
+16:40:34 [INFO] Device: cuda:0 (distributed=True)
+wandb: Tracking run with wandb version 0.27.0
+wandb: W&B syncing is set to `offline` in this directory. Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
+wandb: Run data is saved locally in wandb/wandb/offline-run-20260528_164034-6derj5d7
+16:40:35 [INFO] Gradient clipping enabled: max_norm=1.0
+16:40:35 [INFO] Train dataset: 10070 samples
+16:40:35 [INFO] Val dataset: 500 samples
+16:40:38 [INFO] Model parameters: 440,029,541 (440.03M)
+epoch 1:   0%|          | 0/1259 [00:00<?, ?it/s]epoch 1:   0%|          | 1/1259 [00:05<1:56:59,  5.58s/it]epoch 1:   0%|          | 2/1259 [00:07<1:13:22,  3.50s/it]epoch 1:   0%|          | 3/1259 [00:09<59:24,  2.84s/it]  epoch 1:   0%|          | 4/1259 [00:11<52:48,  2.52s/it]epoch 1:   0%|          | 5/1259 [00:13<49:07,  2.35s/it]epoch 1:   0%|          | 6/1259 [00:15<46:53,  2.25s/it]epoch 1:   1%|          | 7/1259 [00:17<45:29,  2.18s/it]epoch 1:   1%|          | 8/1259 [00:19<44:31,  2.14s/it]epoch 1:   1%|          | 9/1259 [00:21<43:54,  2.11s/it]epoch 1:   1%|          | 10/1259 [00:23<43:27,  2.09s/it]epoch 1:   1%|          | 11/1259 [00:26<43:08,  2.07s/it]epoch 1:   1%|          | 12/1259 [00:28<42:54,  2.06s/it]epoch 1:   1%|          | 13/1259 [00:30<42:45,  2.06s/it]epoch 1:   1%|          | 14/1259 [00:32<42:37,  2.05s/it]epoch 1:   1%|          | 15/1259 [00:34<42:31,  2.05s/it]epoch 1:   1%|▏         | 16/1259 [00:36<42:26,  2.05s/it]epoch 1:   1%|▏         | 17/1259 [00:38<42:23,  2.05s/it]epoch 1:   1%|▏         | 18/1259 [00:40<42:19,  2.05s/it]W0528 16:41:18.709000 852641 site-packages/torch/distributed/elastic/agent/server/api.py:723] Received 15 death signal, shutting down workers
+W0528 16:41:18.711000 852641 site-packages/torch/distributed/elastic/multiprocessing/api.py:900] Sending process 852728 closing signal SIGTERM
+Traceback (most recent call last):
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/bin/torchrun", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 143, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/launcher/api.py", line 268, in launch_agent
+    result = agent.run()
+             ^^^^^^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/elastic/agent/server/api.py", line 715, in run
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/elastic/agent/server/api.py", line 879, in _invoke_run
+    time.sleep(monitor_interval)
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/api.py", line 83, in _terminate_process_handler
+    sigval = signal.Signals(signum)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/enum.py", line 709, in __call__
+    def __call__(cls, value, names=None, *values, module=None, qualname=None, type=None, start=1, boundary=None):
+
+  File "/home/xiaoqingguo/Rongkun/miniconda3/envs/voxtell/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/api.py", line 84, in _terminate_process_handler
+    raise SignalException(f"Process {os.getpid()} got signal: {sigval}", sigval=sigval)
+torch.distributed.elastic.multiprocessing.api.SignalException: Process 852641 got signal: 15

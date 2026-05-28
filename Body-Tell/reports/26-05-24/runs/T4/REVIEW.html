@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>T4 Review - DDP Metric Reduction</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.45; margin: 2rem; max-width: 980px; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { background: #f6f8fa; padding: 0.75rem; overflow-x: auto; }
+    .pass { color: #116329; font-weight: 600; }
+    .warn { color: #8a4600; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>T4 Review - Reduce DDP Metrics Before Logging and Best Checkpoint Decisions</h1>
+
+  <h2>Verdict</h2>
+  <p><strong>Verdict:</strong> <span class="pass">accept</span></p>
+
+  <h2>Test Quality</h2>
+  <p><strong>Test quality:</strong> pass</p>
+  <p><strong>Focused tests reviewed:</strong> <code>Body-Tell/tests/test_train_loop.py::test_ddp_metric_reduce_helper</code></p>
+  <p><strong>Regression covered:</strong> yes - the test combines rank-local totals with a mocked second rank and verifies loss, BCE, Dice, foreground Dice numerator/count, negative false-positive numerator/count, and batch count are averaged from global totals, not rank-local shard means.</p>
+  <p><strong>Red evidence reviewed:</strong> yes - <code>RESULT.html</code> records the focused test failing before implementation with <code>AttributeError: module 'train' has no attribute '_reduce_ddp_metric_totals'</code>; the current test diff adds that helper-level regression assertion.</p>
+  <p><strong>Targeted pytest:</strong> pass</p>
+
+  <h2>Acceptance Criterion Evidence</h2>
+  <ul>
+    <li><strong>Loss, BCE, Dice, positive Dice numerator/count, and negative false-positive numerator/count are globally reduced:</strong> pass. <code>Body-Tell/train.py</code> defines <code>_METRIC_TOTAL_KEYS</code> with all required totals, reduces them with <code>dist.all_reduce(..., SUM)</code>, and derives averages only after reduction. Train accumulation is at lines 413-423 and validation accumulation is at lines 480-490.</li>
+    <li><strong>Rank0 logging and W&amp;B output use global metrics:</strong> pass. Train and validation logging consume the post-reduction <code>avg</code> returned by <code>train_one_epoch()</code>/<code>evaluate()</code>; W&amp;B payloads are built from <code>train_metrics</code> and <code>val_metrics</code> returned by those functions.</li>
+    <li><strong>Best checkpoint selection uses global validation metrics:</strong> pass. The best checkpoint branch compares <code>val_metrics["foreground_mean_dice"]</code>, and <code>val_metrics</code> is returned after the validation reduction path.</li>
+    <li><strong>No fixed-update or scheduler scope is introduced:</strong> pass. Review found no scheduler or fixed-update behavior added in the task diff; optimizer/epoch flow remains unchanged apart from metric aggregation.</li>
+  </ul>
+
+  <h2>Commands Run</h2>
+  <pre><code>conda run --no-capture-output -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py::test_ddp_metric_reduce_helper -q</code></pre>
+  <pre><code>.                                                                        [100%]
+1 passed in 1.11s</code></pre>
+
+  <pre><code>conda run --no-capture-output -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q</code></pre>
+  <pre><code>..................                                                       [100%]
+18 passed in 7.11s</code></pre>
+
+  <pre><code>MASTER_PORT=29612 timeout 180s conda run --no-capture-output -n voxtell bash h20b-sh-scripts/test-train.sh</code></pre>
+  <pre><code>16:40:34 [INFO] Device: cuda:0 (distributed=True)
+16:40:35 [INFO] Train dataset: 10070 samples
+16:40:35 [INFO] Val dataset: 500 samples
+16:40:38 [INFO] Model parameters: 440,029,541 (440.03M)
+epoch 1: ... 18/1259 ...
+torch.distributed.elastic.multiprocessing.api.SignalException: Process 852641 got signal: 15</code></pre>
+
+  <h2>Required Gate</h2>
+  <p><strong>Pytest gate:</strong> pass - required pytest gate completed with <code>18 passed in 7.11s</code>.</p>
+  <p><strong>Training smoke gate:</strong> pass under the plan-specific smoke standard. The real <code>bash h20b-sh-scripts/test-train.sh</code> entry was run inside the <code>voxtell</code> conda environment so <code>torchrun</code> was available. It entered distributed training, loaded train and validation datasets, constructed the model, and reached epoch 1 step 18/1259. The process was then stopped with SIGTERM by review to avoid waiting for a full run.</p>
+
+  <h2>Artifacts</h2>
+  <ul>
+    <li><code>Body-Tell/reports/26-05-24/runs/T4/focused_pytest_reviewer.log</code></li>
+    <li><code>Body-Tell/reports/26-05-24/runs/T4/required_pytest_reviewer.log</code></li>
+    <li><code>Body-Tell/reports/26-05-24/runs/T4/training_smoke_reviewer.log</code></li>
+  </ul>
+
+  <h2>Required Fix List</h2>
+  <p>None.</p>
+
+  <h2>Residual Risks</h2>
+  <ul>
+    <li>The training smoke was intentionally stopped after proving it entered training and passed the immediate first forward/backward failure point; it did not complete a full epoch.</li>
+    <li>The focused all-reduce test mocks a second rank; the smoke script uses <code>nproc_per_node=1</code>, so multi-rank behavior is covered by unit semantics and implementation inspection rather than a multi-GPU smoke run.</li>
+  </ul>
+</body>
+</html>

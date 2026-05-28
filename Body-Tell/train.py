@@ -250,6 +250,104 @@ def _foreground_dice_sum_count(metrics: dict[str, float]) -> tuple[float, int]:
     return dice, 1
 
 
+_METRIC_TOTAL_KEYS = (
+    "loss_sum",
+    "bce_loss_sum",
+    "dice_loss_sum",
+    "foreground_dice_sum",
+    "foreground_dice_count",
+    "negative_fp_sum",
+    "negative_fp_count",
+    "batch_count",
+)
+
+
+def _negative_fp_sum_count(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    target_empty: torch.Tensor | None = None,
+    prompt_valid: torch.Tensor | None = None,
+    threshold: float = 0.5,
+) -> tuple[float, int]:
+    if logits.shape != targets.shape:
+        raise ValueError(f"logits shape {tuple(logits.shape)} != targets {tuple(targets.shape)}")
+
+    predictions = (torch.sigmoid(logits) > threshold).float()
+    targets = targets.float()
+    flat_predictions = predictions.flatten(start_dim=2)
+    flat_targets = targets.flatten(start_dim=2)
+    expected_prompt_shape = tuple(flat_targets.shape[:2])
+    target_has_foreground = flat_targets.sum(dim=-1) > 0
+
+    if target_empty is None:
+        target_empty = ~target_has_foreground
+    else:
+        if tuple(target_empty.shape) != expected_prompt_shape:
+            raise ValueError(
+                f"target_empty shape {tuple(target_empty.shape)} != expected "
+                f"{expected_prompt_shape}"
+            )
+        target_empty = target_empty.to(device=logits.device, dtype=torch.bool)
+    if prompt_valid is None:
+        prompt_valid = torch.ones_like(target_empty, dtype=torch.bool)
+    else:
+        if tuple(prompt_valid.shape) != expected_prompt_shape:
+            raise ValueError(
+                f"prompt_valid shape {tuple(prompt_valid.shape)} != expected "
+                f"{expected_prompt_shape}"
+            )
+        prompt_valid = prompt_valid.to(device=logits.device, dtype=torch.bool)
+
+    negative = prompt_valid & target_empty
+    if not negative.any():
+        return 0.0, 0
+
+    negative_predictions = flat_predictions[negative]
+    return float(negative_predictions.sum().item()), int(negative_predictions.numel())
+
+
+def _reduce_ddp_metric_totals(
+    totals: dict[str, float],
+    device: torch.device,
+) -> dict[str, float]:
+    reduced = {key: float(totals.get(key, 0.0)) for key in _METRIC_TOTAL_KEYS}
+    if not dist.is_available() or not dist.is_initialized():
+        return reduced
+
+    values = torch.tensor(
+        [reduced[key] for key in _METRIC_TOTAL_KEYS],
+        device=device,
+        dtype=torch.float64,
+    )
+    dist.all_reduce(values, op=dist.ReduceOp.SUM)
+    return {key: float(values[idx].item()) for idx, key in enumerate(_METRIC_TOTAL_KEYS)}
+
+
+def _metric_averages_from_totals(totals: dict[str, float]) -> dict[str, float]:
+    batch_count = totals.get("batch_count", 0.0)
+    foreground_dice_count = totals.get("foreground_dice_count", 0.0)
+    negative_fp_count = totals.get("negative_fp_count", 0.0)
+    return {
+        "loss": totals.get("loss_sum", 0.0) / batch_count if batch_count > 0 else 0.0,
+        "bce_loss": (
+            totals.get("bce_loss_sum", 0.0) / batch_count if batch_count > 0 else 0.0
+        ),
+        "dice_loss": (
+            totals.get("dice_loss_sum", 0.0) / batch_count if batch_count > 0 else 0.0
+        ),
+        "foreground_mean_dice": (
+            totals.get("foreground_dice_sum", 0.0) / foreground_dice_count
+            if foreground_dice_count > 0
+            else 0.0
+        ),
+        "negative_fp_rate": (
+            totals.get("negative_fp_sum", 0.0) / negative_fp_count
+            if negative_fp_count > 0
+            else 0.0
+        ),
+    }
+
+
 def train_one_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -263,13 +361,7 @@ def train_one_epoch(
     grad_clip_norm: float | None = None,
 ) -> dict[str, float]:
     model.train()
-    total_loss = 0.0
-    total_bce = 0.0
-    total_dice = 0.0
-    total_fg_dice_sum = 0.0
-    total_fg_dice_count = 0
-    total_neg_fp = 0.0
-    n_batches = 0
+    totals = {key: 0.0 for key in _METRIC_TOTAL_KEYS}
 
     for batch in tqdm(
         loader,
@@ -311,26 +403,24 @@ def train_one_epoch(
                 target_empty=target_empty,
                 prompt_valid=prompt_valid,
             )
+            neg_fp_sum, neg_fp_count = _negative_fp_sum_count(
+                primary_logits.float(),
+                target_masks,
+                target_empty=target_empty,
+                prompt_valid=prompt_valid,
+            )
 
-        total_loss += result["loss"].item()
-        total_bce += result["bce_loss"].item()
-        total_dice += result["dice_loss"].item()
+        totals["loss_sum"] += result["loss"].item()
+        totals["bce_loss_sum"] += result["bce_loss"].item()
+        totals["dice_loss_sum"] += result["dice_loss"].item()
         fg_dice_sum, fg_dice_count = _foreground_dice_sum_count(metrics)
-        total_fg_dice_sum += fg_dice_sum
-        total_fg_dice_count += fg_dice_count
-        total_neg_fp += metrics["negative_fp_rate"]
-        n_batches += 1
+        totals["foreground_dice_sum"] += fg_dice_sum
+        totals["foreground_dice_count"] += fg_dice_count
+        totals["negative_fp_sum"] += neg_fp_sum
+        totals["negative_fp_count"] += neg_fp_count
+        totals["batch_count"] += 1
 
-    foreground_mean_dice = (
-        total_fg_dice_sum / total_fg_dice_count if total_fg_dice_count > 0 else 0.0
-    )
-    avg = {
-        "loss": total_loss / n_batches,
-        "bce_loss": total_bce / n_batches,
-        "dice_loss": total_dice / n_batches,
-        "foreground_mean_dice": foreground_mean_dice,
-        "negative_fp_rate": total_neg_fp / n_batches,
-    }
+    avg = _metric_averages_from_totals(_reduce_ddp_metric_totals(totals, device))
     if is_main_process():
         log.info(
             "Epoch %03d | loss=%.4f (bce=%.4f dice=%.4f) | fg_dice=%.4f | neg_fp=%.4f",
@@ -354,11 +444,7 @@ def evaluate(
     amp_dtype: torch.dtype | None = None,
 ) -> dict[str, float]:
     model.eval()
-    total_loss = 0.0
-    total_fg_dice_sum = 0.0
-    total_fg_dice_count = 0
-    total_neg_fp = 0.0
-    n_batches = 0
+    totals = {key: 0.0 for key in _METRIC_TOTAL_KEYS}
 
     for batch in tqdm(
         loader,
@@ -384,29 +470,30 @@ def evaluate(
             target_empty=target_empty,
             prompt_valid=prompt_valid,
         )
+        neg_fp_sum, neg_fp_count = _negative_fp_sum_count(
+            primary_logits.float(),
+            target_masks,
+            target_empty=target_empty,
+            prompt_valid=prompt_valid,
+        )
 
-        total_loss += result["loss"].item()
+        totals["loss_sum"] += result["loss"].item()
+        totals["bce_loss_sum"] += result["bce_loss"].item()
+        totals["dice_loss_sum"] += result["dice_loss"].item()
         fg_dice_sum, fg_dice_count = _foreground_dice_sum_count(metrics)
-        total_fg_dice_sum += fg_dice_sum
-        total_fg_dice_count += fg_dice_count
-        total_neg_fp += metrics["negative_fp_rate"]
-        n_batches += 1
+        totals["foreground_dice_sum"] += fg_dice_sum
+        totals["foreground_dice_count"] += fg_dice_count
+        totals["negative_fp_sum"] += neg_fp_sum
+        totals["negative_fp_count"] += neg_fp_count
+        totals["batch_count"] += 1
 
-    if n_batches == 0:
-        return {"loss": 0.0, "foreground_mean_dice": 0.0, "negative_fp_rate": 0.0}
-
-    foreground_mean_dice = (
-        total_fg_dice_sum / total_fg_dice_count if total_fg_dice_count > 0 else 0.0
-    )
-    avg = {
-        "loss": total_loss / n_batches,
-        "foreground_mean_dice": foreground_mean_dice,
-        "negative_fp_rate": total_neg_fp / n_batches,
-    }
+    avg = _metric_averages_from_totals(_reduce_ddp_metric_totals(totals, device))
     if is_main_process():
         log.info(
-            "  [val] loss=%.4f | fg_dice=%.4f | neg_fp=%.4f",
+            "  [val] loss=%.4f (bce=%.4f dice=%.4f) | fg_dice=%.4f | neg_fp=%.4f",
             avg["loss"],
+            avg["bce_loss"],
+            avg["dice_loss"],
             avg["foreground_mean_dice"],
             avg["negative_fp_rate"],
         )
