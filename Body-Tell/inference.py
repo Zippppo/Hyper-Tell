@@ -226,6 +226,15 @@ def build_model(cfg: Mapping[str, Any]) -> VoxTellBodyModel:
     config = VoxTellBodyConfig(
         input_channels=mc["input_channels"],
         encoder_channels=tuple(mc["encoder_channels"]),
+        backbone=mc.get("backbone", "conv"),
+        n_blocks_per_stage=(
+            tuple(mc["n_blocks_per_stage"])
+            if mc.get("n_blocks_per_stage") is not None
+            else None
+        ),
+        encoder_conv_bias=mc.get("encoder_conv_bias", True),
+        encoder_norm=mc.get("encoder_norm", "instance_norm_3d"),
+        encoder_activation=mc.get("encoder_activation", "leaky_relu"),
         text_embedding_dim=mc["text_embedding_dim"],
         query_dim=mc["query_dim"],
         text_projection_hidden_dim=mc["text_projection_hidden_dim"],

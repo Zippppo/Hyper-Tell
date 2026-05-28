@@ -134,6 +134,7 @@ def build_model(cfg: dict[str, Any]) -> VoxTellBodyModel:
         transformer_num_heads=mc["transformer_num_heads"],
         transformer_layers=mc["transformer_layers"],
         transformer_feedforward_dim=mc["transformer_feedforward_dim"],
+        transformer_dropout=mc.get("transformer_dropout", 0.1),
         decoder_layer=mc["decoder_layer"],
         num_maskformer_stages=mc["num_maskformer_stages"],
         num_heads=mc["num_heads"],

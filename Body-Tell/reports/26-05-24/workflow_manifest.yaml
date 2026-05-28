@@ -1,8 +1,8 @@
 schema_version: 1
 project: Body-Tell training loop/eval alignment
 created_at: "2026-05-28"
-updated_at: "2026-05-28T15:57:09+08:00"
-last_note: "T2 accepted after reviewer evidence verified; T3 is ready because its T2 dependency is now accepted."
+updated_at: "2026-05-28T16:20:35+08:00"
+last_note: "T3 accepted after reviewer evidence verified; T4 is ready because its T3 dependency is now accepted."
 source_plan: Body-Tell/reports/26-05-24/bodytell_training_loop_eval_alignment_plan_2026-05-24.html
 
 status_model:
@@ -107,9 +107,10 @@ tasks:
   T3:
     title: Unify training and inference model construction
     owner: bodytell_training_loop_worker
-    status: ready
+    status: accepted
     ready_at: "2026-05-28T15:57:09+08:00"
-    last_note: "Ready after T2 accepted."
+    accepted_at: "2026-05-28T16:20:35+08:00"
+    last_note: "Reviewer accepted T3; focused test 1 passed, required pytest gate 17 passed, and test-train smoke entered epoch 1 through batch 41 without immediate train-flow failure."
     depends_on:
       - T2
     scope: Keep Body-Tell/inference.py build_model aligned with Body-Tell/train.py for backbone, encoder block, bias, norm, activation, and deep supervision config fields, or extract a shared helper.
@@ -137,11 +138,17 @@ tasks:
         by: post_accept
         status: ready
         note: "Dependency T2 is accepted; T3 can now be assigned."
+      - at: "2026-05-28T16:20:35+08:00"
+        by: post_accept
+        status: accepted
+        note: "Verified REVIEW.html accept evidence, required pytest gate, and source-plan training smoke evidence; accepted and prepared task-scoped commit."
 
   T4:
     title: Reduce DDP metrics before logging and best checkpoint decisions
     owner: bodytell_training_loop_worker
-    status: todo
+    status: ready
+    ready_at: "2026-05-28T16:20:35+08:00"
+    last_note: "Ready after T3 accepted."
     depends_on:
       - T3
     scope: All-reduce train/val metric numerators and counts across ranks before producing logs, W&B metrics, and best checkpoint decisions.
@@ -164,3 +171,8 @@ tasks:
       result: Body-Tell/reports/26-05-24/runs/T4/RESULT.html
       review: Body-Tell/reports/26-05-24/runs/T4/REVIEW.html
       post_accept: Body-Tell/reports/26-05-24/runs/T4/POST_ACCEPT.html
+    history:
+      - at: "2026-05-28T16:20:35+08:00"
+        by: post_accept
+        status: ready
+        note: "Dependency T3 is accepted; T4 can now be assigned."
