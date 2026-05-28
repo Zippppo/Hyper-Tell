@@ -15,6 +15,7 @@ Body-Tell/S2I-Dataset/
 train-bdtell.sh
 Body-Tell/reports/26-05-24/done
 Body-Tell/reports/26-05-24/runs
+train.sh
 
 # Distribution / packaging
 .Python
