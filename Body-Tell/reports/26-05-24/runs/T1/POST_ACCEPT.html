@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T1 Post-Accept - Clarify deep_supervision model output contract</title>
+  <style>
+    body { margin: 0; background: #f7f9fc; color: #172033; font: 14px/1.55 system-ui, sans-serif; }
+    main { width: min(980px, calc(100% - 36px)); margin: 0 auto; padding: 32px 0 56px; }
+    section { background: #fff; border: 1px solid #d8e1ea; border-radius: 8px; padding: 16px 18px; margin: 14px 0; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    code { background: #edf4fb; border: 1px solid #c9d7e6; border-radius: 5px; padding: 1px 5px; }
+    ul { margin: 8px 0 0 20px; padding: 0; }
+    li { margin: 5px 0; }
+    .pass { color: #116329; font-weight: 700; }
+    .muted { color: #5f6d7e; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>T1 Post-Accept</h1>
+  <p class="muted">Task: Clarify deep_supervision model output contract.</p>
+
+  <section>
+    <h2>Verdict</h2>
+    <p><strong>Verdict:</strong> <span class="pass">committed</span></p>
+  </section>
+
+  <section>
+    <h2>Gate Evidence</h2>
+    <ul>
+      <li><code>runs/T1/REVIEW.html</code>: <strong>Verdict: accept</strong>.</li>
+      <li><strong>Test quality: pass</strong>.</li>
+      <li><strong>Targeted pytest: pass</strong>; focused tests reported <code>3 passed in 3.69s</code>.</li>
+      <li><strong>Required pytest gate: pass</strong>; required files reported <code>15 passed in 6.39s</code>.</li>
+      <li><strong>Training smoke gate: pass</strong>; <code>bash h20b-sh-scripts/test-train.sh</code> reached <code>epoch 1: 89%</code> on GPU2, proving the real training entry passed config loading, dataset construction, model construction, loss/metrics, and the first train forward/backward path.</li>
+      <li>No Slurm or <code>sbatch</code> evidence was required for this plan-specific T1 gate.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Manifest Updates</h2>
+    <ul>
+      <li><code>T1</code> marked <code>accepted</code> with <code>accepted_at</code>, <code>last_note</code>, and history.</li>
+      <li><code>T2</code> marked <code>ready</code> because its only dependency, <code>T1</code>, is accepted.</li>
+      <li>Top-level <code>updated_at</code> and <code>last_note</code> updated.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Documents Synchronized</h2>
+    <ul>
+      <li><code>lead.md</code> created as a compact progress document for T1 accepted status and next ready task.</li>
+      <li>Source-plan correction preserved: this T1 gate uses pytest plus training smoke, not the old Phase1 Slurm template gate.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Consistency Checks</h2>
+    <ul>
+      <li>Direct review grep verified <code>Verdict: accept</code>, <code>Test quality: pass</code>, <code>Targeted pytest: pass</code>, <code>Required gate: pass</code>, <code>15 passed</code>, and <code>epoch 1: 89%</code>.</li>
+      <li>Targeted status grep verified <code>T1</code> is <code>accepted</code> and <code>T2</code> is <code>ready</code> in manifest/progress status.</li>
+      <li><code>git diff --check</code> passed for the files prepared for commit.</li>
+      <li><code>git status --short</code> was checked before commit; unrelated local <code>h20b-sh-scripts/test-train.sh</code> changes were left unstaged.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Git Commit</h2>
+    <p><strong>Commit subject:</strong> <code>Body-Tell: accept T1</code></p>
+    <p><strong>Commit hash:</strong> reported in the maintainer final status after this artifact is included in the task-scoped commit.</p>
+  </section>
+
+  <section>
+    <h2>Files Included</h2>
+    <ul>
+      <li><code>Body-Tell/train.py</code></li>
+      <li><code>Body-Tell/tests/test_train_loop.py</code></li>
+      <li><code>Body-Tell/reports/26-05-24/workflow_manifest.yaml</code></li>
+      <li><code>Body-Tell/reports/26-05-24/lead.md</code></li>
+      <li><code>Body-Tell/reports/26-05-24/runs/T1/RESULT.html</code></li>
+      <li><code>Body-Tell/reports/26-05-24/runs/T1/REVIEW.html</code></li>
+      <li><code>Body-Tell/reports/26-05-24/runs/T1/POST_ACCEPT.html</code></li>
+      <li><code>Body-Tell/reports/26-05-24/runs/T1/training_smoke_gpu2_evidence_20260528.txt</code></li>
+      <li><code>Body-Tell/reports/26-05-24/runs/T1/training_smoke_gate_20260528.log</code></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Unrelated Dirty Files</h2>
+    <ul>
+      <li><code>h20b-sh-scripts/test-train.sh</code> has local changes outside the T1 commit scope and was not included.</li>
+      <li><code>.codex/SKILL/workflow.md</code> was checked via status; no T1 commit content was staged from that path.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Next Ready Tasks</h2>
+    <p><code>T2</code> - Fix prompt metrics foreground Dice aggregation.</p>
+  </section>
+
+  <section>
+    <h2>Blockers And Risks</h2>
+    <p>Blockers: none. Residual risk: tensor pass-through object identity is implementation-reviewed, not directly asserted by the focused tests.</p>
+  </section>
+</main>
+</body>
+</html>

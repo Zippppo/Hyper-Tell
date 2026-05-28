@@ -1,0 +1,154 @@
+schema_version: 1
+project: Body-Tell training loop/eval alignment
+created_at: "2026-05-28"
+updated_at: "2026-05-28T15:36:47+08:00"
+last_note: "T1 accepted after reviewer evidence verified; T2 is ready because its T1 dependency is now accepted."
+source_plan: Body-Tell/reports/26-05-24/bodytell_training_loop_eval_alignment_plan_2026-05-24.html
+
+status_model:
+  todo: Task is defined but not currently runnable.
+  ready: Task dependencies are accepted and the task can be assigned.
+  assigned: A worker run has been started.
+  submitted: Worker produced a result and is waiting for review.
+  needs_fix: Review failed; rerun the same task with review notes.
+  gate_failed: Required verification failed or required evidence is missing.
+  blocked: Task cannot move without human input or an external artifact.
+  accepted: Review, required gates, commit, and status recording are complete.
+
+agents:
+  bodytell_training_loop_worker:
+    role: Implements one task at a time using TDD; writes task result artifacts only.
+  reviewer:
+    role: Independently reviews test quality, implementation, focused tests, and required gate.
+  post_accept:
+    role: Runs only after reviewer acceptance; verifies evidence, commits, and records accepted status.
+
+required_gate:
+  focused_pytest:
+    command: pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q
+  training_smoke:
+    command: bash h20b-sh-scripts/test-train.sh
+
+tasks:
+  T1:
+    title: Clarify deep_supervision model output contract
+    owner: bodytell_training_loop_worker
+    status: accepted
+    accepted_at: "2026-05-28T15:36:47+08:00"
+    last_note: "Reviewer accepted T1; focused tests 3 passed, required pytest gate 15 passed, and test-train smoke reached epoch 1 89% without immediate train-flow failure."
+    depends_on: []
+    scope: Split model outputs for train/evaluate so the full deep supervision bundle goes to loss while only primary logits go to metrics; fail fast if the primary output is not shape-compatible with target masks.
+    acceptance:
+      - Loss receives the complete deep supervision output bundle.
+      - Metrics receive only the primary prediction tensor.
+      - Tensor outputs pass through unchanged; list/tuple outputs use the first primary-scale tensor.
+      - Shape mismatch between primary logits and target masks fails fast.
+    focused_tests:
+      - Body-Tell/tests/test_train_loop.py::test_train_one_epoch_accepts_deep_supervision_outputs
+      - Body-Tell/tests/test_train_loop.py::test_evaluate_accepts_deep_supervision_outputs
+    required_gate:
+      - pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q
+      - bash h20b-sh-scripts/test-train.sh
+    writable_paths:
+      - Body-Tell/train.py
+      - Body-Tell/tests/test_train_loop.py
+      - Body-Tell/configs/test-model-config.yaml
+      - Body-Tell/reports/26-05-24/runs/T1/**
+    artifact_paths:
+      result: Body-Tell/reports/26-05-24/runs/T1/RESULT.html
+      review: Body-Tell/reports/26-05-24/runs/T1/REVIEW.html
+      post_accept: Body-Tell/reports/26-05-24/runs/T1/POST_ACCEPT.html
+    history:
+      - at: "2026-05-28T15:36:47+08:00"
+        by: post_accept
+        status: accepted
+        note: "Verified REVIEW.html accept evidence, required pytest gate, and source-plan training smoke evidence; accepted and prepared task-scoped commit."
+
+  T2:
+    title: Fix prompt metrics foreground Dice aggregation
+    owner: bodytell_training_loop_worker
+    status: ready
+    ready_at: "2026-05-28T15:36:47+08:00"
+    last_note: "Ready after T1 accepted."
+    depends_on:
+      - T1
+    scope: Aggregate foreground Dice by valid positive prompt sum/count so negative-only batches do not contribute NaN while still contributing negative false-positive statistics.
+    acceptance:
+      - Negative-only batches do not make epoch foreground Dice NaN.
+      - Foreground Dice is computed from valid positive prompt sums and counts.
+      - Negative false-positive statistics still include negative-only batches.
+      - Optional target_empty and prompt_valid shape checks fail fast if added.
+    focused_tests:
+      - Body-Tell/tests/test_prompt_loss_backward.py::test_prompt_metrics_nan_safe_foreground_dice_aggregation
+    required_gate:
+      - pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q
+      - bash h20b-sh-scripts/test-train.sh
+    writable_paths:
+      - Body-Tell/train.py
+      - Body-Tell/body_tell/metrics/**
+      - Body-Tell/tests/test_prompt_loss_backward.py
+      - Body-Tell/configs/test-model-config.yaml
+      - Body-Tell/reports/26-05-24/runs/T2/**
+    artifact_paths:
+      result: Body-Tell/reports/26-05-24/runs/T2/RESULT.html
+      review: Body-Tell/reports/26-05-24/runs/T2/REVIEW.html
+      post_accept: Body-Tell/reports/26-05-24/runs/T2/POST_ACCEPT.html
+    history:
+      - at: "2026-05-28T15:36:47+08:00"
+        by: post_accept
+        status: ready
+        note: "Dependency T1 is accepted; T2 can now be assigned."
+
+  T3:
+    title: Unify training and inference model construction
+    owner: bodytell_training_loop_worker
+    status: todo
+    depends_on:
+      - T2
+    scope: Keep Body-Tell/inference.py build_model aligned with Body-Tell/train.py for backbone, encoder block, bias, norm, activation, and deep supervision config fields, or extract a shared helper.
+    acceptance:
+      - Training and inference build the same key architecture from the aligned config.
+      - Inference receives the same backbone and encoder policy fields as training.
+      - Strict checkpoint loading is not exposed to a train/inference architecture mismatch.
+    focused_tests:
+      - Body-Tell/tests/test_inference_paths.py::test_train_and_inference_build_model_match_aligned_config
+    required_gate:
+      - pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q
+      - bash h20b-sh-scripts/test-train.sh
+    writable_paths:
+      - Body-Tell/train.py
+      - Body-Tell/inference.py
+      - Body-Tell/tests/test_inference_paths.py
+      - Body-Tell/configs/test-model-config.yaml
+      - Body-Tell/reports/26-05-24/runs/T3/**
+    artifact_paths:
+      result: Body-Tell/reports/26-05-24/runs/T3/RESULT.html
+      review: Body-Tell/reports/26-05-24/runs/T3/REVIEW.html
+      post_accept: Body-Tell/reports/26-05-24/runs/T3/POST_ACCEPT.html
+
+  T4:
+    title: Reduce DDP metrics before logging and best checkpoint decisions
+    owner: bodytell_training_loop_worker
+    status: todo
+    depends_on:
+      - T3
+    scope: All-reduce train/val metric numerators and counts across ranks before producing logs, W&B metrics, and best checkpoint decisions.
+    acceptance:
+      - Loss, BCE, Dice, positive Dice numerator/count, and negative false-positive numerator/count are globally reduced.
+      - Rank0 logging and W&B output use global metrics, not rank-local shard means.
+      - Best checkpoint selection uses global validation metrics.
+      - No fixed-update or scheduler scope is introduced.
+    focused_tests:
+      - Body-Tell/tests/test_train_loop.py::test_ddp_metric_reduce_helper
+    required_gate:
+      - pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q
+      - bash h20b-sh-scripts/test-train.sh
+    writable_paths:
+      - Body-Tell/train.py
+      - Body-Tell/tests/test_train_loop.py
+      - Body-Tell/configs/test-model-config.yaml
+      - Body-Tell/reports/26-05-24/runs/T4/**
+    artifact_paths:
+      result: Body-Tell/reports/26-05-24/runs/T4/RESULT.html
+      review: Body-Tell/reports/26-05-24/runs/T4/REVIEW.html
+      post_accept: Body-Tell/reports/26-05-24/runs/T4/POST_ACCEPT.html

@@ -207,6 +207,34 @@ def _resolve_amp_dtype(name: str) -> torch.dtype:
     raise ValueError(f"unsupported AMP dtype: {name}")
 
 
+def _primary_logits_for_metrics(
+    model_outputs: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
+    target_masks: torch.Tensor,
+) -> torch.Tensor:
+    if isinstance(model_outputs, torch.Tensor):
+        primary_logits = model_outputs
+    elif isinstance(model_outputs, (list, tuple)):
+        if not model_outputs:
+            raise ValueError("deep supervision model outputs are empty")
+        primary_logits = model_outputs[0]
+        if not isinstance(primary_logits, torch.Tensor):
+            raise TypeError(
+                f"primary model output must be a Tensor, got {type(primary_logits).__name__}"
+            )
+    else:
+        raise TypeError(
+            "model output must be a Tensor or a deep supervision list/tuple of Tensors, "
+            f"got {type(model_outputs).__name__}"
+        )
+
+    if primary_logits.shape != target_masks.shape:
+        raise ValueError(
+            f"primary logits shape {tuple(primary_logits.shape)} != target masks "
+            f"{tuple(target_masks.shape)}"
+        )
+    return primary_logits
+
+
 def train_one_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -243,8 +271,9 @@ def train_one_epoch(
         optimizer.zero_grad()
 
         with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-            logits = model(occupancy, text_embeddings)
-            result = criterion(logits, target_masks, prompt_valid=prompt_valid)
+            model_outputs = model(occupancy, text_embeddings)
+            result = criterion(model_outputs, target_masks, prompt_valid=prompt_valid)
+        primary_logits = _primary_logits_for_metrics(model_outputs, target_masks)
 
         if scaler is not None:
             scaler.scale(result["loss"]).backward()
@@ -261,7 +290,7 @@ def train_one_epoch(
 
         with torch.no_grad():
             metrics = compute_prompt_metrics(
-                logits.float(),
+                primary_logits.float(),
                 target_masks,
                 target_empty=target_empty,
                 prompt_valid=prompt_valid,
@@ -323,11 +352,12 @@ def evaluate(
             prompt_valid = prompt_valid.to(device)
 
         with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-            logits = model(occupancy, text_embeddings)
-            result = criterion(logits, target_masks, prompt_valid=prompt_valid)
+            model_outputs = model(occupancy, text_embeddings)
+            result = criterion(model_outputs, target_masks, prompt_valid=prompt_valid)
+        primary_logits = _primary_logits_for_metrics(model_outputs, target_masks)
 
         metrics = compute_prompt_metrics(
-            logits.float(),
+            primary_logits.float(),
             target_masks,
             target_empty=target_empty,
             prompt_valid=prompt_valid,
