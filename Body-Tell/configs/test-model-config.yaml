@@ -1,0 +1,39 @@
+project: Body-Tell
+phase: 1
+model:
+  name: VoxTellBodyModel
+  backbone: residual_encoder
+  input_channels: 1
+  encoder_channels: [32, 64, 128, 256, 320, 320]
+  n_blocks_per_stage: [1, 3, 4, 6, 6, 6]
+  encoder_conv_bias: true
+  encoder_norm: instance_norm_3d
+  encoder_activation: leaky_relu
+  text_embedding_dim: 2560
+  query_dim: 2048
+  text_projection_hidden_dim: 2048
+  transformer_num_heads: 8
+  transformer_layers: 6
+  transformer_feedforward_dim: 2048
+  decoder_layer: 4
+  num_maskformer_stages: 5
+  num_heads: 32
+  deep_supervision: true
+data:
+  root: Body-Tell
+  voxel_dir: S2I-Dataset-70cls/data
+  split_path: S2I-Dataset-70cls/dataset_split.json
+  presence_path: S2I-Dataset-70cls/class_presence.json
+  vocab_path: configs/label_vocab.json
+  embedding_cache_path: artifacts/text_embeddings/prompt_embeddings.pt
+  strict_embedding_cache: true
+  volume_size: [128, 128, 256]
+  patch_size: [128, 128, 128]
+  foreground_oversample_prob: 0.85
+  canonical_prob: 0.25
+  num_positive: 2
+  num_negative: 1
+  min_voxels: 1
+loss:
+  bce_weight: 0.5
+  dice_weight: 0.5
