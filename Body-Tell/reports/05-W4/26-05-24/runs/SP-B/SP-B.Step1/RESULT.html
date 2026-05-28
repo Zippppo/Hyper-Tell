@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step1 Result</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 28px; color: #1f2933; line-height: 1.55; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 24px 0 8px; }
+    code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #d8dee8; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f6fa; }
+    .ok { color: #166534; font-weight: 700; }
+    .warn { color: #92400e; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step1: Add dynamic sampling RNG infrastructure</h1>
+  <p><strong>Recommendation:</strong> <span class="ok">ready_for_review</span></p>
+  <p>
+    Rerun after reviewer <code>needs_fix</code>. Dataset-side criteria were already
+    satisfied; this run addressed the remaining authoritative sub-plan requirement
+    by wiring the training loop to update the dataset epoch alongside
+    <code>DistributedSampler.set_epoch(epoch)</code>, including smoke-mode
+    <code>torch.utils.data.Subset</code> handling.
+  </p>
+
+  <h2>Files Changed</h2>
+  <ul>
+    <li><code>Body-Tell/train.py</code>: added <code>_set_training_epoch</code> / <code>_set_dataset_epoch</code> and now calls them once per training epoch before iterating the DataLoader.</li>
+    <li><code>Body-Tell/tests/test_dataset_prompt_masks.py</code>: added focused regression coverage for sampler epoch propagation plus smoke-mode <code>Subset.dataset</code> epoch propagation.</li>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step1/PROMPT.md</code>: updated effective worker prompt/audit trail for the rerun.</li>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step1/RESULT.html</code>: updated this rerun result report.</li>
+  </ul>
+
+  <h2>Verification</h2>
+  <table>
+    <tr><th>Command</th><th>Result</th></tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td><span class="ok">Passed</span>: 9 tests passed in 14.59s.</td>
+    </tr>
+  </table>
+
+  <h2>Acceptance Checklist</h2>
+  <table>
+    <tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr>
+    <tr>
+      <td>Dataset exposes <code>set_epoch(epoch)</code> or equivalent.</td>
+      <td class="ok">Done</td>
+      <td><code>HyperBodyPromptDataset.set_epoch</code> exists in <code>body_tell/data/dataset.py</code>.</td>
+    </tr>
+    <tr>
+      <td>Same case can sample different prompt text across epochs.</td>
+      <td class="ok">Done</td>
+      <td><code>test_prompt_dataset_set_epoch_changes_prompt_text_deterministically</code> verifies epoch 0 vs epoch 1 prompt text changes for the same case.</td>
+    </tr>
+    <tr>
+      <td>DDP-compatible deterministic behavior is documented.</td>
+      <td class="ok">Done</td>
+      <td>Dataset class and <code>set_epoch</code> docstrings document the global-index seed formula, rank-independent prompt RNG, and DataLoader timing requirement.</td>
+    </tr>
+    <tr>
+      <td>Training loop calls the dataset epoch setter each epoch.</td>
+      <td class="ok">Done</td>
+      <td><code>Body-Tell/train.py</code> now calls <code>_set_training_epoch(train_dataset, train_sampler, epoch)</code>, which updates the sampler and unwraps <code>Subset</code> before calling <code>set_epoch</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Blockers / Residual Risks</h2>
+  <ul>
+    <li>No blocker for the reviewer-requested fix.</li>
+    <li>Phase1 Slurm gate was already passed by reviewer job 37823; it was not rerun here.</li>
+    <li>Pre-existing modification in <code>Body-Tell/reports/26-05-24/workflow_manifest.yaml</code> was observed and left untouched.</li>
+  </ul>
+
+  <h2>Recommended Next Action</h2>
+  <p>
+    Reviewer can re-check SP-B.Step1. The specific <code>needs_fix</code> item is addressed.
+  </p>
+</body>
+</html>

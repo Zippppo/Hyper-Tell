@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SP-B.Step6 Worker Result</title>
+  <style>
+    body { margin: 0; background: #f7f9fc; color: #172033; font: 14px/1.55 system-ui, sans-serif; }
+    main { width: min(980px, calc(100% - 36px)); margin: 0 auto; padding: 32px 0 56px; }
+    section { background: white; border: 1px solid #d8e1ea; border-radius: 8px; padding: 16px 18px; margin: 14px 0; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    code, pre { background: #edf4fb; border: 1px solid #c9d7e6; border-radius: 5px; }
+    code { padding: 1px 5px; }
+    pre { padding: 10px 12px; overflow: auto; white-space: pre-wrap; }
+    ul { margin: 8px 0 0 20px; padding: 0; }
+    .ok { color: #116329; font-weight: 700; }
+    .fail { color: #a40e26; font-weight: 700; }
+    .meta { color: #5f6d7e; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SP-B.Step6 Worker Result</h1>
+  <p class="meta">Task: Rebuild text embedding cache. Recommendation: <span class="ok">ready_for_review</span>.</p>
+
+  <section>
+    <h2>Summary</h2>
+    <p>Rebuilt <code>Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt</code> from the expanded Step5 vocabulary. The regenerated cache now has 418 embedding rows for 418 flattened prompt records, uses model <code>Qwen/Qwen3-Embedding-4B</code>, records the configured instruction, and has a vocab hash matching <code>Body-Tell/configs/label_vocab.json</code>.</p>
+  </section>
+
+  <section>
+    <h2>Focused Test</h2>
+    <p>Added <code>Body-Tell/tests/test_prompt_embedding_cache.py</code>. It covers acceptance criteria by validating cache hash, prompt record equality, row count, embedding shape, model name, instruction, and Qwen-cache marker against the current static vocabulary.</p>
+  </section>
+
+  <section>
+    <h2>Red Evidence</h2>
+    <p>Command run before rebuilding the cache:</p>
+    <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_prompt_embedding_cache.py -q</pre>
+    <pre>FAILED Body-Tell/tests/test_prompt_embedding_cache.py::test_static_prompt_embedding_cache_matches_label_vocab
+AssertionError: assert ['embedding cache vocab_hash does not match label_vocab.json', ...] == []
+Left contains 4 more items; stale cache had 264 rows while current prompt records require 418.
+1 failed in 13.51s</pre>
+  </section>
+
+  <section>
+    <h2>Implementation</h2>
+    <p>Cache generation command:</p>
+    <pre>conda run -n voxtell python Body-Tell/scripts/build_prompt_embedding_cache.py --vocab Body-Tell/configs/label_vocab.json --output Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt --model-name Qwen/Qwen3-Embedding-4B --batch-size 8 --device cuda --dtype bfloat16</pre>
+    <p>Important output:</p>
+    <pre>embedded 418/418
+wrote Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt
+num_prompts=418 embedding_shape=(418, 2560)</pre>
+    <p>No deterministic fallback was used.</p>
+  </section>
+
+  <section>
+    <h2>Green Evidence</h2>
+    <p>Focused pytest after rebuild:</p>
+    <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_prompt_embedding_cache.py -q
+.                                                                        [100%]
+1 passed in 13.80s</pre>
+    <p>Broader static vocabulary/cache pytest:</p>
+    <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_vocabulary_validation.py Body-Tell/tests/test_prompt_embedding_cache.py -q
+...                                                                      [100%]
+3 passed in 13.13s</pre>
+  </section>
+
+  <section>
+    <h2>Verification</h2>
+    <p>Required help command:</p>
+    <pre>conda run -n voxtell python Body-Tell/scripts/build_prompt_embedding_cache.py --help
+usage: build_prompt_embedding_cache.py [-h] [--vocab VOCAB] [--output OUTPUT]
+                                       [--model-name MODEL_NAME]
+                                       [--batch-size BATCH_SIZE]
+                                       [--max-length MAX_LENGTH]
+                                       [--device DEVICE]
+                                       [--dtype {auto,float32,float16,bfloat16}]
+                                       [--cache-dir CACHE_DIR]
+                                       [--trust-remote-code]
+                                       [--allow-deterministic-fallback]</pre>
+    <p>Post-rebuild metadata validation:</p>
+    <pre>prompt_records 418
+vocab_hash 511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09
+cache_num_prompts 418
+cache_vocab_hash 511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09
+cache_model Qwen/Qwen3-Embedding-4B
+cache_instruction Given an anatomical term query, retrieve the precise anatomical entity and location it represents
+cache_is_qwen True
+cache_fallback_error None
+embedding_shape (418, 2560)
+validation_errors []
+validation_warnings []</pre>
+    <p>Audit artifact:</p>
+    <pre>conda run -n voxtell python Body-Tell/scripts/audit_vocabulary.py --output Body-Tell/reports/26-05-24/runs/SP-B.Step6/vocabulary_audit_after_cache.html
+wrote Body-Tell/reports/26-05-24/runs/SP-B.Step6/vocabulary_audit_after_cache.html</pre>
+  </section>
+
+  <section>
+    <h2>Changed Files</h2>
+    <ul>
+      <li><code>Body-Tell/artifacts/text_embeddings/prompt_embeddings.pt</code> rebuilt for 418 prompts.</li>
+      <li><code>Body-Tell/tests/test_prompt_embedding_cache.py</code> added as focused regression coverage.</li>
+      <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step6/vocabulary_audit_after_cache.html</code> added as cache/vocabulary audit evidence.</li>
+      <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step6/RESULT.html</code> added as this worker report.</li>
+    </ul>
+    <p>Existing dirty Step5 files were inspected or loaded but not reverted: <code>Body-Tell/body_tell/data/vocabulary.py</code>, <code>Body-Tell/configs/label_vocab.json</code>, <code>Body-Tell/scripts/audit_vocabulary.py</code>, <code>Body-Tell/scripts/build_label_vocab.py</code>, and <code>Body-Tell/tests/test_vocabulary_validation.py</code>.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance Checklist</h2>
+    <ul>
+      <li><span class="ok">Pass</span>: embedding row count equals prompt record count, 418 == 418.</li>
+      <li><span class="ok">Pass</span>: cache vocab hash matches <code>label_vocab.json</code>, <code>511f76914cb5464bc3d8909854587eaa4471688218ac4ecce1f8b8fad0bb1f09</code>.</li>
+      <li><span class="ok">Pass</span>: cache generation command, model, and instruction are recorded above; model/instruction are also stored in the cache metadata.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Blockers And Risks</h2>
+    <p>Blockers: none. Residual risk: phase1 Slurm gate was not run by this worker; per workflow, reviewer should run <code>sbatch slurm/body-tell-phase1.sh</code> and then SP-B.Step5 review/gate should be rerun against the combined vocabulary/cache state.</p>
+  </section>
+</main>
+</body>
+</html>

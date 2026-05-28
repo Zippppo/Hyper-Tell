@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-A.P5-P6-lite Review</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2933; line-height: 1.45; }
+    main { max-width: 1100px; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { background: #f6f8fa; border: 1px solid #d8dee4; padding: 12px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #d8dee4; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f3f5f7; }
+    .ok { color: #0a7f34; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SP-A.P5-P6-lite Review</h1>
+    <p class="meta">Reviewed worker result: <code>Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/RESULT.html</code>.</p>
+    <p><strong>Verdict:</strong> <span class="ok">accept</span></p>
+
+    <h2>Summary</h2>
+    <p>The current worker result addresses the stale prior review failures: runtime position tensors are restored to the selected memory dtype after autocast-sensitive operations, <code>train.py</code> accepts and applies <code>--amp-dtype</code> and <code>--grad-clip-norm</code>, and the required phase1 Slurm gate completed successfully.</p>
+
+    <h2>Acceptance Criteria</h2>
+    <table>
+      <thead><tr><th>Status</th><th>Criterion</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td class="ok">Pass</td><td>P5 is not an independent <code>pos_embed</code> implementation stage.</td><td>Worker result states P5 remains folded into P6-lite, with no independent <code>pos_embed</code> stage.</td></tr>
+        <tr><td class="ok">Pass</td><td>Do not implement <code>fixed_voxtell_192</code> and do not add a <code>pos_embed</code> state-dict loading path.</td><td>Loader is restricted to the <code>transformer_decoder.</code> prefix; excluded keys include <code>pos_embed</code>.</td></tr>
+        <tr><td class="ok">Pass</td><td>Runtime position encoding matches selected H,W,D, memory token count, batch, dtype, device, and channel dimension.</td><td>Model contract checks plus CPU and CUDA bfloat16 smoke coverage passed in <code>test_model_shapes.py</code>.</td></tr>
+        <tr><td class="ok">Pass</td><td>Non-cubic input coverage verifies <code>b c d h w -&gt; b h w d c -&gt; (h w d) b c</code>.</td><td>Worker result records non-cubic HWD flatten coverage in <code>Body-Tell/tests/test_model_shapes.py</code>.</td></tr>
+        <tr><td class="ok">Pass</td><td>Loader reads <code>fold_0/checkpoint_final.pth</code> <code>network_weights</code> and filters only <code>transformer_decoder.*</code> keys.</td><td>CPU audit command passed and reported 110 filtered tensors.</td></tr>
+        <tr><td class="ok">Pass</td><td>Filtered keys map exactly to <code>model.transformer_decoder.state_dict()</code>.</td><td>CPU audit reported 0 missing, 0 unexpected, and 0 shape mismatches.</td></tr>
+        <tr><td class="ok">Pass</td><td>Loading uses <code>model.transformer_decoder.load_state_dict(..., strict=True)</code>.</td><td>Worker result and tests verify strict prefix-only loading.</td></tr>
+        <tr><td class="ok">Pass</td><td>Loader does not load encoder, decoder, projector, or <code>pos_embed</code> state.</td><td>Prefix-loader filtering test injects excluded keys and verifies projector weights remain unchanged.</td></tr>
+        <tr><td class="ok">Pass</td><td>Logs and saved checkpoint config record VoxTell init metadata.</td><td>Worker result records checkpoint path, prefix, loaded tensor count, and parameter count in training metadata.</td></tr>
+        <tr><td class="ok">Pass</td><td>CPU prefix audit passes; GPU forward/loss/backward smoke passes when available.</td><td><code>test_model_shapes.py</code> passed 11 tests; CPU audit passed; phase1 Slurm gate passed on the integrated path.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Commands And Evidence</h2>
+    <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
+Body-Tell/tests/test_model_shapes.py ........... [100%]</pre>
+    <pre>conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml --html-output Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/audit_voxtell_alignment.html
+Transformer decoder prefix audit
+matched_tensors: 110
+matched_parameters: 251858944
+missing: 0
+unexpected: 0
+shape_mismatches: 0</pre>
+    <pre>git diff --check -- Body-Tell/body_tell/models/voxtell_body_model.py Body-Tell/train.py Body-Tell/tests/test_model_shapes.py Body-Tell/scripts/audit_voxtell_alignment.py Body-Tell/reports/26-05-24/run_manager.py
+clean</pre>
+
+    <h2>Phase1 Slurm Gate</h2>
+    <pre>Phase1 Slurm gate: pass
+Slurm command: sbatch slurm/body-tell-phase1.sh
+Slurm job id: 37779
+sacct final state: COMPLETED
+sacct exit code: 0:0
+sacct -j 37779 --format=JobID,State,ExitCode,Elapsed -n
+37779         COMPLETED      0:0   00:43:45
+37779.batch   COMPLETED      0:0   00:43:45</pre>
+
+    <h2>Required Fixes</h2>
+    <p>None.</p>
+
+    <h2>Residual Risk</h2>
+    <p>Residual risk is limited to normal training-quality risk: P6-lite intentionally loads only <code>transformer_decoder.*</code>, so encoder, decoder, projector, mask-fusion, and <code>pos_embed</code> reuse remain outside this task.</p>
+  </main>
+</body>
+</html>

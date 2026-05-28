@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-A.P5-P6-lite Result</title>
+  <style>
+    body { margin: 0; background: #f6f8fa; color: #17202a; font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 56px; }
+    section { background: #fff; border: 1px solid #d8e0e7; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0 0 10px; font-size: 20px; }
+    h3 { margin: 16px 0 8px; font-size: 16px; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+    th, td { border: 1px solid #d8e0e7; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef3f7; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { background: #edf3f7; border-radius: 4px; padding: 1px 4px; }
+    pre { overflow-x: auto; background: #111827; color: #f8fafc; border-radius: 8px; padding: 14px; }
+    .meta { color: #5d6875; }
+    .ok { color: #276749; font-weight: 700; }
+    .warn { color: #9a4a17; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SP-A.P5-P6-lite - Load VoxTell Transformer Decoder Prefix</h1>
+    <p class="meta">Repository: <code>/home/xiaoqingguo/Rongkun/code/Hyper-Tell</code>. Source plan: <code>Body-Tell/reports/26-05-24/bodytell_voxtell_alignment_plan_2026-05-24.html</code>.</p>
+    <p><strong>Recommendation:</strong> <span class="ok">ready_for_review</span></p>
+  </header>
+
+  <section>
+    <h2>Task Summary</h2>
+    <p>Completed P5/P6-lite for the runtime HWD position/memory contract and prefix-only VoxTell transformer decoder initialization. P5 remains folded into P6-lite: there is no independent <code>pos_embed</code> stage, no <code>fixed_voxtell_192</code>, and no <code>pos_embed</code> state-dict loading path.</p>
+    <p>The previous review failures were addressed directly. The runtime position tensor is cast back to the selected memory dtype after autocast-sensitive trig operations, fixing the CUDA bfloat16 mismatch. <code>train.py</code> now accepts and uses <code>--amp-dtype</code> and <code>--grad-clip-norm</code>; the phase1 Slurm gate completed successfully.</p>
+  </section>
+
+  <section>
+    <h2>Files Changed</h2>
+    <table>
+      <thead><tr><th>File</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>Body-Tell/body_tell/models/voxtell_body_model.py</code></td><td>Uses VoxTell HWD flatten order, validates runtime <code>pos</code>/<code>memory</code> shape, batch, dtype, device, and channel contract, casts generated positions to memory dtype, and implements strict prefix-only transformer decoder loading.</td></tr>
+        <tr><td><code>Body-Tell/train.py</code></td><td>Adds <code>--init-transformer-from-voxtell</code>, <code>--amp-dtype</code>, and <code>--grad-clip-norm</code>; loads prefix before optimizer construction; logs/stores init metadata in checkpoint config.</td></tr>
+        <tr><td><code>Body-Tell/scripts/audit_voxtell_alignment.py</code></td><td>Adds CPU <code>transformer_decoder.</code> prefix audit and HTML reporting.</td></tr>
+        <tr><td><code>Body-Tell/tests/test_model_shapes.py</code></td><td>Adds non-cubic HWD flatten coverage, CUDA bfloat16 position dtype smoke coverage, and prefix-loader filtering coverage.</td></tr>
+        <tr><td><code>Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/audit_voxtell_alignment.html</code></td><td>Regenerated HTML audit report.</td></tr>
+        <tr><td><code>Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/RESULT.html</code></td><td>This report.</td></tr>
+      </tbody>
+    </table>
+    <p class="meta">Observed unrelated modified files and left them untouched: <code>Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html</code>, <code>workflow_manifest.yaml</code>, <code>workflow_status.html</code>, and <code>workflow_status.json</code>.</p>
+  </section>
+
+  <section>
+    <h2>Verification</h2>
+    <h3>Model shape and runtime contract tests</h3>
+    <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py
+
+collected 11 items
+Body-Tell/tests/test_model_shapes.py ........... [100%]
+11 passed in 21.54s</pre>
+
+    <h3>CPU prefix audit</h3>
+    <pre>conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py \
+  --config Body-Tell/configs/phase1_voxtell_aligned.yaml \
+  --html-output Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/audit_voxtell_alignment.html
+
+Transformer decoder prefix audit
+  status: PASS
+  prefix: transformer_decoder.
+  loaded tensors: 110
+  loaded params: 251,858,944
+  missing: 0
+  unexpected: 0
+  shape mismatches: 0
+
+Wrote HTML report: Body-Tell/reports/26-05-24/runs/SP-A.P5-P6-lite/audit_voxtell_alignment.html</pre>
+
+    <h3>GPU bfloat16 prefix smoke</h3>
+    <pre>conda run -n voxtell python -c "[build aligned model, load VoxTell prefix, CUDA bfloat16 forward/loss/backward smoke]"
+
+cuda_available=True
+cuda_device=NVIDIA GeForce RTX 4090
+loaded_tensors=110
+loaded_params=251858944
+logits_shape=(1, 2, 32, 32, 64) logits_dtype=torch.bfloat16
+loss=0.402099
+grad_tensors=356
+gpu_bfloat16_prefix_smoke=PASS</pre>
+
+    <h3>Phase1 Slurm gate</h3>
+    <pre>sbatch --parsable slurm/body-tell-phase1.sh
+37779
+
+sacct -j 37779 --format=JobID,State,ExitCode,Elapsed -n
+37779         COMPLETED      0:0   00:43:45
+37779.batch   COMPLETED      0:0   00:43:45</pre>
+    <pre>Key log lines from slurm/logs/slurm_37779.err
+
+13:10:07 [INFO] Mixed precision (AMP) enabled: dtype=bfloat16
+13:10:07 [INFO] Gradient clipping enabled: max_norm=1.0
+13:52:25 [INFO] Epoch 001 | loss=0.4774 (bce=0.0062 dice=0.9487) | fg_dice=nan | neg_fp=0.0007
+13:53:02 [INFO]   [val] loss=0.4573 | fg_dice=0.0934 | neg_fp=0.0011
+13:53:14 [INFO]   Saved best checkpoint (dice=0.0934)
+13:53:14 [INFO] Training complete in 2583.8s (1 epochs)
+13:53:27 [INFO] Saved final checkpoint to Body-Tell/checkpoints/test-S2I-aligned128/last.pt</pre>
+
+    <h3>Whitespace</h3>
+    <pre>git diff --check -- Body-Tell/body_tell/models/voxtell_body_model.py Body-Tell/train.py Body-Tell/tests/test_model_shapes.py Body-Tell/scripts/audit_voxtell_alignment.py
+
+passed with no output</pre>
+  </section>
+
+  <section>
+    <h2>Acceptance Checklist</h2>
+    <table>
+      <thead><tr><th>Status</th><th>Criterion</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td class="ok">Pass</td><td>P5 is not an independent <code>pos_embed</code> implementation stage.</td><td>Only runtime deterministic position generation is used.</td></tr>
+        <tr><td class="ok">Pass</td><td>Do not implement <code>fixed_voxtell_192</code> and do not add a <code>pos_embed</code> state-dict loading path.</td><td>Loader hard-restricts to <code>transformer_decoder.</code>; <code>pos_embed</code> appears only in excluded metadata and audit text.</td></tr>
+        <tr><td class="ok">Pass</td><td>Runtime position encoding is generated from selected feature H,W,D and matches memory token count, batch, dtype, device, and channel dimension.</td><td>Forward contract check in model plus CPU and CUDA bfloat16 tests.</td></tr>
+        <tr><td class="ok">Pass</td><td>Non-cubic input coverage verifies <code>b c d h w -&gt; b h w d c -&gt; (h w d) b c</code>.</td><td><code>test_runtime_memory_and_pos_use_voxtell_hwd_flatten_contract</code> captures projected bottleneck and transformer memory.</td></tr>
+        <tr><td class="ok">Pass</td><td>Loader reads <code>fold_0/checkpoint_final.pth</code> <code>network_weights</code> and filters only <code>transformer_decoder.*</code> keys.</td><td><code>load_voxtell_transformer_decoder_prefix()</code> resolves directories to <code>fold_0/checkpoint_final.pth</code> and filters only the prefix.</td></tr>
+        <tr><td class="ok">Pass</td><td>Filtered keys map exactly to <code>model.transformer_decoder.state_dict()</code> with no missing, unexpected, or shape mismatch entries.</td><td>CPU audit: 110 tensors, 251,858,944 params, 0 missing, 0 unexpected, 0 shape mismatches.</td></tr>
+        <tr><td class="ok">Pass</td><td>Loading uses <code>model.transformer_decoder.load_state_dict(..., strict=True)</code>.</td><td>Strict load is called after exact key and shape validation.</td></tr>
+        <tr><td class="ok">Pass</td><td>Loader explicitly does not load <code>encoder.*</code>, <code>decoder.*</code>, projectors, or <code>pos_embed</code>; no full-model whitelist is used.</td><td>Prefix-only source map; unit test injects excluded keys and verifies projector weights remain unchanged.</td></tr>
+        <tr><td class="ok">Pass</td><td>Logs and saved checkpoint config record <code>init_transformer_from_voxtell</code> metadata.</td><td><code>train.py</code> logs checkpoint path, prefix, tensor count, and parameter count, and saves metadata under <code>cfg["init_transformer_from_voxtell"]</code>.</td></tr>
+        <tr><td class="ok">Pass</td><td>CPU prefix audit passes.</td><td>Audit command passed and regenerated HTML report.</td></tr>
+        <tr><td class="ok">Pass</td><td>At least one forward/loss/backward smoke passes if GPU is available.</td><td>CUDA bfloat16 aligned-model prefix smoke passed on RTX 4090.</td></tr>
+        <tr><td class="ok">Pass</td><td>Previous review's phase1 gate failure is addressed.</td><td>Slurm job <code>37779</code> completed with exit code <code>0:0</code>; logs show <code>--amp-dtype bfloat16</code> and <code>--grad-clip-norm 1.0</code> were accepted and used.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Blockers Or Residual Risks</h2>
+    <p>No blockers.</p>
+    <p class="meta">Residual risk is limited to normal training-quality risk: the loader is intentionally scoped to <code>transformer_decoder.*</code>, so encoder, decoder, projectors, mask-fusion, and <code>pos_embed</code> reuse remain outside P6-lite.</p>
+  </section>
+</main>
+</body>
+</html>

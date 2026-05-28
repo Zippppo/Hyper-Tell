@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step3 Worker Result</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.5; margin: 32px; color: #172033; }
+    h1, h2 { margin-bottom: 8px; }
+    code, pre { background: #f2f4f7; border-radius: 4px; }
+    code { padding: 1px 4px; }
+    pre { padding: 12px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #d7dce5; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #eef2f7; }
+    .pass { color: #176b43; font-weight: 700; }
+    .fail { color: #a61b1b; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step3 Worker Result</h1>
+  <p><strong>Task:</strong> Implement 25/75 canonical versus variant positive prompt sampling.</p>
+  <p><strong>Recommendation:</strong> <span class="pass">ready_for_review</span></p>
+
+  <h2>Summary</h2>
+  <p>Positive prompt sampling now uses <code>canonical_prob=0.25</code> by default. Positive prompts first choose the canonical branch by probability, otherwise choose from non-canonical variants. Negative prompts still use ordinary random prompt selection. Positive classes without variants explicitly fall back to canonical prompts and are counted in per-sample prompt sampling metadata.</p>
+
+  <h2>Tests Added Or Updated</h2>
+  <table>
+    <tr><th>File</th><th>Coverage</th></tr>
+    <tr>
+      <td><code>Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td>Added a positive prompt ratio audit over deterministic repeated samples and a dataset-level fallback count test for classes without variants.</td>
+    </tr>
+  </table>
+
+  <h2>Red Evidence</h2>
+  <p>Command:</p>
+  <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py -k "canonical_variant_ratio or canonical_fallbacks"</pre>
+  <p>Important failing output:</p>
+  <pre>collected 14 items / 12 deselected / 2 selected
+Body-Tell/tests/test_dataset_prompt_masks.py FF
+
+TypeError: sample_prompts_for_case() got an unexpected keyword argument 'canonical_prob'
+TypeError: HyperBodyPromptDataset.__init__() got an unexpected keyword argument 'canonical_prob'
+
+2 failed, 12 deselected in 14.60s</pre>
+
+  <h2>Implementation Files Changed</h2>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr>
+      <td><code>Body-Tell/body_tell/data/vocabulary.py</code></td>
+      <td>Added <code>canonical_prob</code> validation and positive-only canonical/variant prompt selection; negative prompts remain random. Prompt records now carry <code>prompt_sampling_role</code>, <code>prompt_sampling_mode</code>, <code>has_variants</code>, and <code>canonical_fallback</code> audit fields.</td>
+    </tr>
+    <tr>
+      <td><code>Body-Tell/body_tell/data/dataset.py</code></td>
+      <td>Added dataset <code>canonical_prob</code> argument, forwards it to the sampler, and returns <code>prompt_sampling</code> counts including variant count and canonical fallback count.</td>
+    </tr>
+    <tr>
+      <td><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code></td>
+      <td>Added active data config value <code>canonical_prob: 0.25</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Green Evidence</h2>
+  <p>Focused command:</p>
+  <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py -k "canonical_variant_ratio or canonical_fallbacks"</pre>
+  <pre>collected 14 items / 12 deselected / 2 selected
+Body-Tell/tests/test_dataset_prompt_masks.py ..
+2 passed, 12 deselected in 14.77s</pre>
+
+  <h2>Broader Verification</h2>
+  <p>Suggested command:</p>
+  <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py</pre>
+  <pre>collected 14 items
+Body-Tell/tests/test_dataset_prompt_masks.py ..............
+14 passed in 16.89s</pre>
+  <p>Diff hygiene:</p>
+  <pre>git diff --check -- Body-Tell/body_tell/data/vocabulary.py Body-Tell/body_tell/data/dataset.py Body-Tell/configs/phase1_voxtell_aligned.yaml Body-Tell/tests/test_dataset_prompt_masks.py
+exit code 0</pre>
+
+  <h2>Acceptance Checklist</h2>
+  <table>
+    <tr><th>Criterion</th><th>Status</th></tr>
+    <tr>
+      <td>Positive prompt canonical/variant ratio is tested or audited.</td>
+      <td class="pass">Met. The new test measures canonical ratio under <code>canonical_prob=0.25</code> and expects it within 0.22 to 0.28.</td>
+    </tr>
+    <tr>
+      <td>Classes without variants fall back explicitly and are counted.</td>
+      <td class="pass">Met. Fallback records use <code>prompt_sampling_mode="canonical_fallback"</code>, <code>canonical_fallback=true</code>, and dataset metadata counts fallback and classes without variants.</td>
+    </tr>
+  </table>
+
+  <h2>Blockers Or Residual Risks</h2>
+  <p>No blockers. The active config records <code>canonical_prob: 0.25</code> and the dataset default matches that value. Forwarding arbitrary non-default values from <code>train.py</code> was outside this task's writable scope.</p>
+</body>
+</html>

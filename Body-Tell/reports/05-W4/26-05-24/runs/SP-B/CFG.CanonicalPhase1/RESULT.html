@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CFG.CanonicalPhase1 Result</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      color: #1f2933;
+      margin: 0;
+      background: #f7f9fb;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+      background: #fff;
+    }
+    h1, h2 { color: #102a43; }
+    h1 { margin-top: 0; }
+    h2 {
+      margin-top: 28px;
+      border-bottom: 1px solid #d9e2ec;
+      padding-bottom: 6px;
+    }
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow: auto;
+      background: #f0f4f8;
+      border: 1px solid #d9e2ec;
+      border-radius: 6px;
+      padding: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid #d9e2ec;
+      padding: 8px 10px;
+    }
+    th { background: #f0f4f8; }
+    .pass { color: #0b6b3a; font-weight: 700; }
+    .fail { color: #b42318; font-weight: 700; }
+    .warn { color: #9a6700; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>CFG.CanonicalPhase1 Result</h1>
+
+  <h2>Task Summary</h2>
+  <p><strong>Task id:</strong> CFG.CanonicalPhase1</p>
+  <p>
+    Made <code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code> the single canonical active Phase1 VoxTell config.
+    The retired duplicate <code>phase1_voxtell_<span>body</span>.yaml</code> was deleted from configs, active entry points now default to the aligned config, and the aligned config preserves the accepted SP-A architecture-sensitive fields while carrying the interrupted worker's config-only patch defaults.
+  </p>
+
+  <h2>Tests Added Or Updated</h2>
+  <table>
+    <thead>
+      <tr><th>Test file</th><th>Coverage</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Body-Tell/tests/test_train_loop.py</code></td>
+        <td>
+          Updated the Phase1 config regression to load <code>phase1_voxtell_aligned.yaml</code>, assert the duplicate config is absent, and verify S2I path defaults plus <code>patch_size</code> and <code>foreground_oversample_prob</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>Body-Tell/tests/test_train_loop.py</code></td>
+        <td>
+          Added an entry-point sweep covering <code>train.py</code>, <code>inference.py</code>, <code>scripts/audit_voxtell_alignment.py</code>, and <code>scripts/parameter_audit.py</code> so active defaults cannot regress to the retired config path.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Red Evidence</h2>
+  <p>Command:</p>
+  <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py::test_phase1_canonical_config_targets_cropped_s2i_package Body-Tell/tests/test_train_loop.py::test_phase1_entrypoints_reference_canonical_config_only</pre>
+  <p>Important failing output:</p>
+  <pre>collected 2 items
+
+Body-Tell/tests/test_train_loop.py FF
+
+test_phase1_canonical_config_targets_cropped_s2i_package:
+  AssertionError: assert not retired_config.exists()
+
+test_phase1_entrypoints_reference_canonical_config_only:
+  AssertionError: stale config name was still present in Body-Tell/train.py usage/default text
+
+2 failed in 14.18s</pre>
+
+  <h2>Green Evidence</h2>
+  <p>Focused command:</p>
+  <pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py::test_phase1_canonical_config_targets_cropped_s2i_package Body-Tell/tests/test_train_loop.py::test_phase1_entrypoints_reference_canonical_config_only</pre>
+  <p>Important passing output:</p>
+  <pre>collected 2 items
+
+Body-Tell/tests/test_train_loop.py ..
+
+2 passed in 13.55s</pre>
+
+  <h2>Implementation Files Changed</h2>
+  <ul>
+    <li><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code> - added <code>patch_size: [128, 128, 128]</code> and <code>foreground_oversample_prob: 0.85</code> while preserving SP-A aligned model fields.</li>
+    <li><code>Body-Tell/configs/phase1_voxtell_<span>body</span>.yaml</code> - deleted duplicate config.</li>
+    <li><code>Body-Tell/train.py</code> - updated usage examples and CLI default to the aligned config.</li>
+    <li><code>Body-Tell/inference.py</code> - updated inference config default to the aligned config.</li>
+    <li><code>Body-Tell/scripts/audit_voxtell_alignment.py</code> - updated default audit config to the aligned config.</li>
+    <li><code>Body-Tell/scripts/parameter_audit.py</code> - updated default audit config and generated report wording to the aligned config.</li>
+    <li><code>Body-Tell/tests/test_train_loop.py</code> - updated/added canonical config regression coverage.</li>
+    <li><code>Body-Tell/reports/26-05-24/runs/CFG.CanonicalPhase1/RESULT.html</code> - this report.</li>
+  </ul>
+
+  <h2>Broader Verification</h2>
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Important output</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_train_loop.py</pre></td>
+        <td><pre>collected 16 items
+Body-Tell/tests/test_model_shapes.py ...........
+Body-Tell/tests/test_train_loop.py .....
+16 passed in 45.63s</pre></td>
+      </tr>
+      <tr>
+        <td><pre>conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml</pre></td>
+        <td><pre>Body-Tell current config: Body-Tell/configs/phase1_voxtell_aligned.yaml
+fused projection stages: 5 (configured 5)
+checkpoint inferred num_heads: 32
+Transformer decoder prefix audit status: PASS
+loaded tensors: 110
+shape mismatches: 0</pre></td>
+      </tr>
+      <tr>
+        <td><pre>find Body-Tell -type f \( -name '*.py' -o -name '*.yaml' -o -name '*.yml' -o -name '*.md' -o -name '*.sh' \) -print | xargs grep -n "phase1_voxtell_&#98;ody" 2&gt;/dev/null || true</pre></td>
+        <td><pre>Only generated workflow text matched: CFG.CanonicalPhase1/PROMPT.md and workflow_manifest.yaml.
+No active code, test, script, or config file matched.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>grep -RIn "phase1_voxtell_&#98;ody" Body-Tell/train.py Body-Tell/inference.py Body-Tell/scripts Body-Tell/tests Body-Tell/configs 2&gt;/dev/null || true</pre></td>
+        <td><pre>No output.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>conda run -n voxtell python -m py_compile Body-Tell/train.py Body-Tell/inference.py Body-Tell/scripts/audit_voxtell_alignment.py Body-Tell/scripts/parameter_audit.py</pre></td>
+        <td><pre>Passed with no output.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_inference_paths.py</pre></td>
+        <td><pre>collected 4 items
+Body-Tell/tests/test_inference_paths.py ....
+4 passed in 14.22s</pre></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Acceptance Checklist</h2>
+  <ul>
+    <li><span class="pass">PASS</span> <code>phase1_voxtell_aligned.yaml</code> is the single canonical active Phase1 VoxTell training config.</li>
+    <li><span class="pass">PASS</span> The duplicate config file is deleted and active code/test/script defaults no longer reference it.</li>
+    <li><span class="pass">PASS</span> Training, inference, audit scripts, and tests that need the Phase1 config point to <code>phase1_voxtell_aligned.yaml</code>.</li>
+    <li><span class="pass">PASS</span> The canonical config preserves SP-A fields: residual encoder, six-stage channels/block layout, decoder layer 4, five maskformer stages, and <code>num_heads: 32</code>.</li>
+    <li><span class="pass">PASS</span> Config-only SP-B.Step2 fields <code>patch_size</code> and <code>foreground_oversample_prob</code> are present only in the canonical config.</li>
+  </ul>
+
+  <h2>Blockers Or Residual Risks</h2>
+  <p><strong>Blockers:</strong> none.</p>
+  <p>
+    <strong>Residual risk:</strong> The broad grep still reports stale generated workflow text in this worker's prompt and in <code>workflow_manifest.yaml</code>.
+    The prompt explicitly forbids editing <code>workflow_manifest.yaml</code>, and the prompt file is the immutable task input rather than an active runtime/test/script default.
+    The accepted lead plan and source-of-truth sub-plan were checked; stale plan references are treated as superseded by this result.
+  </p>
+
+  <h2>Recommendation</h2>
+  <p class="pass"><strong>ready_for_review</strong></p>
+</main>
+</body>
+</html>

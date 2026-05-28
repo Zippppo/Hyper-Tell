@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step2 Result</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 28px; color: #1f2933; line-height: 1.55; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 24px 0 8px; }
+    code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #d8dee8; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f6fa; }
+    .ok { color: #166534; font-weight: 700; }
+    .warn { color: #92400e; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step2: Patch crop and patch-local 2 positive plus 1 negative prompts</h1>
+  <p><strong>Recommendation:</strong> <span class="ok">ready_for_review</span></p>
+  <p>
+    This rerun reconciled interrupted Step2 work against the manager override:
+    <code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code> is the only active Phase1 VoxTell
+    config used here. I did not recreate or use the retired config file, and I left
+    <code>lead.html</code> and <code>workflow_manifest.yaml</code> untouched.
+  </p>
+
+  <h2>Tests Added Or Updated</h2>
+  <table>
+    <tr><th>Test file</th><th>Acceptance criteria covered</th></tr>
+    <tr>
+      <td><code>Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td>
+        Covers configured patch output shape, patch-local present/absent recomputation,
+        non-empty positive masks in the sampled patch, auditable foreground/random branch
+        metadata, approximate 85/15 branch behavior, and whole-case regression behavior
+        when <code>patch_size</code> equals the full case shape.
+      </td>
+    </tr>
+    <tr>
+      <td><code>Body-Tell/tests/test_train_loop.py</code></td>
+      <td>
+        Covers forwarding <code>patch_size</code> and <code>foreground_oversample_prob</code>
+        from training config into <code>HyperBodyPromptDataset</code>, and verifies the
+        canonical aligned config carries the Step2 data fields.
+      </td>
+    </tr>
+  </table>
+
+  <h2>Red Evidence</h2>
+  <p class="warn">
+    A true red run was not possible without undoing inherited work: the interrupted
+    worker had already left both Step2 tests and implementation in the worktree.
+    The first focused rerun before my cleanup already passed:
+    <code>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_crop_s2i_dataset.py</code>
+    returned 16 passed in 16.38s. I treated this as reconciliation plus regression
+    verification rather than manufacturing a failure by reverting accepted or inherited edits.
+  </p>
+
+  <h2>Green Evidence</h2>
+  <table>
+    <tr><th>Command</th><th>Result</th></tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_crop_s2i_dataset.py</code></td>
+      <td><span class="ok">Passed</span>: 16 tests passed in 16.30s after cleanup.</td>
+    </tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py -k "build_dataset_forwards_s2i_path_config or phase1_canonical_config_targets_cropped_s2i_package"</code></td>
+      <td><span class="ok">Passed</span>: 2 selected tests passed, 2 deselected, in 13.58s.</td>
+    </tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py</code></td>
+      <td><span class="ok">Passed</span>: 4 tests passed in 37.32s.</td>
+    </tr>
+  </table>
+
+  <h2>Implementation Files Changed</h2>
+  <ul>
+    <li><code>Body-Tell/body_tell/data/dataset.py</code>: added configurable patch crop, 85/15 foreground/random branch selection, patch metadata, patch-local presence records, and collated crop audit fields.</li>
+    <li><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code>: added <code>patch_size: [128, 128, 128]</code> and <code>foreground_oversample_prob: 0.85</code>.</li>
+    <li><code>Body-Tell/train.py</code>: forwards Step2 dataset config fields and now documents the canonical aligned config in usage examples.</li>
+    <li><code>Body-Tell/tests/test_dataset_prompt_masks.py</code>: added Step2 regression coverage.</li>
+    <li><code>Body-Tell/tests/test_train_loop.py</code>: added config-forwarding and canonical config field coverage; removed an indirect stale-config filename assertion from the interrupted edits.</li>
+    <li><code>Body-Tell/inference.py</code>, <code>Body-Tell/scripts/audit_voxtell_alignment.py</code>, and <code>Body-Tell/scripts/parameter_audit.py</code>: preserved pre-existing canonical-config updates from the accepted config-unification work.</li>
+  </ul>
+
+  <h2>Broader Verification</h2>
+  <table>
+    <tr><th>Command</th><th>Important output</th></tr>
+    <tr>
+      <td>Text-tree grep for retired Phase1 config filename patterns under <code>Body-Tell/body_tell</code>, <code>Body-Tell/configs</code>, <code>Body-Tell/scripts</code>, <code>Body-Tell/tests</code>, <code>Body-Tell/train.py</code>, and <code>Body-Tell/inference.py</code>.</td>
+      <td><span class="ok">Passed</span>: no text-tree matches.</td>
+    </tr>
+    <tr>
+      <td><code>git diff --check -- Body-Tell/body_tell/data/dataset.py Body-Tell/configs/phase1_voxtell_aligned.yaml Body-Tell/inference.py Body-Tell/scripts/audit_voxtell_alignment.py Body-Tell/scripts/parameter_audit.py Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_train_loop.py Body-Tell/train.py</code></td>
+      <td><span class="ok">Passed</span>: no whitespace errors.</td>
+    </tr>
+    <tr>
+      <td>Canonical dataset smoke via <code>HyperBodyPromptDataset</code> and <code>phase1_voxtell_aligned.yaml</code></td>
+      <td><span class="ok">Passed</span>: 20 samples, 19 foreground and 1 random branches, patch shape <code>(128, 128, 128)</code>, minimum positive mask sum <code>35.0</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Acceptance Checklist</h2>
+  <table>
+    <tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr>
+    <tr>
+      <td><code>patch_size</code> and <code>foreground_oversample_prob</code> live in the canonical config.</td>
+      <td class="ok">Done</td>
+      <td><code>phase1_voxtell_aligned.yaml</code> has <code>[128, 128, 128]</code> and <code>0.85</code>; train-loop tests verify forwarding.</td>
+    </tr>
+    <tr>
+      <td>Output patch shape equals configured <code>patch_size</code>.</td>
+      <td class="ok">Done</td>
+      <td>Dataset tests assert synthetic shapes; canonical smoke asserted <code>(128, 128, 128)</code>.</td>
+    </tr>
+    <tr>
+      <td>Foreground/random crop ratio is auditable and close to 85/15.</td>
+      <td class="ok">Done</td>
+      <td><code>sample["crop"]</code> records branch and probability; synthetic 200-epoch test bounds foreground ratio to 0.75-0.95.</td>
+    </tr>
+    <tr>
+      <td>Positive masks are not empty inside the sampled patch.</td>
+      <td class="ok">Done</td>
+      <td>Patch-local test checks two positive masks each have one voxel; canonical smoke found minimum positive mask sum <code>35.0</code>.</td>
+    </tr>
+    <tr>
+      <td><code>patch_size=[128,128,256]</code> degrades to whole-case behavior.</td>
+      <td class="ok">Done</td>
+      <td>Synthetic whole-case regression test uses full-case patch size and asserts branch <code>whole_case</code>, unchanged full-case shapes, and existing prompt behavior.</td>
+    </tr>
+  </table>
+
+  <h2>Blockers Or Residual Risks</h2>
+  <ul>
+    <li>No blocker for SP-B.Step2 review.</li>
+    <li>Because this was a rerun after an interrupted worker, red evidence is explanatory rather than a failing pytest transcript.</li>
+    <li>Direct ad-hoc import of <code>train.py</code> outside pytest failed because this environment lacks <code>tensorboard</code>; the task-scoped pytest checks use the repository test harness and passed.</li>
+    <li>Pre-existing modifications in <code>Body-Tell/reports/26-05-24/lead.html</code> and <code>Body-Tell/reports/26-05-24/workflow_manifest.yaml</code> were observed and left untouched.</li>
+  </ul>
+
+  <h2>Recommended Next Action</h2>
+  <p>Review SP-B.Step2, then proceed to SP-B Step 3/4 if accepted.</p>
+</body>
+</html>

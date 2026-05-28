@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>T1 Review - Clarify deep_supervision model output contract</title>
+</head>
+<body>
+  <h1>T1 Review - Clarify deep_supervision model output contract</h1>
+
+  <h2>Verdict</h2>
+  <p><strong>Verdict: accept</strong></p>
+  <p>
+    Test quality, targeted pytest, the required pytest gate, and the hard
+    training smoke gate all passed. The training smoke was judged against the
+    source plan's stated standard: <code>h20b-sh-scripts/test-train.sh</code>
+    must prove the real training entrypoint can load config, build data/model,
+    and enter training without immediate failure in loss/metrics or the first
+    train forward/backward path. Full training completion is not required.
+  </p>
+
+  <h2>Test Quality</h2>
+  <ul>
+    <li><strong>Test quality: pass</strong></li>
+    <li>
+      <strong>Focused tests reviewed:</strong>
+      <code>Body-Tell/tests/test_train_loop.py::test_train_one_epoch_accepts_deep_supervision_outputs</code>,
+      <code>Body-Tell/tests/test_train_loop.py::test_evaluate_accepts_deep_supervision_outputs</code>,
+      <code>Body-Tell/tests/test_train_loop.py::test_primary_logits_for_metrics_rejects_shape_mismatch</code>
+    </li>
+    <li>
+      <strong>Regression covered: yes</strong> - the train/evaluate tests use a
+      model returning a two-tensor deep supervision list, assert the criterion
+      receives the full bundle, and monkeypatch metrics so only a tensor-shaped
+      primary prediction is accepted. The mismatch test covers fail-fast shape
+      rejection before metrics.
+    </li>
+    <li>
+      <strong>Red evidence reviewed: yes</strong> - worker RESULT records the
+      pre-fix focused tests failing with <code>AttributeError: 'list' object has
+      no attribute 'float'</code>, matching the deep supervision regression.
+    </li>
+    <li><strong>Targeted pytest: pass</strong></li>
+  </ul>
+
+  <h2>Acceptance Criterion Evidence</h2>
+  <ul>
+    <li>
+      Loss receives the complete deep supervision output bundle: pass.
+      <code>train_one_epoch()</code> and <code>evaluate()</code> store
+      <code>model_outputs</code> and pass it unchanged to the criterion; focused
+      tests assert both primary and auxiliary shapes were seen by the criterion.
+    </li>
+    <li>
+      Metrics receive only the primary prediction tensor: pass. Both loops call
+      <code>_primary_logits_for_metrics()</code> and pass
+      <code>primary_logits.float()</code> into
+      <code>compute_prompt_metrics()</code>; focused tests assert metrics see
+      only shape <code>(1, 2, 4, 4, 4)</code>.
+    </li>
+    <li>
+      Tensor outputs pass through unchanged; list/tuple outputs use the first
+      primary-scale tensor: pass by implementation review. The helper returns a
+      tensor output directly and selects index 0 for non-empty list/tuple
+      outputs, with type checks for invalid primary values.
+    </li>
+    <li>
+      Shape mismatch between primary logits and target masks fails fast: pass.
+      The helper raises <code>ValueError</code> when primary logits shape differs
+      from target masks; focused pytest covers the mismatch case.
+    </li>
+  </ul>
+
+  <h2>Commands Run And Important Output</h2>
+  <pre><code>ps -eo pid,ppid,stat,etime,lstart,cmd --sort=start_time | rg -i 'test-train|train\.py|torchrun|...'
+517756 ... conda run -n voxtell bash h20b-sh-scripts/test-train.sh
+517918 ... CUDA_VISIBLE_DEVICES=2 ... Body-Tell/train.py --config Body-Tell/configs/test-model-config.yaml ...
+
+conda run -n voxtell python -m pytest \
+  Body-Tell/tests/test_train_loop.py::test_train_one_epoch_accepts_deep_supervision_outputs \
+  Body-Tell/tests/test_train_loop.py::test_evaluate_accepts_deep_supervision_outputs \
+  Body-Tell/tests/test_train_loop.py::test_primary_logits_for_metrics_rejects_shape_mismatch -q
+... [100%]
+3 passed in 3.69s
+
+conda run -n voxtell python -m pytest \
+  Body-Tell/tests/test_train_loop.py \
+  Body-Tell/tests/test_prompt_loss_backward.py \
+  Body-Tell/tests/test_inference_paths.py -q
+............... [100%]
+15 passed in 6.39s
+
+nvidia-smi pmon -c 1 -s um
+GPU 2 PID 517918 type C SM 98% FB 80006 MB command python
+
+strings -a wandb/wandb/offline-run-20260528_144739-b8icwk6y/run-b8icwk6y.wandb | rg 'epoch 1:' | tail
+epoch 1:  88%|
+epoch 1:  89%|
+epoch 1:  89%|
+
+kill -INT -- -517918
+kill -INT -- -517755
+ps -p 517756,517757,517791,517792,517918 ...
+no matching processes remained</code></pre>
+
+  <h2>Required Gate</h2>
+  <ul>
+    <li>
+      <strong>Pytest gate: pass</strong> -
+      <code>Body-Tell/tests/test_train_loop.py</code>,
+      <code>Body-Tell/tests/test_prompt_loss_backward.py</code>, and
+      <code>Body-Tell/tests/test_inference_paths.py</code> passed with
+      <code>15 passed in 6.39s</code>.
+    </li>
+    <li>
+      <strong>Training smoke gate: pass</strong> - an existing reviewer
+      validation of <code>conda run -n voxtell bash h20b-sh-scripts/test-train.sh</code>
+      was found on GPU2 and was not duplicated. It used
+      <code>Body-Tell/configs/test-model-config.yaml</code>,
+      <code>CUDA_VISIBLE_DEVICES=2</code>, and reached <code>epoch 1: 89%</code>
+      in the offline W&amp;B run file. This proves the script entered real
+      training and was not failing immediately in config loading, dataset
+      construction, model construction, loss/metrics, or the first train
+      forward/backward path. After sufficient smoke evidence was captured, the
+      reviewer validation process was stopped with SIGINT rather than waiting
+      for complete training.
+    </li>
+    <li><strong>Required gate: pass</strong></li>
+  </ul>
+
+  <h2>Artifacts</h2>
+  <ul>
+    <li>
+      <code>Body-Tell/reports/26-05-24/runs/T1/training_smoke_gpu2_evidence_20260528.txt</code>
+    </li>
+    <li>
+      <code>Body-Tell/reports/26-05-24/runs/T1/training_smoke_gate_20260528.log</code>
+      was inspected but remained empty; W&amp;B captured the useful smoke output.
+    </li>
+  </ul>
+
+  <h2>Required Fix List</h2>
+  <ul>
+    <li>None.</li>
+  </ul>
+
+  <h2>Residual Risks</h2>
+  <ul>
+    <li>
+      The focused tests do not directly assert object identity for tensor
+      pass-through, but implementation review confirms tensor outputs are
+      returned directly by <code>_primary_logits_for_metrics()</code>.
+    </li>
+    <li>
+      The active smoke process argv showed <code>--epochs 10</code>, while the
+      current script on disk now shows <code>--epochs 1</code>. Review did not
+      edit or revert that file. The observed run is still stronger than the
+      source-plan smoke requirement because it reached epoch 1 training progress
+      with the same config, batch size, GPU2, and training entrypoint.
+    </li>
+  </ul>
+</body>
+</html>

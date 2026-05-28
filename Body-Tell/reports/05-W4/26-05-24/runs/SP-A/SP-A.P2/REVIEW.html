@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-A.P2 Review - VoxTell Residual Encoder</title>
+  <style>
+    body {
+      margin: 0;
+      color: #172033;
+      background: #f6f7f9;
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+    section {
+      background: #fff;
+      border: 1px solid #d9dee8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0 0 12px; font-size: 19px; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 5px 0; }
+    code {
+      background: #f1f4f8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #f7fafc;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    th, td {
+      border: 1px solid #d9dee8;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #eef2f7; }
+    .ok { color: #187044; font-weight: 700; }
+    .warn { color: #8a5a00; font-weight: 700; }
+    .meta { color: #5c6678; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SP-A.P2 Review - Replace Encoder With VoxTell Residual Encoder</h1>
+  <p class="meta">Reviewer date: 2026-05-24. Source result: <code>Body-Tell/reports/26-05-24/runs/SP-A.P2/RESULT.html</code>.</p>
+
+  <section>
+    <h2>Verdict</h2>
+    <p class="ok"><code>accept</code></p>
+    <p>The implementation satisfies the explicit SP-A.P2 acceptance criteria: the residual encoder policy matches the SP-A channel/block plan, and the updated model shape tests pass in the requested conda environment.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance Evidence</h2>
+    <table>
+      <thead>
+        <tr><th>Criterion</th><th>Evidence</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Encoder channel/block structure matches the SP-A plan or records an explicit domain-exemption decision.</td>
+          <td>
+            <p><span class="ok">Pass.</span> The SP-A plan requires a six-stage VoxTell residual encoder with channels <code>[32, 64, 128, 256, 320, 320]</code> and residual blocks <code>[1, 3, 4, 6, 6, 6]</code>. The implementation adds these constants in <code>voxtell_body_model.py</code>, wires <code>backbone="residual_encoder"</code>, and builds <code>dynamic_network_architectures.building_blocks.residual_encoders.ResidualEncoder</code> with <code>BasicBlockD</code>, <code>conv_bias=True</code>, <code>InstanceNorm3d(eps=1e-5, affine=True)</code>, <code>LeakyReLU(inplace=True)</code>, <code>return_skips=True</code>, and <code>disable_default_stem=False</code>.</p>
+            <p>The aligned config <code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code> declares <code>encoder_channels: [32, 64, 128, 256, 320, 320]</code>, <code>n_blocks_per_stage: [1, 3, 4, 6, 6, 6]</code>, <code>decoder_layer: 4</code>, and <code>num_maskformer_stages: 5</code>. Direct encoder inspection reported <code>stage_count=6</code>, <code>stage_block_lengths=[1, 3, 4, 6, 6, 6]</code>, and <code>encoder_params=90296576</code>, matching the planned approximately 90.30M encoder.</p>
+          </td>
+        </tr>
+        <tr>
+          <td>Existing model shape tests are updated and passing.</td>
+          <td>
+            <p><span class="ok">Pass.</span> <code>Body-Tell/tests/test_model_shapes.py</code> now covers the residual encoder policy, aligned config declarations, norm/activation/bias policy, state-dict prefix shape compatibility, and the accepted SP-A.P1 unused self-attention parameters. The requested verification command passes with all five tests green.</p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Commands Run</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Important output</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>git status --short</code></td>
+          <td>Confirmed the worker changed model, train, tests, and added <code>phase1_voxtell_aligned.yaml</code>. The worktree already also contained report/workflow file changes, including <code>workflow_manifest.yaml</code>; this review did not modify those protected files.</td>
+        </tr>
+        <tr>
+          <td><code>git diff -- Body-Tell/body_tell/models/voxtell_body_model.py Body-Tell/train.py Body-Tell/tests/test_model_shapes.py Body-Tell/configs/phase1_voxtell_aligned.yaml</code></td>
+          <td>Reviewed the residual encoder builder, config plumbing in <code>train.py</code>, and updated shape tests.</td>
+        </tr>
+        <tr>
+          <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py</code></td>
+          <td>
+            <pre>collected 5 items
+
+Body-Tell/tests/test_model_shapes.py .....                               [100%]
+
+============================== 5 passed in 15.54s ==============================</pre>
+          </td>
+        </tr>
+        <tr>
+          <td><code>PYTHONPATH=Body-Tell conda run -n voxtell python -c "..."</code></td>
+          <td>
+            <pre>type= ResidualEncoder
+output_channels= (32, 64, 128, 256, 320, 320)
+strides= ((1, 1, 1), (2, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2), (2, 2, 2))
+n_blocks_per_stage= (1, 3, 4, 6, 6, 6)
+stage_count= 6
+stage_block_lengths= [1, 3, 4, 6, 6, 6]
+return_skips= True
+conv_bias= True
+kernel_sizes= ((3, 3, 3), (3, 3, 3), (3, 3, 3), (3, 3, 3), (3, 3, 3), (3, 3, 3))
+encoder_params= 90296576
+state_prefix_sample= stem.convs.0.conv.weight</pre>
+          </td>
+        </tr>
+        <tr>
+          <td><code>git diff --check -- Body-Tell/body_tell/models/voxtell_body_model.py Body-Tell/train.py Body-Tell/tests/test_model_shapes.py Body-Tell/configs/phase1_voxtell_aligned.yaml</code></td>
+          <td>No whitespace errors reported.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Required Fixes</h2>
+    <p>No required fixes for SP-A.P2 acceptance.</p>
+  </section>
+
+  <section>
+    <h2>Residual Risk</h2>
+    <ul>
+      <li><span class="warn">Dependency declaration gap:</span> the P2 sub-plan asks for <code>dynamic-network-architectures&gt;=0.4.1,&lt;0.5</code> and <code>einops</code> to be written into the Body-Tell environment declaration. I did not find a Body-Tell-specific environment file in the inspected tree, and the worker did not add one. The <code>voxtell</code> environment already has the dependency because the tests pass, but reproducibility for a fresh Body-Tell environment should be recorded by the manager.</li>
+      <li><span class="warn">Checkpoint loading not fully exercised:</span> SP-A.P2 now exposes compatible <code>encoder.*</code> state-dict prefixes through direct mounting at <code>model.encoder</code>, but this review did not load the VoxTell v1.1 checkpoint. SP-A.P6 should perform strict encoder weight-load validation.</li>
+      <li><span class="warn">Downstream alignment remains pending:</span> decoder replacement, projection naming, <code>num_heads</code> policy, and position encoding are SP-A.P3-P5/P6 concerns. The aligned config retains <code>num_heads: 32</code>, which matches the sub-plan's recommended path B but must be reflected in the future skip whitelist for projection and mask-fusion weights.</li>
+      <li><span class="warn">Protected file state:</span> <code>Body-Tell/reports/26-05-24/workflow_manifest.yaml</code> was already modified in the worktree before this review. I did not edit it, but the manager should account for that separate change.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

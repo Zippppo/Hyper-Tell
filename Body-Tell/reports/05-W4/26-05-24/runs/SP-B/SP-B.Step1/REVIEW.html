@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step1 Review</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 28px; color: #1f2933; line-height: 1.5; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 24px 0 8px; }
+    code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #d8dee8; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f6fa; }
+    .ok { color: #166534; font-weight: 700; }
+    .warn { color: #92400e; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step1 Review: Add dynamic sampling RNG infrastructure</h1>
+  <p><strong>Verdict:</strong> <span class="ok">accept</span></p>
+  <p>
+    Second-round review after the prior <code>needs_fix</code>. The rerun wires the
+    training loop to propagate the epoch to the dataset alongside the distributed
+    sampler, including smoke-mode <code>Subset</code> unwrapping, and the fresh
+    phase1 Slurm gate passed.
+  </p>
+
+  <h2>Acceptance Evidence</h2>
+  <table>
+    <tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr>
+    <tr>
+      <td>Dataset exposes <code>set_epoch(epoch)</code> or equivalent.</td>
+      <td class="ok">Pass</td>
+      <td><code>Body-Tell/body_tell/data/dataset.py:124</code> defines <code>set_epoch</code>; <code>get_epoch</code> and epoch-based prompt RNG are at <code>:139</code> and <code>:142</code>.</td>
+    </tr>
+    <tr>
+      <td>Same case can sample different prompt text across epochs.</td>
+      <td class="ok">Pass</td>
+      <td><code>Body-Tell/tests/test_dataset_prompt_masks.py:182</code> verifies repeatability within an epoch and different prompt text after <code>set_epoch(1)</code> for the same case.</td>
+    </tr>
+    <tr>
+      <td>DDP-compatible deterministic behavior is documented.</td>
+      <td class="ok">Pass</td>
+      <td><code>Body-Tell/body_tell/data/dataset.py:30</code> documents deterministic sampling by seed, epoch, and global index, with rank-independent prompt RNG.</td>
+    </tr>
+    <tr>
+      <td>Sub-plan requirement: training loop calls dataset epoch setter each epoch.</td>
+      <td class="ok">Pass</td>
+      <td><code>Body-Tell/train.py:172</code> unwraps <code>Subset</code> and calls dataset <code>set_epoch</code>; <code>Body-Tell/train.py:184</code> updates sampler and dataset; <code>Body-Tell/train.py:548</code> calls the helper before epoch iteration.</td>
+    </tr>
+    <tr>
+      <td>Focused regression coverage for the prior reviewer note.</td>
+      <td class="ok">Pass</td>
+      <td><code>Body-Tell/tests/test_dataset_prompt_masks.py:227</code> verifies sampler epoch propagation and smoke-mode <code>Subset.dataset</code> epoch propagation.</td>
+    </tr>
+  </table>
+
+  <h2>Commands Run</h2>
+  <table>
+    <tr><th>Command</th><th>Important output</th></tr>
+    <tr>
+      <td><code>sed -n '1,240p' Body-Tell/reports/26-05-24/templates/review_prompt.md</code></td>
+      <td>Read and followed the controlling reviewer template.</td>
+    </tr>
+    <tr>
+      <td><code>sed -n '1,220p' Body-Tell/reports/26-05-24/runs/SP-B.Step1/RESULT.html</code></td>
+      <td>Worker reported rerun ready for review, with <code>Body-Tell/train.py</code> and focused tests updated.</td>
+    </tr>
+    <tr>
+      <td><code>grep -n -i -E "SP-B|Step 1|dynamic sampling|epoch|set_epoch|rng|prompt" Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html</code></td>
+      <td>Confirmed Step 1 requires dataset epoch setter, <code>base_seed + epoch * large_prime + index</code>, and training-loop setter call with <code>DistributedSampler.set_epoch(epoch)</code>.</td>
+    </tr>
+    <tr>
+      <td><code>git diff -- Body-Tell/train.py Body-Tell/body_tell/data/dataset.py Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td>Reviewed implementation and test changes; no acceptance-blocking issue found.</td>
+    </tr>
+    <tr>
+      <td><code>git diff --check -- Body-Tell/train.py Body-Tell/body_tell/data/dataset.py Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td>No whitespace errors.</td>
+    </tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py</code></td>
+      <td><span class="ok">Passed</span>: 9 tests passed in 14.67s.</td>
+    </tr>
+    <tr>
+      <td><code>sbatch slurm/body-tell-phase1.sh</code></td>
+      <td>Submitted batch job 37868.</td>
+    </tr>
+    <tr>
+      <td><code>sacct -j 37868 --format=JobID,State,ExitCode,Elapsed -n</code></td>
+      <td><code>37868 COMPLETED 0:0 00:43:47</code>; <code>37868.batch COMPLETED 0:0 00:43:47</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Phase1 Slurm Gate</h2>
+  <ul>
+    <li><strong>Phase1 Slurm gate: pass</strong></li>
+    <li><strong>Slurm command:</strong> <code>sbatch slurm/body-tell-phase1.sh</code></li>
+    <li><strong>Slurm job id:</strong> 37868</li>
+    <li><strong>sacct final state:</strong> COMPLETED</li>
+    <li><strong>sacct exit code:</strong> 0:0</li>
+    <li><strong>elapsed time:</strong> 00:43:47</li>
+    <li><strong>failure excerpt:</strong> none; gate passed.</li>
+  </ul>
+
+  <h2>Required Fixes</h2>
+  <p>None.</p>
+
+  <h2>Residual Risk</h2>
+  <p>
+    The dataset documentation notes that persistent DataLoader workers would need
+    worker-side epoch propagation. The current phase1 DataLoader construction does
+    not enable persistent workers, so this is documented follow-up risk rather than
+    a blocker for SP-B.Step1.
+  </p>
+
+  <h2>Reviewer Notes</h2>
+  <p>
+    Existing worktree modifications in <code>Body-Tell/reports/26-05-24/workflow_manifest.yaml</code>
+    were observed and left untouched, per reviewer constraints. No implementation
+    files were edited during review.
+  </p>
+</body>
+</html>

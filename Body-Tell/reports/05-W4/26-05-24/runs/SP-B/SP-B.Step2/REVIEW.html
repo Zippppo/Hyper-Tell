@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-B.Step2 Review</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 28px; color: #1f2933; line-height: 1.5; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 22px 0 8px; }
+    code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; }
+    table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; }
+    th, td { border: 1px solid #d8dee8; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f6fa; }
+    .pass { color: #166534; font-weight: 700; }
+    .risk { color: #92400e; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>SP-B.Step2 Review</h1>
+  <p><strong>Verdict:</strong> <span class="pass">accept</span></p>
+
+  <h2>Test Quality</h2>
+  <p><strong>Test quality:</strong> pass</p>
+  <p><strong>Focused tests reviewed:</strong> <code>Body-Tell/tests/test_dataset_prompt_masks.py</code>, <code>Body-Tell/tests/test_crop_s2i_dataset.py</code>, plus config-forwarding coverage in <code>Body-Tell/tests/test_train_loop.py</code>.</p>
+  <p><strong>Regression covered:</strong> yes - the dataset tests force patch-local present/absent recomputation, assert output shape and crop metadata, verify foreground/random auditability over 200 deterministic epochs, and assert whole-case fallback when the patch equals the full case shape.</p>
+  <p><strong>Red evidence reviewed:</strong> no - worker result states true red evidence was not possible because inherited interrupted Step2 implementation and tests already passed before cleanup. I inspected the tests directly and judged them meaningful because they would fail if prompts were still sampled from whole-case presence after cropping.</p>
+  <p><strong>Targeted pytest:</strong> pass</p>
+
+  <h2>Acceptance Evidence</h2>
+  <table>
+    <tr><th>Criterion</th><th>Evidence</th></tr>
+    <tr>
+      <td><code>patch_size</code>, <code>foreground_oversample_prob</code> live in <code>phase1_voxtell_aligned.yaml</code>; no hardcoded 192.</td>
+      <td><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code> contains <code>patch_size: [128, 128, 128]</code> and <code>foreground_oversample_prob: 0.85</code>. <code>train.py</code> forwards both fields into <code>HyperBodyPromptDataset</code>. Active Body-Tell code/test/config/script tree has no <code>phase1_voxtell_body.yaml</code> reference.</td>
+    </tr>
+    <tr>
+      <td>Output patch shape equals configured <code>patch_size</code>.</td>
+      <td><code>test_prompt_dataset_crops_patch_and_recomputes_prompt_presence</code> asserts <code>occupancy</code>, <code>voxel_labels</code>, and <code>target_masks</code> shapes for a configured <code>(4,5,3)</code> patch. Implementation pads/crops to <code>patch_size</code> after sampling.</td>
+    </tr>
+    <tr>
+      <td>Foreground/random crop ratio is auditable and close to 85/15.</td>
+      <td>Samples include <code>sample["crop"]["branch"]</code> and <code>foreground_oversample_prob</code>. The ratio test samples 200 epochs at probability <code>0.85</code> and requires the foreground ratio in <code>[0.75, 0.95]</code>.</td>
+    </tr>
+    <tr>
+      <td>Positive masks are not empty inside the sampled patch.</td>
+      <td>The patch-local negative test places class 3 outside the sampled patch while classes 1 and 2 remain inside; it asserts mask sums <code>[1, 1, 0]</code> and <code>target_empty</code> <code>[False, False, True]</code>.</td>
+    </tr>
+    <tr>
+      <td><code>patch_size=[128,128,256]</code> degrades to whole-case behavior.</td>
+      <td>Synthetic fallback coverage uses a full-case patch size and asserts branch <code>whole_case</code>, full output shape, full-case prompt ids, and original mask sums. The same implementation path applies when the configured patch matches <code>[128,128,256]</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Commands Run</h2>
+  <table>
+    <tr><th>Command</th><th>Important output</th></tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_crop_s2i_dataset.py</code></td>
+      <td>16 passed in 16.71s.</td>
+    </tr>
+    <tr>
+      <td><code>conda run -n voxtell python -m pytest Body-Tell/tests/test_train_loop.py -k "build_dataset_forwards_s2i_path_config or phase1_canonical_config_targets_cropped_s2i_package"</code></td>
+      <td>2 passed, 2 deselected in 14.02s.</td>
+    </tr>
+    <tr>
+      <td><code>git diff --check -- Body-Tell/body_tell/data/dataset.py Body-Tell/configs/phase1_voxtell_aligned.yaml Body-Tell/inference.py Body-Tell/scripts/audit_voxtell_alignment.py Body-Tell/scripts/parameter_audit.py Body-Tell/tests/test_dataset_prompt_masks.py Body-Tell/tests/test_train_loop.py Body-Tell/train.py</code></td>
+      <td>No whitespace errors.</td>
+    </tr>
+    <tr>
+      <td><code>find Body-Tell/body_tell Body-Tell/configs Body-Tell/scripts Body-Tell/tests -type f \( -name '*.py' -o -name '*.yaml' -o -name '*.yml' -o -name '*.sh' \) -print0 | xargs -0 grep -n 'phase1_voxtell_body' || true</code></td>
+      <td>No matches in the active Body-Tell source, config, scripts, or tests tree.</td>
+    </tr>
+    <tr>
+      <td><code>sbatch slurm/body-tell-phase1.sh</code></td>
+      <td>Submitted batch job 37959.</td>
+    </tr>
+    <tr>
+      <td><code>sacct -j 37959 --format=JobID,State,ExitCode,Elapsed -n</code></td>
+      <td><code>37959 COMPLETED 0:0 00:28:51</code>; <code>37959.batch COMPLETED 0:0 00:28:51</code>.</td>
+    </tr>
+  </table>
+
+  <h2>Phase1 Slurm Gate</h2>
+  <p><strong>Phase1 Slurm gate:</strong> pass</p>
+  <p><strong>Slurm command:</strong> sbatch slurm/body-tell-phase1.sh</p>
+  <p><strong>Slurm job id:</strong> 37959</p>
+  <p><strong>sacct final state:</strong> COMPLETED</p>
+  <p><strong>sacct exit code:</strong> 0:0</p>
+
+  <h2>Inspected Files</h2>
+  <ul>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step2/REVIEW_PROMPT.md</code></li>
+    <li><code>Body-Tell/reports/26-05-24/runs/SP-B.Step2/RESULT.html</code></li>
+    <li><code>Body-Tell/reports/26-05-24/bodytell_sampling_vocabulary_optimization_report.html</code></li>
+    <li><code>Body-Tell/tests/test_dataset_prompt_masks.py</code></li>
+    <li><code>Body-Tell/tests/test_crop_s2i_dataset.py</code></li>
+    <li><code>Body-Tell/tests/test_train_loop.py</code></li>
+    <li><code>Body-Tell/body_tell/data/dataset.py</code></li>
+    <li><code>Body-Tell/body_tell/data/vocabulary.py</code></li>
+    <li><code>Body-Tell/train.py</code></li>
+    <li><code>Body-Tell/inference.py</code></li>
+    <li><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code></li>
+    <li><code>Body-Tell/scripts/audit_voxtell_alignment.py</code></li>
+    <li><code>Body-Tell/scripts/parameter_audit.py</code></li>
+    <li><code>slurm/body-tell-phase1.sh</code></li>
+    <li><code>slurm/body-tell-crop129-benchmark.sh</code></li>
+  </ul>
+
+  <h2>Required Fix List</h2>
+  <p>None.</p>
+
+  <h2>Residual Risk</h2>
+  <p>Legacy references to <code>phase1_voxtell_body.yaml</code> remain in archived output summaries and in <code>slurm/body-tell-crop129-benchmark.sh</code>. They are outside the active Body-Tell source/config/test tree and outside the required phase1 gate, but the manager may want to retire or update that benchmark script separately. True red evidence is absent for the inherited interrupted-work reason recorded above.</p>
+</body>
+</html>

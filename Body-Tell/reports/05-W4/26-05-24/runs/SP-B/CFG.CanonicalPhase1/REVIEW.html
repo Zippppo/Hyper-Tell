@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CFG.CanonicalPhase1 Review</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; color: #1f2933; margin: 0; background: #f7f9fb; }
+    main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 48px; background: #fff; }
+    h1, h2 { color: #102a43; }
+    h1 { margin-top: 0; }
+    h2 { margin-top: 28px; border-bottom: 1px solid #d9e2ec; padding-bottom: 6px; }
+    code, pre { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.94em; }
+    pre { white-space: pre-wrap; overflow: auto; background: #f0f4f8; border: 1px solid #d9e2ec; border-radius: 6px; padding: 12px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid #d9e2ec; padding: 8px 10px; }
+    th { background: #f0f4f8; }
+    .pass { color: #0b6b3a; font-weight: 700; }
+    .warn { color: #9a6700; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>CFG.CanonicalPhase1 Review</h1>
+
+  <h2>Verdict</h2>
+  <p><strong>Verdict:</strong> <span class="pass">accept</span></p>
+
+  <h2>Test Quality</h2>
+  <p><strong>Test quality:</strong> pass</p>
+  <p><strong>Focused tests reviewed:</strong> <code>Body-Tell/tests/test_model_shapes.py</code>, <code>Body-Tell/tests/test_train_loop.py</code></p>
+  <p><strong>Regression covered:</strong> yes; the tests assert the retired config file is absent, active entry points do not reference <code>phase1_voxtell_body.yaml</code>, canonical defaults point at the cropped S2I package, SP-A encoder/block layout is preserved, and relocated <code>patch_size</code>/<code>foreground_oversample_prob</code> are read from the canonical config.</p>
+  <p><strong>Red evidence reviewed:</strong> yes; worker <code>RESULT.html</code> records the focused canonical-config tests failing before the stale config/defaults were removed.</p>
+  <p><strong>Targeted pytest:</strong> pass</p>
+
+  <h2>Acceptance Evidence</h2>
+  <table>
+    <thead><tr><th>Criterion</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>phase1_voxtell_aligned.yaml</code> is the single canonical Phase1 VoxTell training config.</td>
+        <td><span class="pass">PASS</span> <code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code> exists and loads in tests/audit; <code>Body-Tell/configs/phase1_voxtell_body.yaml</code> is absent.</td>
+      </tr>
+      <tr>
+        <td><code>phase1_voxtell_body.yaml</code> is removed from active use.</td>
+        <td><span class="pass">PASS</span> Active grep over <code>train.py</code>, <code>inference.py</code>, <code>scripts</code>, <code>tests</code>, and <code>configs</code> returned no stale references.</td>
+      </tr>
+      <tr>
+        <td>Training, inference, audit scripts, and tests point to the canonical config.</td>
+        <td><span class="pass">PASS</span> References to <code>phase1_voxtell_aligned.yaml</code> were found in <code>train.py</code>, <code>inference.py</code>, <code>scripts/audit_voxtell_alignment.py</code>, <code>scripts/parameter_audit.py</code>, <code>tests/test_train_loop.py</code>, and <code>tests/test_model_shapes.py</code>.</td>
+      </tr>
+      <tr>
+        <td>Canonical config preserves SP-A architecture-sensitive fields.</td>
+        <td><span class="pass">PASS</span> Config declares <code>backbone: residual_encoder</code>, <code>encoder_channels: [32, 64, 128, 256, 320, 320]</code>, <code>n_blocks_per_stage: [1, 3, 4, 6, 6, 6]</code>, <code>decoder_layer: 4</code>, <code>num_maskformer_stages: 5</code>, and <code>num_heads: 32</code>; audit reported zero same-name checkpoint shape mismatches.</td>
+      </tr>
+      <tr>
+        <td>Config-only SP-B fields are present only in the canonical aligned config if needed.</td>
+        <td><span class="pass">PASS</span> <code>patch_size: [128, 128, 128]</code> and <code>foreground_oversample_prob: 0.85</code> are present in the canonical config; the retired config file no longer exists.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Commands Run</h2>
+  <table>
+    <thead><tr><th>Command</th><th>Important output</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><pre>sed -n '1,260p' Body-Tell/reports/26-05-24/runs/CFG.CanonicalPhase1/RESULT.html</pre></td>
+        <td><pre>Reviewed worker result, including red/green evidence and claimed changed files.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>sed -n '1,520p' Body-Tell/tests/test_model_shapes.py
+sed -n '1,520p' Body-Tell/tests/test_train_loop.py
+git diff -- Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_train_loop.py</pre></td>
+        <td><pre>Reviewed focused tests first. Test coverage maps to canonical config removal, active default references, and SP-A aligned model fields.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>git diff -- Body-Tell/configs/phase1_voxtell_aligned.yaml Body-Tell/configs/phase1_voxtell_body.yaml Body-Tell/train.py Body-Tell/inference.py Body-Tell/scripts/audit_voxtell_alignment.py Body-Tell/scripts/parameter_audit.py</pre></td>
+        <td><pre>Aligned config gained patch_size and foreground_oversample_prob; retired config deleted; train/inference/audit defaults point to phase1_voxtell_aligned.yaml.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>conda run -n voxtell python -m pytest Body-Tell/tests/test_model_shapes.py Body-Tell/tests/test_train_loop.py</pre></td>
+        <td><pre>collected 16 items
+Body-Tell/tests/test_model_shapes.py ...........
+Body-Tell/tests/test_train_loop.py .....
+16 passed in 43.36s</pre></td>
+      </tr>
+      <tr>
+        <td><pre>conda run -n voxtell python Body-Tell/scripts/audit_voxtell_alignment.py --config Body-Tell/configs/phase1_voxtell_aligned.yaml</pre></td>
+        <td><pre>Transformer decoder prefix audit status: PASS
+loaded tensors: 110
+shape mismatches: 0
+matching keys: 1094
+matched params: 721,151,429 / 721,151,429</pre></td>
+      </tr>
+      <tr>
+        <td><pre>grep -RIn "phase1_voxtell_body" Body-Tell/train.py Body-Tell/inference.py Body-Tell/scripts Body-Tell/tests Body-Tell/configs 2&gt;/dev/null</pre></td>
+        <td><pre>No output.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>find Body-Tell -type f \( -name '*.py' -o -name '*.yaml' -o -name '*.yml' -o -name '*.md' -o -name '*.sh' \) -print | xargs grep -n "phase1_voxtell_body" 2&gt;/dev/null</pre></td>
+        <td><pre>Matches are limited to generated task metadata: CFG.CanonicalPhase1/PROMPT.md, CFG.CanonicalPhase1/REVIEW_PROMPT.md, and workflow_manifest.yaml.</pre></td>
+      </tr>
+      <tr>
+        <td><pre>grep -n "phase1_voxtell_body" Body-Tell/reports/26-05-24/lead.html Body-Tell/reports/26-05-24/bodytell_voxtell_alignment_plan_2026-05-24.html 2&gt;/dev/null</pre></td>
+        <td><pre>No output.</pre></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Phase1 Slurm Gate</h2>
+  <p><strong>Phase1 Slurm gate:</strong> pass</p>
+  <p><strong>Slurm command:</strong> <code>sbatch slurm/body-tell-phase1.sh</code></p>
+  <p><strong>Slurm job id:</strong> 37958</p>
+  <p><strong>sacct final state:</strong> COMPLETED</p>
+  <p><strong>sacct exit code:</strong> 0:0</p>
+  <pre>37958         COMPLETED      0:0   00:28:54
+37958.batch   COMPLETED      0:0   00:28:54</pre>
+  <p>Gate log excerpt:</p>
+  <pre>20:57:29 [INFO]   [val] loss=0.4547 | fg_dice=0.1018 | neg_fp=0.0007
+20:57:42 [INFO]   Saved best checkpoint (dice=0.1018)
+20:57:42 [INFO] Training complete in 1691.6s (1 epochs)
+20:57:54 [INFO] Saved final checkpoint to Body-Tell/checkpoints/test-S2I-aligned128/last.pt</pre>
+
+  <h2>Required Fixes</h2>
+  <p>None.</p>
+
+  <h2>Residual Risk</h2>
+  <p>
+    Generated task metadata still contains the stale config name in <code>runs/CFG.CanonicalPhase1/PROMPT.md</code>,
+    <code>runs/CFG.CanonicalPhase1/REVIEW_PROMPT.md</code>, and <code>workflow_manifest.yaml</code>. The reviewer prompt forbids editing
+    <code>workflow_manifest.yaml</code>, and these are not active runtime/test/script defaults.
+  </p>
+  <p>
+    The worktree also contains unrelated SP-B.Step2 dataset/prompt-mask edits. They were not accepted or rejected in this CFG.CanonicalPhase1-only review.
+  </p>
+</main>
+</body>
+</html>

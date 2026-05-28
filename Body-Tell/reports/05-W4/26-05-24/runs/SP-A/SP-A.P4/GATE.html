@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SP-A.P4 Phase1 Slurm Gate</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2933; line-height: 1.45; }
+    main { max-width: 980px; }
+    h1 { font-size: 24px; margin: 0 0 12px; }
+    h2 { font-size: 18px; margin-top: 24px; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { background: #f3f5f7; border: 1px solid #d8dee4; padding: 12px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { border: 1px solid #d8dee4; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f3f5f7; width: 220px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SP-A.P4 Phase1 Slurm Gate</h1>
+    <p>This artifact records the passing integration gate after the dataset was rewritten to the 128x128x256 target shape.</p>
+
+    <h2>Current Status</h2>
+    <table>
+      <tr><th>Task</th><td>SP-A.P4 - Align projection, mask head, num_heads decision, and forward layout</td></tr>
+      <tr><th>Phase1 Slurm gate</th><td>pass</td></tr>
+      <tr><th>Recorded at</th><td>2026-05-25T02:20:13+08:00</td></tr>
+      <tr><th>Slurm command</th><td><code>sbatch slurm/body-tell-phase1.sh</code></td></tr>
+      <tr><th>Slurm job id</th><td>37739</td></tr>
+      <tr><th>sacct final state</th><td>COMPLETED</td></tr>
+      <tr><th>sacct exit code</th><td>0:0</td></tr>
+      <tr><th>Elapsed at recording</th><td>00:38:05</td></tr>
+      <tr><th>Node</th><td>gpu26</td></tr>
+    </table>
+
+    <h2>Evidence</h2>
+    <pre>squeue -j 37739 -o '%i %T %R %M'
+JOBID STATE NODELIST(REASON) TIME
+
+sacct -j 37739 --format=JobID,State,ExitCode,Elapsed -n
+37739         COMPLETED      0:0   00:38:05
+37739.batch   COMPLETED      0:0   00:38:05</pre>
+
+    <h2>Dataset Shape Context</h2>
+    <table>
+      <tr><th>Training config</th><td><code>Body-Tell/configs/phase1_voxtell_aligned.yaml</code></td></tr>
+      <tr><th>Slurm script</th><td><code>slurm/body-tell-phase1.sh</code></td></tr>
+      <tr><th>Configured volume size</th><td><code>[128, 128, 256]</code></td></tr>
+      <tr><th>Dataset rewrite summary</th><td><code>Body-Tell/reports/26-05-24/s2i_crop128_write_summary.json</code></td></tr>
+      <tr><th>Target shape from summary</th><td><code>[128, 128, 256]</code></td></tr>
+      <tr><th>Total files from summary</th><td>11070</td></tr>
+    </table>
+
+    <h2>Training Summary</h2>
+    <table>
+      <tr><th>Train dataset</th><td>10070 samples</td></tr>
+      <tr><th>Val dataset</th><td>500 samples</td></tr>
+      <tr><th>Model parameters</th><td>440,029,541</td></tr>
+      <tr><th>Epoch 001 train loss</th><td>0.4892 (bce=0.0067, dice=0.9716)</td></tr>
+      <tr><th>Epoch 001 val loss</th><td>0.4866</td></tr>
+      <tr><th>Epoch 001 val foreground mean dice</th><td>0.0353</td></tr>
+      <tr><th>Epoch 001 val negative fp</th><td>0.0021</td></tr>
+      <tr><th>Final checkpoint</th><td><code>Body-Tell/checkpoints/test-S2I-aligned128/last.pt</code></td></tr>
+      <tr><th>WandB offline run</th><td><code>wandb/wandb/offline-run-20260525_013808-9ly2pis4</code></td></tr>
+    </table>
+
+    <h2>Interpretation</h2>
+    <p>Previous phase1 gate attempts failed after about 18 seconds with a VoxTellDecoder stride-compatible input mismatch. Job 37739 completed one full epoch and validation with exit code <code>0:0</code>, so the phase1 Slurm gate is now passing for SP-A.P4 with the 128x128x256 dataset shape.</p>
+  </main>
+</body>
+</html>
