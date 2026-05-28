@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 模型改动与性能提升归因报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5f6b7a;
+      --line: #d7e0ea;
+      --panel: #ffffff;
+      --soft: #f3f7fb;
+      --blue: #1f5f9f;
+      --green: #23745a;
+      --orange: #9a5a12;
+      --red: #a33b3b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #eef3f8;
+      color: var(--ink);
+      font: 14px/1.58 Inter, "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+    header, section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 14px 0;
+      padding: 20px 22px;
+    }
+    header {
+      border-top: 5px solid var(--blue);
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.25; }
+    h1 { font-size: 30px; letter-spacing: 0; }
+    h2 { font-size: 21px; margin-bottom: 12px; }
+    h3 { font-size: 16px; margin: 18px 0 8px; }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0 8px 22px; padding: 0; }
+    li { margin: 4px 0; }
+    code {
+      background: #eef4fa;
+      border: 1px solid #cbd8e6;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 4px;
+      table-layout: fixed;
+    }
+    th, td {
+      border-bottom: 1px solid #e2e9f0;
+      padding: 8px 9px;
+      text-align: left;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    th {
+      background: #edf3f8;
+      color: #27384c;
+      font-weight: 700;
+    }
+    .meta { color: var(--muted); margin-top: 8px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .card {
+      background: var(--soft);
+      border: 1px solid #dce6f0;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 78px;
+    }
+    .label { color: var(--muted); font-size: 12px; }
+    .value { display: block; font-size: 24px; font-weight: 760; margin-top: 3px; }
+    .small { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .tag {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag.high { color: var(--green); background: #e8f4ef; border-color: #b9decf; }
+    .tag.mid { color: var(--orange); background: #fff4e2; border-color: #edd0a0; }
+    .tag.low { color: var(--red); background: #fbecec; border-color: #e6b7b7; }
+    .tag.info { color: var(--blue); background: #e8f1fb; border-color: #bdd3ec; }
+    .note {
+      background: #fff8e8;
+      border: 1px solid #ead8a8;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #4c3b13;
+    }
+    .bar {
+      height: 9px;
+      border-radius: 999px;
+      background: #dbe5ef;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .bar > span { display: block; height: 100%; background: var(--blue); }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 900px) {
+      .grid, .two-col { grid-template-columns: 1fr; }
+      table { table-layout: auto; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Body-Tell 模型改动与性能提升归因报告</h1>
+    <p class="meta">生成日期：2026-05-28。范围：复核三份 2026-05-24 报告、当前 Body-Tell 代码、checkpoint/W&amp;B 训练记录、采样与词表缓存。未启动训练，未修改模型代码。</p>
+    <div class="grid">
+      <div class="card"><span class="label">最关键结论</span><span class="value">采样分布改变</span><div class="small">不是单纯模型变大</div></div>
+      <div class="card"><span class="label">旧基线 gap</span><span class="value">0.1839</span><div class="small">train 0.5002 / val 0.3163</div></div>
+      <div class="card"><span class="label">5/26 aligned gap</span><span class="value">0.0065</span><div class="small">train 0.3717 / val 0.3652</div></div>
+      <div class="card"><span class="label">当前 prompt records</span><span class="value">418</span><div class="small">69 trainable classes + 14 aggregates</div></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>总判断</h2>
+    <p>当前观察到的“性能更好且过拟合消失”，最合理的解释不是单点模型结构改动，而是三类变化叠加：</p>
+    <ol>
+      <li><strong>训练样本分布从固定 whole-case 监督变成 VoxTell-style 动态 patch/prompt 监督。</strong>这是最强归因。它直接减少固定 case、固定 class、固定文本的记忆路径，并让每个 epoch 都看到不同的局部 present/absent 组合。</li>
+      <li><strong>语言与概念空间扩展。</strong>每个可训练基础类有 5 条 prompt，加入 aggregate union concept，并重建 Qwen embedding cache，使模型不能只拟合单一 canonical 名称。</li>
+      <li><strong>VoxTell-aligned 架构与训练闭环修正。</strong>Residual encoder、VoxTell decoder、Transformer prefix loader、动态 HWD position encoding、deep-supervision 兼容、DDP/global metric 修正等提高了可训练性、迁移先验和评估可信度。</li>
+    </ol>
+    <p class="note"><strong>证据边界：</strong>5 月 26/27 的 aligned 曲线最符合“过拟合消失”，但这些 run 早于 SP-C T4 的 DDP 全局指标修复；且 <code>0526S2I-aligned128/best.pt</code> 后来被 deep-supervision 试跑覆盖。因此本报告把训练曲线作为强线索，不把它写成完全闭环的最终 A/B 证明。</p>
+  </section>
+
+  <section>
+    <h2>训练曲线证据</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>实验/来源</th>
+          <th>关键配置</th>
+          <th>最佳或最后指标</th>
+          <th>过拟合信号</th>
+          <th>证据强度</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>旧基线参数审计<br><code>reports/26-05-23/done/body_tell_parameter_audit.html</code></td>
+          <td>旧 conv backbone；whole-case/固定采样口径；328.98M 参数。</td>
+          <td>最后 train fg_dice 0.5002；最后 val fg_dice 0.3163；best val 0.3257 @ epoch 27。</td>
+          <td><span class="tag low">明显过拟合</span><br>最后 gap 0.1839，train 继续涨而 val 平台化。</td>
+          <td><span class="tag high">强</span></td>
+        </tr>
+        <tr>
+          <td>5/26 aligned run<br><code>wandb/run-20260526_231932-7121w46d</code></td>
+          <td><code>residual_encoder</code>；<code>patch_size=[128,128,128]</code>；<code>foreground_oversample_prob=0.85</code>；<code>canonical_prob=0.25</code>；440.03M 参数；该 run 的 config 中 <code>deep_supervision=false</code>。</td>
+          <td>epoch 53 train fg_dice 0.3717；val fg_dice 0.3652；best val 0.3652247；val loss 0.3209。</td>
+          <td><span class="tag high">gap 基本消失</span><br>最后 gap 0.0065，val 跟随 train 上升。</td>
+          <td><span class="tag mid">强线索</span><br>早于 DDP 全局 reduction 修复。</td>
+        </tr>
+        <tr>
+          <td>5/27 aligned run<br><code>wandb/run-20260527_230922-2i0sbffl</code></td>
+          <td>同 aligned sampling/model family；batch/world size 不同。</td>
+          <td>best val 0.3390 @ epoch 38；epoch 43 train 0.3556 / val 0.3344。</td>
+          <td><span class="tag high">gap 小</span><br>epoch 43 gap 0.0212；best 附近 gap 约 0.0128。</td>
+          <td><span class="tag mid">中等</span></td>
+        </tr>
+        <tr>
+          <td>5/24 旧口径高峰 run<br><code>wandb/run-20260524_001222-nmnc1h4f</code></td>
+          <td>旧 conv/whole-case family；328.98M 参数。</td>
+          <td>best val 0.3733 @ epoch 25；epoch 45 train 0.6048 / val 0.3605。</td>
+          <td><span class="tag low">仍过拟合</span><br>最后 gap 0.2443。</td>
+          <td><span class="tag high">反例</span><br>说明“val 高”不等于“不过拟合”。</td>
+        </tr>
+        <tr>
+          <td>5/24 S2ISmall run<br><code>wandb/run-20260524_205942-nld82ngf</code></td>
+          <td>旧 conv/whole-case family；batch 4；328.98M 参数。</td>
+          <td>best val 0.3384 @ epoch 24；epoch 75 train 0.6764 / val 0.2992。</td>
+          <td><span class="tag low">严重过拟合</span><br>最后 gap 0.3772。</td>
+          <td><span class="tag high">反例</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p>最有解释力的现象是：aligned run 的训练 Dice 没有冲到 0.6+，验证 Dice 却能维持 0.34-0.365，说明模型不再靠记住训练 case 的固定文本/固定全局 label 组合获取收益。</p>
+  </section>
+
+  <section>
+    <h2>当前采样审计</h2>
+    <p>只读构建 <code>phase1_voxtell_aligned.yaml</code> 的 train dataset，均匀抽 500 个 index，分别检查 epoch 1 和 epoch 2。该审计不训练模型，只验证当前输入分布。</p>
+    <div class="grid">
+      <div class="card"><span class="label">epoch 1 foreground branch</span><span class="value">427 / 500</span><div class="bar"><span style="width:85.4%"></span></div><div class="small">接近 85%</div></div>
+      <div class="card"><span class="label">epoch 2 foreground branch</span><span class="value">434 / 500</span><div class="bar"><span style="width:86.8%"></span></div><div class="small">接近 85%</div></div>
+      <div class="card"><span class="label">完整 2+1 样本</span><span class="value">500 / 500</span><div class="small">两轮均为 2 positive + 1 negative</div></div>
+      <div class="card"><span class="label">跨 epoch prompt 变化</span><span class="value">500 / 500</span><div class="small">同 index 的 prompt set 全部变化</div></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>审计项</th><th>epoch 1</th><th>epoch 2</th><th>含义</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>prompt 数量</td>
+          <td>500 个样本均为 3 prompts</td>
+          <td>500 个样本均为 3 prompts</td>
+          <td>当前训练输入稳定形成 VoxTell 明确写到的 2 positive + 1 negative。</td>
+        </tr>
+        <tr>
+          <td>positive / negative</td>
+          <td>每样本 2 positive、1 negative</td>
+          <td>每样本 2 positive、1 negative</td>
+          <td>避免旧报告中部分 case 缺 negative 或 positive 不足的问题。</td>
+        </tr>
+        <tr>
+          <td>positive canonical 比例</td>
+          <td>218 canonical / 782 variant，比例 21.8%</td>
+          <td>224 canonical / 776 variant，比例 22.4%</td>
+          <td>接近目标 25/75；抽样偏差可接受。variant 占主导，降低对 canonical 名称的记忆。</td>
+        </tr>
+        <tr>
+          <td>aggregate prompt 使用</td>
+          <td>235/500 样本含 aggregate，共 284 个 aggregate prompts</td>
+          <td>224/500 样本含 aggregate，共 264 个 aggregate prompts</td>
+          <td>combined-label concepts 确实进入训练分布，提供 union-mask 语义监督。</td>
+        </tr>
+        <tr>
+          <td>空 positive mask</td>
+          <td>0</td>
+          <td>0</td>
+          <td>patch 内 present/absent 重算生效；positive 不再指向 patch 内不存在的目标。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>改动点与作用机制</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>改动点</th>
+          <th>原问题</th>
+          <th>当前落地位置</th>
+          <th>为什么能提升/缓解过拟合</th>
+          <th>归因强度</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>epoch-aware 动态采样</td>
+          <td>同一个 dataset index 跨 epoch 采到固定 prompt/class 组合，模型容易把 case 与固定文本监督绑定。</td>
+          <td><code>HyperBodyPromptDataset.set_epoch()</code>；<code>train._set_training_epoch()</code>。</td>
+          <td>同一 case 每个 epoch 看到不同 prompt、positive/negative concept 和 crop，形成语义级数据增强。抽样审计中 500/500 个 index 的 prompt set 在 epoch 2 全部变化。</td>
+          <td><span class="tag high">高</span></td>
+        </tr>
+        <tr>
+          <td>85% foreground patch oversampling</td>
+          <td>旧 whole-case 训练容易被背景和大结构支配；小器官/稀疏结构进入有效梯度的概率低。</td>
+          <td><code>data.patch_size=[128,128,128]</code>；<code>foreground_oversample_prob=0.85</code>；<code>dataset._sample_patch()</code>。</td>
+          <td>训练从 128x128x256 的整 case 变为沿 z 轴随机局部 patch；85% 分支强制覆盖 trainable foreground，提高目标 voxel 出现率和梯度密度。它也使同一病例产生更多局部上下文，抑制全局模板记忆。</td>
+          <td><span class="tag high">高</span></td>
+        </tr>
+        <tr>
+          <td>patch 内 present/absent 重算</td>
+          <td>如果裁 patch 但继续用 whole-case presence，positive 可能在 patch 内为空，negative 也可能实际存在，形成错训。</td>
+          <td><code>dataset._patch_case_record()</code> 后再调用 <code>sample_prompts_for_case()</code>。</td>
+          <td>positive 必须来自当前 patch 内 present concept，negative 来自当前 patch 内 absent concept。抽样审计中空 positive mask 为 0，说明监督语义和 target mask 对齐。</td>
+          <td><span class="tag high">高</span></td>
+        </tr>
+        <tr>
+          <td>2 positive + 1 negative prompt</td>
+          <td>缺少 negative prompt 时，模型只学习“看到文本就输出器官”，容易在空 prompt 上幻觉。</td>
+          <td><code>num_positive=2</code>、<code>num_negative=1</code>；<code>sample_prompts_for_case()</code>。</td>
+          <td>每个样本同时学习目标分割和空目标抑制，负 prompt FP 维持在 1e-4 量级。它让 prompt-conditioned segmentation 学到“文本不存在时输出空 mask”的边界。</td>
+          <td><span class="tag high">高</span></td>
+        </tr>
+        <tr>
+          <td>positive prompt 25/75 主名/改写</td>
+          <td>只用 canonical 名称时，文本编码空间过窄，模型容易把一类器官绑定到单个词。</td>
+          <td><code>canonical_prob=0.25</code>；<code>_sample_positive_prompt_record()</code>。</td>
+          <td>大多数 positive 使用同义/改写表达，使模型必须学习文本语义邻域而不是固定字符串。当前抽样 canonical 比例约 22%。</td>
+          <td><span class="tag high">高</span></td>
+        </tr>
+        <tr>
+          <td>vocabulary expansion + Qwen cache 重建</td>
+          <td>词表变体不足、cache 与 prompt records 错位都会造成训练信号窄或错误。</td>
+          <td><code>configs/label_vocab.json</code>；<code>artifacts/text_embeddings/prompt_embeddings.pt</code>；<code>validate_prompt_embedding_cache_data()</code>。</td>
+          <td>当前 69 个 trainable class 每类 5 prompts，14 个 aggregates，总 418 prompt records；embedding shape 为 (418, 2560)，hash/records/finite 校验通过。语义覆盖变宽，embedding 行与 target 保持一致。</td>
+          <td><span class="tag high">高</span></td>
+        </tr>
+        <tr>
+          <td>aggregate / combined-label concept sampler</td>
+          <td>训练只看单 class 时，模型对“kidneys/ribs/gluteal muscles”等组合 prompt 没有直接监督。</td>
+          <td><code>prompt_records_by_concept()</code>；aggregate <code>component_class_ids</code> union target。</td>
+          <td>组合概念给出 group-level union mask，既扩展 prompt 语义，也对多个相关器官施加一致监督。抽样中约 45% 样本含 aggregate prompt。</td>
+          <td><span class="tag mid">中高</span></td>
+        </tr>
+        <tr>
+          <td>VoxTell-aligned residual encoder</td>
+          <td>旧 encoder 与 VoxTell profile 不一致，结构较浅，不能承接后续 decoder/mask-head 设计。</td>
+          <td><code>backbone=residual_encoder</code>；channels [32,64,128,256,320,320]；blocks [1,3,4,6,6,6]。</td>
+          <td>残差路径和更深 stage 提高 3D 特征表达与优化稳定性。但它也增加参数量，因此单独看不一定减少过拟合；必须和动态采样一起解释。</td>
+          <td><span class="tag mid">中</span></td>
+        </tr>
+        <tr>
+          <td>Transformer decoder 语义对齐 + prefix loader</td>
+          <td>如果 forward_pre、activation、key shape 与 VoxTell 不一致，加载同名权重也可能是语义错配。</td>
+          <td><code>TransformerDecoderLayer(activation="relu", normalize_before=True)</code>；<code>load_voxtell_transformer_decoder_prefix()</code>。</td>
+          <td>严格加载 110 个 <code>transformer_decoder.*</code> tensor、约 251.86M 参数，把已训练的 text-image fusion 先验迁移过来，减少从零学习 prompt fusion 的样本需求。</td>
+          <td><span class="tag mid">中</span></td>
+        </tr>
+        <tr>
+          <td>动态 HWD position encoding</td>
+          <td>VoxTell 固定 pos_embed 不适合 Body-Tell 128x128x256/patch 非立方输入。</td>
+          <td><code>B,C,D,H,W -> B,H,W,D,C -> H*W*D,B,C</code>；runtime sinusoidal 3D position。</td>
+          <td>避免位置编码 shape 错配或 silent interpolation，让 prompt-image memory 排列和 VoxTell 语义一致。主要提升稳定性和可迁移性。</td>
+          <td><span class="tag mid">中</span></td>
+        </tr>
+        <tr>
+          <td>训练/评估闭环修复</td>
+          <td>deep supervision bundle 被 metrics 当 tensor；negative-only batch 可能污染 Dice；DDP rank-local 指标会误选 best。</td>
+          <td><code>_primary_logits_for_metrics()</code>；foreground Dice sum/count；<code>_reduce_ddp_metric_totals()</code>；train/inference build_model 对齐。</td>
+          <td>这些改动主要修正“训练是否真的按预期跑”和“指标是否可信”，不一定直接提高模型能力，但会防止错训、错评和错误 checkpoint 选择。</td>
+          <td><span class="tag mid">中</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>为什么不是“模型变大所以更好”</h2>
+    <div class="two-col">
+      <div class="card">
+        <h3>参数量变化</h3>
+        <p>旧 run 约 328.98M 参数；aligned run 约 440.03M 参数。更大的模型通常会增加记忆训练集的能力，因此“gap 变小”不能由参数增加自然解释。</p>
+      </div>
+      <div class="card">
+        <h3>曲线形态</h3>
+        <p>旧 whole-case run 可以达到更高 train Dice，但 val 不同步提升；aligned run 的 train Dice 较低、val 接近 train。这更像采样/语义增强带来的正则化，而不是容量驱动的训练集拟合。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>贡献排序</h2>
+    <table>
+      <thead><tr><th>排序</th><th>因素</th><th>判断</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>patch-level dynamic 2+1 sampling</td>
+          <td><span class="tag high">最可能主因</span></td>
+          <td>直接改变训练分布和监督正确性；抽样证据完整；与过拟合 gap 缩小高度一致。</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>prompt variant / vocabulary / aggregate</td>
+          <td><span class="tag high">强正则化来源</span></td>
+          <td>文本空间从少量固定名称扩到 418 records，并进入每 epoch 随机采样。</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>VoxTell-aligned architecture + transformer prefix</td>
+          <td><span class="tag mid">重要但非单独充分</span></td>
+          <td>提升 prompt-image fusion 先验和结构兼容性；但 encoder/decoder/projectors 未加载 VoxTell 权重。</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>训练/评估契约修正</td>
+          <td><span class="tag mid">可信度和稳定性因素</span></td>
+          <td>防止 deep supervision、NaN Dice、DDP rank-local best 等静默错误；对“真实性能”判断很关键。</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>更多 S2I train cases</td>
+          <td><span class="tag mid">辅助因素</span></td>
+          <td>旧审计中 train 9779，当前 active split 10070；数据增加有帮助，但幅度不足以单独解释 gap 从 0.18 降到 0.006。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>风险与后续验证</h2>
+    <ul>
+      <li><strong>需要 post-T4 长训复核：</strong>重新跑一条不覆盖 checkpoint 的 aligned 长训，确保 DDP 全局 reduction 后仍复现 gap 小、val Dice 高的曲线。</li>
+      <li><strong>aggregate 监督需要消融：</strong>当前 vocabulary 中 aggregate 的 <code>train_as_positive/eval_as_foreground</code> 为 false，但 sampler 会把组件全可训练的 aggregate 纳入训练 concept。这可能有益，也可能和单器官边界产生冲突，建议做 no-aggregate ablation。</li>
+      <li><strong>deep supervision 不能归因给 5/26 曲线：</strong>5/26 aligned run 的 config 里 <code>deep_supervision=false</code>；当前 config 已为 true，仍需独立长训证明它是否继续提升。</li>
+      <li><strong>prefix loader 边界要保持清晰：</strong>P6-lite 只加载 <code>transformer_decoder.*</code>，不应把收益表述成完整 VoxTell checkpoint 迁移。</li>
+      <li><strong>best checkpoint 选择可加入负 prompt 约束：</strong>当前 best 主要看 <code>foreground_mean_dice</code>，建议至少记录并门控 <code>negative_fp_rate</code>，避免选中空 prompt 幻觉偏高的模型。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>结论</h2>
+    <p>最有解释力的因果链是：<strong>动态 patch/prompt sampling 修正了训练分布和监督语义</strong>，<strong>扩词与 aggregate 提供了语言层正则化</strong>，<strong>VoxTell-aligned 架构和 transformer prefix 提供了更好的融合先验</strong>，再由训练/评估闭环修正确保指标和 checkpoint 选择不被实现细节污染。</p>
+    <p>因此，当前性能提升和过拟合减轻更像是“输入分布、语义监督、迁移先验、评估契约”四者对齐后的结果，而不是某一个网络层替换单独造成的结果。</p>
+  </section>
+</main>
+</body>
+</html>

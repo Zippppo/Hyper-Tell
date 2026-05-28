@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Tell 动态 HWD 位置编码与 Transformer Decoder 权重复用说明</title>
+  <style>
+    :root {
+      --ink: #162033;
+      --muted: #5d6877;
+      --line: #d8e1ea;
+      --panel: #ffffff;
+      --soft: #f2f6fa;
+      --blue: #1f5f9f;
+      --green: #23745a;
+      --orange: #9a5a12;
+      --red: #a33b3b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #edf2f7;
+      color: var(--ink);
+      font: 14px/1.62 Inter, "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 54px;
+    }
+    header, section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 14px 0;
+      padding: 20px 22px;
+    }
+    header { border-top: 5px solid var(--blue); }
+    h1, h2, h3 { margin: 0; line-height: 1.25; letter-spacing: 0; }
+    h1 { font-size: 29px; }
+    h2 { font-size: 21px; margin-bottom: 12px; }
+    h3 { font-size: 16px; margin: 18px 0 8px; }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0 8px 22px; padding: 0; }
+    li { margin: 4px 0; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    code {
+      background: #eef4fa;
+      border: 1px solid #cbd8e6;
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    pre {
+      overflow-x: auto;
+      margin: 10px 0;
+      padding: 12px;
+      background: #101827;
+      color: #f0f5ff;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 4px;
+      table-layout: fixed;
+    }
+    th, td {
+      border-bottom: 1px solid #e2e9f0;
+      padding: 8px 9px;
+      text-align: left;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    th {
+      background: #edf3f8;
+      color: #27384c;
+      font-weight: 700;
+    }
+    .meta { color: var(--muted); margin-top: 8px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .card {
+      background: var(--soft);
+      border: 1px solid #dce6f0;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 86px;
+    }
+    .label { color: var(--muted); font-size: 12px; }
+    .value { display: block; font-size: 22px; font-weight: 760; margin-top: 3px; }
+    .small { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .tag {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag.high { color: var(--green); background: #e8f4ef; border-color: #b9decf; }
+    .tag.mid { color: var(--orange); background: #fff4e2; border-color: #edd0a0; }
+    .tag.low { color: var(--red); background: #fbecec; border-color: #e6b7b7; }
+    .tag.info { color: var(--blue); background: #e8f1fb; border-color: #bdd3ec; }
+    .note {
+      background: #fff8e8;
+      border: 1px solid #ead8a8;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #4c3b13;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .step {
+      min-height: 96px;
+      border: 1px solid #d6e1ec;
+      border-radius: 8px;
+      background: #f7fafc;
+      padding: 10px;
+    }
+    .step strong { display: block; margin-bottom: 5px; }
+    @media (max-width: 950px) {
+      .grid, .flow { grid-template-columns: 1fr; }
+      table { table-layout: auto; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>动态 HWD 位置编码与 Transformer Decoder 权重复用说明</h1>
+    <p class="meta">生成日期：2026-05-28。范围：解释 Body-Tell 中 runtime HWD position encoding 的设计目的、张量契约、与 VoxTell <code>transformer_decoder.*</code> 权重复用的关系。</p>
+    <div class="grid">
+      <div class="card"><span class="label">一句话结论</span><span class="value">权重复用的输入契约对齐层</span><div class="small">不是单独的训练增强技巧</div></div>
+      <div class="card"><span class="label">核心张量顺序</span><span class="value">B,C,D,H,W -> H*W*D,B,C</span><div class="small">中间按 B,H,W,D,C 排列</div></div>
+      <div class="card"><span class="label">复用边界</span><span class="value">加载 decoder, 跳过 pos_embed</span><div class="small">P6-lite 只复用 <code>transformer_decoder.*</code></div></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>结论</h2>
+    <p>这个点可以理解为：<strong>为了让之后的 VoxTell <code>transformer_decoder.*</code> 权重复用不只是“key 和 shape 对得上”，而是让 decoder 看到的 image memory 在 token 顺序、空间位置、dtype 和 device 上都满足同一套输入契约。</strong></p>
+    <p>它更准确的定位是 <strong>input-contract alignment</strong>。如果没有这层对齐，即使 strict load 成功，VoxTell 的 cross-attention 权重也可能在 Body-Tell 里处理错位的 3D token 序列。</p>
+    <p class="note">因此，它主要提升的是结构兼容性、运行稳定性和权重复用可信度。它不是像 foreground oversampling 或 prompt 变体那样直接改变训练分布的正则化技巧。</p>
+  </section>
+
+  <section>
+    <h2>为什么要做这个改动</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>问题</th>
+          <th>如果不处理会怎样</th>
+          <th>当前做法</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>VoxTell checkpoint 中的 learned <code>pos_embed</code> 隐含固定 token 网格。</td>
+          <td>Body-Tell 当前 whole case 是 <code>128x128x256</code>，训练 patch 是 <code>128x128x128</code>，经过 encoder 后的 bottleneck token 网格不等同 VoxTell 固定网格。强行加载可能 shape 不匹配，或需要危险插值。</td>
+          <td>P6-lite loader 明确把 <code>pos_embed</code> 放进 <code>excluded_prefixes</code>，不复用固定位置编码。</td>
+        </tr>
+        <tr>
+          <td>Transformer decoder 的 cross-attention 需要 image memory 序列和位置编码。</td>
+          <td>如果 image token 的 flatten 顺序不同，decoder 权重即使加载成功，也会把某个空间点误解成另一个空间点。</td>
+          <td>Body-Tell 在 forward 中按 <code>B,C,D,H,W -> B,H,W,D,C -> H*W*D,B,C</code> 生成 memory，并按同样 HWD 顺序生成 runtime 位置编码。</td>
+        </tr>
+        <tr>
+          <td>AMP 或 CUDA 下 dtype/device 必须一致。</td>
+          <td>位置编码和 memory 的 dtype/device 不一致，会导致运行时错误，或触发隐式 cast，增加不稳定性。</td>
+          <td>runtime position encoding 使用 <code>memory.device</code> 和 <code>memory.dtype</code>，随后强校验 shape、dtype、device。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>具体张量流程</h2>
+    <div class="flow">
+      <div class="step"><strong>1. Encoder 输出</strong><code>selected_feature</code><br><code>B,C,D,H,W</code></div>
+      <div class="step"><strong>2. 通道后置</strong><code>permute(0,3,4,2,1)</code><br><code>B,H,W,D,C</code></div>
+      <div class="step"><strong>3. 投影到 query dim</strong><code>project_bottleneck_embed</code><br><code>C -> 2048</code></div>
+      <div class="step"><strong>4. 展平为 memory</strong><code>H*W*D,B,2048</code><br>供 cross-attention 使用</div>
+      <div class="step"><strong>5. 生成 pos</strong><code>sinusoidal_position_encoding_3d(H,W,D)</code><br>shape 与 memory 完全一致</div>
+    </div>
+    <pre><code>batch_size, channels, depth, height, width = selected_feature.shape
+
+bottleneck_embed = selected_feature.permute(0, 3, 4, 2, 1)
+bottleneck_embed = self.project_bottleneck_embed(bottleneck_embed)
+memory = bottleneck_embed.permute(1, 2, 3, 0, 4).reshape(
+    -1,
+    batch_size,
+    self.config.query_dim,
+)
+
+pos = sinusoidal_position_encoding_3d(
+    (height, width, depth),
+    self.config.query_dim,
+    device=memory.device,
+    dtype=memory.dtype,
+    batch_size=batch_size,
+)</code></pre>
+    <p>关键点是：虽然 PyTorch 3D feature 原始顺序是 <code>D,H,W</code>，这里进入 transformer 的序列顺序使用 <code>H,W,D</code>。这样做是为了和 VoxTell transformer memory 的排列语义对齐。</p>
+  </section>
+
+  <section>
+    <h2>它和权重复用的关系</h2>
+    <p>VoxTell <code>transformer_decoder.*</code> 权重中，cross-attention 的核心计算大致是：</p>
+    <pre><code>query = text prompt embedding
+key   = image memory + position encoding
+value = image memory</code></pre>
+    <p>所以权重复用需要满足下面这几层契约：</p>
+    <table>
+      <thead>
+        <tr>
+          <th>契约层</th>
+          <th>当前是否处理</th>
+          <th>对应实现</th>
+          <th>意义</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>参数 key 与 shape</td>
+          <td><span class="tag high">已处理</span></td>
+          <td><code>load_voxtell_transformer_decoder_prefix()</code> 严格检查 missing、unexpected、shape mismatch。</td>
+          <td>保证 checkpoint tensor 能合法装入 Body-Tell transformer decoder。</td>
+        </tr>
+        <tr>
+          <td>image memory embedding dim</td>
+          <td><span class="tag high">已处理</span></td>
+          <td><code>project_bottleneck_embed</code> 把 selected feature 投影到 <code>query_dim=2048</code>。</td>
+          <td>保证 image key/value 维度和 decoder 权重期望一致。</td>
+        </tr>
+        <tr>
+          <td>text query embedding dim</td>
+          <td><span class="tag high">已处理</span></td>
+          <td><code>project_text_embed</code> 把 Qwen 2560 维文本投影到 2048。</td>
+          <td>保证 prompt query 维度和 decoder 权重期望一致。</td>
+        </tr>
+        <tr>
+          <td>image token flatten 顺序</td>
+          <td><span class="tag high">已处理</span></td>
+          <td><code>B,C,D,H,W -> B,H,W,D,C -> H*W*D,B,C</code>。</td>
+          <td>保证 decoder 权重看到的序列顺序和 VoxTell 语义一致。</td>
+        </tr>
+        <tr>
+          <td>position encoding shape 与语义</td>
+          <td><span class="tag high">已处理</span></td>
+          <td>按真实 <code>(height,width,depth)</code> runtime 生成 sinusoidal 3D position。</td>
+          <td>避免固定 <code>pos_embed</code> 对 Body-Tell 非立方输入造成错配。</td>
+        </tr>
+        <tr>
+          <td>device 与 dtype</td>
+          <td><span class="tag high">已处理</span></td>
+          <td>使用 <code>memory.device</code>、<code>memory.dtype</code>，并 fail-fast 校验。</td>
+          <td>支持 CUDA/AMP 下稳定运行。</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>所以它确实是为 transformer decoder 权重复用做准备，但准备的不是“加载代码”本身，而是 <strong>加载之后 forward 输入语义仍然成立</strong>。</p>
+  </section>
+
+  <section>
+    <h2>为什么跳过 fixed pos_embed 更合理</h2>
+    <table>
+      <thead>
+        <tr><th>方案</th><th>优点</th><th>风险</th><th>当前选择</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>直接加载 VoxTell fixed <code>pos_embed</code></td>
+          <td>保留 VoxTell learned spatial prior。</td>
+          <td>依赖固定 token 网格。Body-Tell 的 <code>128x128x256</code> 和 patch 输入可能无法对齐，shape 或空间语义都可能错。</td>
+          <td><span class="tag low">不采用</span></td>
+        </tr>
+        <tr>
+          <td>对 fixed <code>pos_embed</code> 插值</td>
+          <td>可以勉强适配不同 shape。</td>
+          <td>非立方输入和 HWD/DHW 顺序容易引入隐性空间错位；一旦 silent interpolation 错了，debug 成本高。</td>
+          <td><span class="tag low">不采用</span></td>
+        </tr>
+        <tr>
+          <td>runtime sinusoidal 3D position</td>
+          <td>任意当前 feature shape 都能生成匹配位置编码；无需加载固定网格；shape/dtype/device 可强校验。</td>
+          <td>不复用 VoxTell learned <code>pos_embed</code> 本身的空间先验。</td>
+          <td><span class="tag high">当前采用</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>如果没有这个对齐层</h2>
+    <ol>
+      <li><strong>最直接的失败：</strong><code>pos_embed</code> shape 对不上，加载或 forward 直接报错。</li>
+      <li><strong>更危险的失败：</strong>shape 通过插值或 reshape 勉强对上，但 token 顺序和位置语义错了，模型能跑但 cross-attention 学到的是错位空间关系。</li>
+      <li><strong>迁移收益被削弱：</strong>VoxTell transformer decoder 的权重原本学到的是 text query 如何 attend 到 image memory。如果 memory 的空间排序不一致，权重名义上复用了，语义上并没有真正复用。</li>
+      <li><strong>混精和多设备更脆弱：</strong>位置编码如果没有跟随 memory 的 dtype/device，AMP 或 CUDA 下容易出现运行错误。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>代码证据</h2>
+    <table>
+      <thead>
+        <tr><th>位置</th><th>内容</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Body-Tell/body_tell/models/voxtell_body_model.py:149</code></td>
+          <td>取 <code>selected_feature</code>，读取 <code>batch_size, channels, depth, height, width</code>。</td>
+          <td>后续 memory 和 pos 都以该真实 runtime shape 为准。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:153</code></td>
+          <td><code>selected_feature.permute(0,3,4,2,1)</code>。</td>
+          <td>把 <code>B,C,D,H,W</code> 转为 <code>B,H,W,D,C</code>。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:155</code></td>
+          <td>展平成 <code>H*W*D,B,query_dim</code> memory。</td>
+          <td>这是 transformer decoder cross-attention 的 image key/value 输入。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:160</code></td>
+          <td>按 <code>(height,width,depth)</code> 生成 <code>sinusoidal_position_encoding_3d</code>。</td>
+          <td>pos 的序列顺序和 memory flatten 顺序一致。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:167</code></td>
+          <td>强校验 <code>pos.shape</code>、<code>dtype</code>、<code>device</code>。</td>
+          <td>一旦契约破坏，直接 fail-fast，避免静默错训。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:180</code></td>
+          <td><code>self.transformer_decoder(tgt=text_queries, memory=memory, pos=pos)</code>。</td>
+          <td>动态 pos 正式进入 VoxTell-style transformer decoder。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:568</code></td>
+          <td><code>load_voxtell_transformer_decoder_prefix()</code> 只加载 <code>transformer_decoder.</code>。</td>
+          <td>P6-lite 权重复用入口。</td>
+        </tr>
+        <tr>
+          <td><code>voxtell_body_model.py:619</code></td>
+          <td><code>excluded_prefixes</code> 包含 <code>pos_embed</code>。</td>
+          <td>明确不加载 VoxTell fixed position embedding。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>最终表述建议</h2>
+    <p>在总报告或论文式总结里，建议这样表述：</p>
+    <pre><code>Dynamic HWD position encoding is introduced as an input-contract
+alignment layer for VoxTell transformer-decoder prefix reuse.
+It does not reuse VoxTell's fixed learned pos_embed. Instead, Body-Tell
+flattens the runtime 3D feature map in the VoxTell-compatible H,W,D order
+and generates a shape-, dtype-, and device-matched 3D sinusoidal position
+encoding. This makes strict transformer_decoder.* weight reuse semantically
+safer for Body-Tell's non-cubic 128x128x256 volumes and 128x128x128 patches.</code></pre>
+    <p>中文短句可以写成：<strong>动态 HWD position encoding 是为了让 VoxTell transformer decoder 的权重复用具备正确的 memory/position 输入语义，而不是为了复用 fixed pos_embed 本身。</strong></p>
+  </section>
+</main>
+</body>
+</html>
