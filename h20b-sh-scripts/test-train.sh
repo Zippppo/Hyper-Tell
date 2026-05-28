@@ -4,9 +4,9 @@ cd /home/xiaoqingguo/Rongkun/code/Hyper-Tell
 
 MASTER_PORT="${MASTER_PORT:-29602}"
 
-CUDA_VISIBLE_DEVICES=7 torchrun --master-port="${MASTER_PORT}" --nproc_per_node=1 Body-Tell/train.py \
+CUDA_VISIBLE_DEVICES=2 torchrun --master-port="${MASTER_PORT}" --nproc_per_node=1 Body-Tell/train.py \
     --config Body-Tell/configs/test-model-config.yaml \
-    --epochs 10 \
+    --epochs 1 \
     --batch-size 8 \
     --lr 1e-4 \
     --num-workers 4 \

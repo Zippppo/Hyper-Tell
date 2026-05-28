@@ -18,7 +18,7 @@ model:
   decoder_layer: 4
   num_maskformer_stages: 5
   num_heads: 32
-  deep_supervision: false
+  deep_supervision: true
 data:
   root: Body-Tell
   voxel_dir: S2I-Dataset-70cls/data
