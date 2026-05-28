@@ -1,8 +1,8 @@
 schema_version: 1
 project: Body-Tell training loop/eval alignment
 created_at: "2026-05-28"
-updated_at: "2026-05-28T15:36:47+08:00"
-last_note: "T1 accepted after reviewer evidence verified; T2 is ready because its T1 dependency is now accepted."
+updated_at: "2026-05-28T15:57:09+08:00"
+last_note: "T2 accepted after reviewer evidence verified; T3 is ready because its T2 dependency is now accepted."
 source_plan: Body-Tell/reports/26-05-24/bodytell_training_loop_eval_alignment_plan_2026-05-24.html
 
 status_model:
@@ -67,9 +67,10 @@ tasks:
   T2:
     title: Fix prompt metrics foreground Dice aggregation
     owner: bodytell_training_loop_worker
-    status: ready
+    status: accepted
     ready_at: "2026-05-28T15:36:47+08:00"
-    last_note: "Ready after T1 accepted."
+    accepted_at: "2026-05-28T15:57:09+08:00"
+    last_note: "Reviewer accepted T2; focused test 1 passed, required pytest gate 16 passed, and test-train smoke entered epoch 1 through batch 7 without immediate train-flow failure."
     depends_on:
       - T1
     scope: Aggregate foreground Dice by valid positive prompt sum/count so negative-only batches do not contribute NaN while still contributing negative false-positive statistics.
@@ -98,11 +99,17 @@ tasks:
         by: post_accept
         status: ready
         note: "Dependency T1 is accepted; T2 can now be assigned."
+      - at: "2026-05-28T15:57:09+08:00"
+        by: post_accept
+        status: accepted
+        note: "Verified REVIEW.html accept evidence, required pytest gate, and source-plan training smoke evidence; accepted and prepared task-scoped commit."
 
   T3:
     title: Unify training and inference model construction
     owner: bodytell_training_loop_worker
-    status: todo
+    status: ready
+    ready_at: "2026-05-28T15:57:09+08:00"
+    last_note: "Ready after T2 accepted."
     depends_on:
       - T2
     scope: Keep Body-Tell/inference.py build_model aligned with Body-Tell/train.py for backbone, encoder block, bias, norm, activation, and deep supervision config fields, or extract a shared helper.
@@ -125,6 +132,11 @@ tasks:
       result: Body-Tell/reports/26-05-24/runs/T3/RESULT.html
       review: Body-Tell/reports/26-05-24/runs/T3/REVIEW.html
       post_accept: Body-Tell/reports/26-05-24/runs/T3/POST_ACCEPT.html
+    history:
+      - at: "2026-05-28T15:57:09+08:00"
+        by: post_accept
+        status: ready
+        note: "Dependency T2 is accepted; T3 can now be assigned."
 
   T4:
     title: Reduce DDP metrics before logging and best checkpoint decisions

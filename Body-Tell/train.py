@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import time
 from pathlib import Path
@@ -235,6 +236,19 @@ def _primary_logits_for_metrics(
     return primary_logits
 
 
+def _foreground_dice_sum_count(metrics: dict[str, float]) -> tuple[float, int]:
+    if "foreground_dice_sum" in metrics and "foreground_dice_count" in metrics:
+        return (
+            float(metrics["foreground_dice_sum"]),
+            int(metrics["foreground_dice_count"]),
+        )
+
+    dice = float(metrics["foreground_mean_dice"])
+    if not math.isfinite(dice):
+        return 0.0, 0
+    return dice, 1
+
+
 def train_one_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -251,7 +265,8 @@ def train_one_epoch(
     total_loss = 0.0
     total_bce = 0.0
     total_dice = 0.0
-    total_fg_dice = 0.0
+    total_fg_dice_sum = 0.0
+    total_fg_dice_count = 0
     total_neg_fp = 0.0
     n_batches = 0
 
@@ -299,15 +314,20 @@ def train_one_epoch(
         total_loss += result["loss"].item()
         total_bce += result["bce_loss"].item()
         total_dice += result["dice_loss"].item()
-        total_fg_dice += metrics["foreground_mean_dice"]
+        fg_dice_sum, fg_dice_count = _foreground_dice_sum_count(metrics)
+        total_fg_dice_sum += fg_dice_sum
+        total_fg_dice_count += fg_dice_count
         total_neg_fp += metrics["negative_fp_rate"]
         n_batches += 1
 
+    foreground_mean_dice = (
+        total_fg_dice_sum / total_fg_dice_count if total_fg_dice_count > 0 else 0.0
+    )
     avg = {
         "loss": total_loss / n_batches,
         "bce_loss": total_bce / n_batches,
         "dice_loss": total_dice / n_batches,
-        "foreground_mean_dice": total_fg_dice / n_batches,
+        "foreground_mean_dice": foreground_mean_dice,
         "negative_fp_rate": total_neg_fp / n_batches,
     }
     if is_main_process():
@@ -334,7 +354,8 @@ def evaluate(
 ) -> dict[str, float]:
     model.eval()
     total_loss = 0.0
-    total_fg_dice = 0.0
+    total_fg_dice_sum = 0.0
+    total_fg_dice_count = 0
     total_neg_fp = 0.0
     n_batches = 0
 
@@ -364,16 +385,21 @@ def evaluate(
         )
 
         total_loss += result["loss"].item()
-        total_fg_dice += metrics["foreground_mean_dice"]
+        fg_dice_sum, fg_dice_count = _foreground_dice_sum_count(metrics)
+        total_fg_dice_sum += fg_dice_sum
+        total_fg_dice_count += fg_dice_count
         total_neg_fp += metrics["negative_fp_rate"]
         n_batches += 1
 
     if n_batches == 0:
         return {"loss": 0.0, "foreground_mean_dice": 0.0, "negative_fp_rate": 0.0}
 
+    foreground_mean_dice = (
+        total_fg_dice_sum / total_fg_dice_count if total_fg_dice_count > 0 else 0.0
+    )
     avg = {
         "loss": total_loss / n_batches,
-        "foreground_mean_dice": total_fg_dice / n_batches,
+        "foreground_mean_dice": foreground_mean_dice,
         "negative_fp_rate": total_neg_fp / n_batches,
     }
     if is_main_process():

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import math
+
 import torch
+import torch.nn as nn
+
+import train as train_module
 
 from body_tell.losses.prompt_losses import PromptSegmentationLoss
 from body_tell.metrics.prompt_metrics import compute_prompt_metrics
@@ -74,3 +79,66 @@ def test_prompt_metrics_ignore_invalid_padding_prompts() -> None:
 
     assert metrics["foreground_mean_dice"] > 0.99
     assert metrics["negative_fp_rate"] == 0.0
+
+
+def test_prompt_metrics_nan_safe_foreground_dice_aggregation() -> None:
+    positive_targets = torch.zeros((1, 1, 4, 4, 4), dtype=torch.float32)
+    positive_targets[:, :, 1:3, 1:3, 1:3] = 1.0
+    positive_logits = torch.full_like(positive_targets, -8.0)
+    positive_logits[:, :, 1:3, 1:3, 1:3] = 8.0
+
+    negative_targets = torch.zeros_like(positive_targets)
+    negative_logits = torch.full_like(positive_targets, -8.0)
+    negative_logits[:, :, 0, 0, 0] = 8.0
+
+    class SequencedLogitModel(nn.Module):
+        def __init__(self, logits_sequence: list[torch.Tensor]) -> None:
+            super().__init__()
+            self.weight = nn.Parameter(torch.tensor(0.0))
+            self.logits_sequence = logits_sequence
+            self.index = 0
+
+        def forward(
+            self,
+            occupancy: torch.Tensor,
+            text_embeddings: torch.Tensor,
+        ) -> torch.Tensor:
+            logits = self.logits_sequence[self.index].to(
+                device=occupancy.device,
+                dtype=occupancy.dtype,
+            )
+            self.index += 1
+            return logits + self.weight * 0.0
+
+    def make_batch(target_masks: torch.Tensor, target_empty: bool) -> dict[str, torch.Tensor]:
+        return {
+            "occupancy": torch.ones((1, 1, 4, 4, 4), dtype=torch.float32),
+            "text_embeddings": torch.ones((1, 1, 2), dtype=torch.float32),
+            "target_masks": target_masks,
+            "target_empty": torch.tensor([[target_empty]]),
+            "prompt_valid": torch.tensor([[True]]),
+        }
+
+    loader = torch.utils.data.DataLoader(
+        [
+            make_batch(positive_targets, target_empty=False),
+            make_batch(negative_targets, target_empty=True),
+        ],
+        batch_size=None,
+    )
+    model = SequencedLogitModel([positive_logits, negative_logits])
+    criterion = PromptSegmentationLoss(bce_weight=0.5, dice_weight=0.5)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+    metrics = train_module.train_one_epoch(
+        model,
+        loader,
+        criterion,
+        optimizer,
+        torch.device("cpu"),
+        epoch=1,
+    )
+
+    assert math.isfinite(metrics["foreground_mean_dice"])
+    assert metrics["foreground_mean_dice"] > 0.99
+    assert metrics["negative_fp_rate"] > 0.0
