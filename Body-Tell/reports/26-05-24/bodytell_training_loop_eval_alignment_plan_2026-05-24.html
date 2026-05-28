@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Body-Tell 训练控制面与评估协议对齐计划</title>
+  <title>Body-Tell 训练闭环修复计划</title>
   <style>
     :root {
       --bg: #f6f7f9;
@@ -27,7 +27,7 @@
       line-height: 1.62;
     }
     main {
-      max-width: 1180px;
+      max-width: 1160px;
       margin: 0 auto;
       padding: 36px 24px 60px;
     }
@@ -99,6 +99,8 @@
       padding-left: 22px;
     }
     li { margin: 5px 0; }
+    a { color: var(--blue); }
+    a:hover { text-decoration: underline; }
     .meta {
       color: var(--muted);
       font-size: 14px;
@@ -121,11 +123,6 @@
       font-size: 13px;
       font-weight: 600;
       margin-bottom: 6px;
-    }
-    .card span {
-      display: block;
-      font-size: 20px;
-      font-weight: 760;
     }
     .tag {
       display: inline-block;
@@ -152,9 +149,11 @@
       border-left-color: var(--amber);
       background: #fff5db;
     }
+    .note.bad {
+      border-left-color: var(--red);
+      background: #fdeeee;
+    }
     .small { color: var(--muted); font-size: 13px; }
-    a { color: var(--blue); }
-    a:hover { text-decoration: underline; }
     .child-link {
       font-weight: 650;
       text-decoration: none;
@@ -174,275 +173,133 @@
 <body>
 <main>
   <header>
-    <h1>Body-Tell 训练控制面与评估协议对齐计划</h1>
-    <p class="meta">日期：2026-05-24。编号：SP-C。父级来源：<a class="child-link" href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">Body-Tell 与 VoxTell 论文不一致项总控计划</a>。范围：训练 loop、optimizer/scheduler、deep supervision loss、checkpoint/resume、评估协议、测试矩阵与 paper-mechanics 配置 profile（非论文复刻）。</p>
+    <h1>Body-Tell 训练闭环修复计划</h1>
+    <p class="meta">日期：2026-05-28。范围：修复当前 Body-Tell 训练、评估与推理路径中会导致崩溃、静默错训/错评或 checkpoint 不可用的契约问题；不重做 trainer。</p>
     <div class="cards">
-      <div class="card"><strong>明确不一致覆盖</strong><span class="tag bad">#1 #2 #3 #4 #9 #12</span></div>
-      <div class="card"><strong>状态</strong><span class="tag warn">Task 0 ready</span></div>
-      <div class="card"><strong>硬依赖</strong><span class="tag ok">SP-A / SP-B Step 6 已满足</span></div>
-      <div class="card"><strong>目标</strong><span class="tag info">paper-mechanics 训练控制面</span></div>
+      <div class="card"><strong>计划范围</strong><span class="tag info">训练闭环</span></div>
+      <div class="card"><strong>执行任务</strong><span class="tag ok">4 项</span></div>
+      <div class="card"><strong>优先级</strong><span class="tag warn">先正确性</span></div>
+      <div class="card"><strong>完成标准</strong><span class="tag bad">可训可评可推理</span></div>
     </div>
   </header>
 
   <section>
-    <h2>本文件的角色</h2>
-    <p>SP-C 只负责训练控制面与评估协议，不负责模型结构迁移，也不负责数据采样器和 vocabulary 扩充。结构问题继续由 SP-A 负责，数据构造问题继续由 SP-B 负责。</p>
-    <p>SP-C 的任务是把父报告中已经确认的训练侧差异变成可落地步骤：固定 update-count 训练节奏、SGD + polynomial decay、5-scale deep supervision、可精确恢复的 checkpoint、prompt-aware 评估协议，以及能暴露这些行为的测试矩阵。</p>
-    <p class="note warn"><strong>核心澄清：</strong>Task 0 和 Task 1 不是直接提升 Dice 的训练技巧，而是训练控制面改造：先把预算、step 语义、日志、scheduler 横轴和 resume 语义固定下来，后续 SGD / poly / deep supervision / prompt 评估才有可比较的实验口径。性能收益只能通过后续 ablation 和回归闸门验证，不能从“更像论文”自动推出。</p>
-    <p class="note warn">本计划不把当前默认训练全部强制切到 paper-mechanics profile。先新增显式 profile 和代码路径，保留当前 AdamW/短训配置作为回退实验；只有在 smoke、quick val 和 resume 验收通过后，才应把长训入口切到该 profile。</p>
+    <h2>执行原则</h2>
+    <p>本计划只处理当前代码中已经暴露的闭环契约问题：模型输出、loss、metrics、DDP 聚合和推理构图必须在同一套训练配置下保持一致。</p>
+    <p class="note warn"><strong>纳入标准：</strong>会导致运行时崩溃；会静默错训或错评；会让训练出的 checkpoint 无法被正式推理入口加载。不满足这些条件的事项不进入本轮修复。</p>
+    <p>当前范围不包含优化器或 scheduler ablation、完整断点恢复、大评估协议扩展、旧训练分支整理。这些事项不影响本计划的正确性目标。</p>
   </section>
 
   <section>
-    <h2>归属映射</h2>
+    <h2>任务清单</h2>
     <table>
       <thead>
         <tr>
-          <th>父报告条目</th>
-          <th>当前偏离</th>
-          <th>SP-C 任务</th>
+          <th>编号</th>
+          <th>任务</th>
+          <th>影响</th>
+          <th>实现边界</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>#1 训练框架</td>
-          <td>自定义 PyTorch loop，没有 nnU-Net 风格 fixed iteration 语义。</td>
-          <td><a class="child-link" href="#task-1">Task 1</a></td>
+          <td id="task-1">T1</td>
+          <td>明确 <code>deep_supervision=true</code> 下的模型输出契约</td>
+          <td>
+            当前训练/验证 loop 把 <code>model()</code> 返回值同时当成 loss 输入和 metrics 输入。<code>deep_supervision=true</code> 时，模型返回的是多尺度 supervision bundle；loss 需要完整 bundle，metrics 只能评估主尺度 prediction tensor。现有代码直接对 bundle 调用 <code>logits.float()</code>，暴露出的是运行时崩溃，根因是输出契约没有在 train/evaluate 中被明确拆分。
+          </td>
+          <td>
+            将变量语义拆开：<code>model_outputs</code> 传给 criterion，保留完整 deep supervision loss；<code>primary_logits(model_outputs)</code> 传给 metrics。<code>primary_logits()</code> 的契约是：Tensor 原样返回；list/tuple 返回第一个主尺度输出，并要求它与 <code>target_masks</code> 同形状，否则 fail-fast。禁止在 loss 前截断为单尺度，也不把 deep supervision bundle 的处理逻辑塞进 metrics 函数。
+          </td>
         </tr>
         <tr>
-          <td>#2 训练长度语义</td>
-          <td>当前默认 <code>epochs=50</code>，且 epoch 等于遍历 DataLoader。</td>
-          <td><a class="child-link" href="#task-0">Task 0</a>、<a class="child-link" href="#task-1">Task 1</a></td>
+          <td id="task-2">T2</td>
+          <td>修正 prompt metrics 的 foreground Dice 聚合</td>
+          <td>
+            Foreground Dice 只对 positive prompt 有定义。当前 patch-level 采样可能产生没有 positive prompt 的 batch；此时 <code>compute_prompt_metrics()</code> 返回 <code>nan</code>，而训练/验证 loop 会按普通数字累加，进而污染 epoch 指标和 best checkpoint 判断。这不是外部误用防护，而是当前采样机制下需要处理的指标聚合边界。
+          </td>
+          <td>
+            Foreground Dice 按有效 positive prompt 的 sum/count 聚合；无 positive 的 batch 不贡献 foreground Dice，但仍统计 negative FP。可顺手保留 <code>target_empty</code> 与 <code>prompt_valid</code> shape 校验作为 fail-fast 检查，但它不是本任务的核心目标。
+          </td>
         </tr>
         <tr>
-          <td>#3 optimizer</td>
-          <td>当前 AdamW；VoxTell paper-mechanics profile 应提供 SGD，initial LR <code>1e-4</code>，但短预算下是否优于 AdamW 必须实测。</td>
-          <td><a class="child-link" href="#task-2">Task 2</a></td>
+          <td id="task-3">T3</td>
+          <td>统一训练与推理的模型构建契约</td>
+          <td>
+            训练入口会把 <code>backbone</code>、<code>n_blocks_per_stage</code>、<code>encoder_conv_bias</code>、<code>encoder_norm</code>、<code>encoder_activation</code> 传给模型；推理入口漏传这些字段。当前 aligned config 使用 <code>residual_encoder</code>，训练出的 checkpoint 进入推理时会用不同结构构图，再被 <code>strict=True</code> 加载，存在正式推理失败风险。
+          </td>
+          <td>
+            让 <code>Body-Tell/inference.py::build_model()</code> 与 <code>Body-Tell/train.py::build_model()</code> 字段保持一致，或抽出共享构建 helper。验收以同一 config 构建出的关键结构字段一致为准。
+          </td>
         </tr>
         <tr>
-          <td>#4 LR schedule</td>
-          <td>当前恒定 LR；VoxTell 使用 polynomial decay。</td>
-          <td><a class="child-link" href="#task-3">Task 3</a>、<a class="child-link" href="#task-4">Task 4</a></td>
-        </tr>
-        <tr>
-          <td>#9 deep supervision</td>
-          <td>当前 <code>deep_supervision: false</code>，只优化最高分辨率输出。</td>
-          <td><a class="child-link" href="#task-5">Task 5</a>，SP-A P3 前置已满足</td>
-        </tr>
-        <tr>
-          <td>#12 loss 公式等价性（2026-05-24 新增，可跳过）</td>
-          <td>VoxTell：BCE + Dice，nnU-Net 默认（含 ignore_label / smooth / batch_dice 等）。Body-Tell <code>PromptSegmentationLoss</code> 公式与默认值未对照。<strong>域差异豁免</strong>：occupancy grid 与医学影像在前景占比、噪声特性上差异显著，nnU-Net 默认值未必更优。</td>
-          <td><a class="child-link" href="#task-5">Task 5</a>（仅做 audit，是否对齐取决于 audit 结论）</td>
-        </tr>
-        <tr>
-          <td>checkpoint / 评估 / 测试矩阵</td>
-          <td>父报告登记为训练机制同源缺口。</td>
-          <td><a class="child-link" href="#task-4">Task 4</a>、<a class="child-link" href="#task-6">Task 6</a>、<a class="child-link" href="#task-7">Task 7</a></td>
+          <td id="task-4">T4</td>
+          <td>DDP 指标聚合后再日志与保存 best</td>
+          <td>
+            当前正式脚本使用 <code>torchrun</code> 多 GPU，train/val 指标却是 rank-local 均值；rank0 保存 best checkpoint 也只看 rank0 的验证 shard。这会让长训曲线和 best checkpoint 选择不代表全体验证集，是静默实验错误。
+          </td>
+          <td>
+            对 loss、BCE、Dice、positive Dice 分子/计数、negative FP 分子/计数做 all-reduce 后再产出日志、W&amp;B 和 best 判断。不引入 fixed-update 或 scheduler。
+          </td>
         </tr>
       </tbody>
     </table>
   </section>
 
   <section>
-    <h2>前置依赖</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>依赖</th>
-          <th>原因</th>
-          <th>SP-C 处理</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>SP-A P3：5-stage VoxTellDecoder（已完成）</td>
-          <td>5-scale deep supervision 需要模型稳定返回 5 个尺度输出。</td>
-          <td>SP-A 前置已满足；Task 5 仍需等 SP-C Task 4 后启用。</td>
-        </tr>
-        <tr>
-          <td>SP-B Step 1：动态采样 RNG（已完成）</td>
-          <td>训练 loop 每个 epoch 必须同时驱动 sampler 和 dataset epoch state。</td>
-          <td>Task 1 要保留并验证 dataset epoch setter 调用；该前置已由 SP-B Step 1 提供。</td>
-        </tr>
-        <tr>
-          <td>SP-B Step 2/4：patch-level 2+1 与 aggregate concept sampler（已完成）</td>
-          <td>paper-mechanics profile 的 prompt 监督应基于 patch/concept present/absent，而不是 whole-case presence；combined labels 需要 component-union target masks。</td>
-          <td>Task 6 可直接基于 patch-level sampler、aggregate metadata 与已验收的 vocabulary/cache metadata 验证 prompt/negative 评估；最终仍需等 SP-C Task 5 前置。</td>
-        </tr>
-      </tbody>
-    </table>
+    <h2>实施验证准则</h2>
+    <p>本计划按 TDD 执行：每个任务先补能够暴露当前问题的针对性验证，再实现修复。验证名称和脚本形式不强制统一，但必须能证明该任务的根因被修复，而不是只证明某个表面报错被绕过。</p>
+    <p class="note bad"><strong>硬性训练 smoke：</strong>每一次代码改动完成后，都必须运行 <code>h20b-sh-scripts/test-train.sh</code>，使用专门的 <code>Body-Tell/configs/test-model-config.yaml</code> 检查训练是否能正常启动和进入训练流程。不要求等待完整训练结束，但必须确认不是在 config 加载、dataset 构建、模型构建、loss/metrics 或第一轮训练前向/反向处立即失败。</p>
+    <p>不要把 <code>test-train.sh</code> 生搬硬套成不可变脚本。它的职责是验证真实训练入口在本轮改动后仍然跑得通；如果代码改动改变了 config 契约、模型构建字段、loss/metrics 参数或训练入口参数，必须同步维护 <code>Body-Tell/configs/test-model-config.yaml</code>，让 smoke 覆盖新的真实契约，而不是让测试配置停留在旧接口上。</p>
+    <p>因此，任务级 pytest 只负责精确锁定 bug；<code>test-train.sh</code> 负责确认真实训练入口仍然可运行。两者不能互相替代。</p>
   </section>
 
   <section>
-    <h2>实施任务</h2>
-
-    <h3 id="task-0">Task 0. 新增 paper-mechanics profile 骨架（非论文复刻）</h3>
-    <ol>
-      <li>新增 <code>Body-Tell/configs/phase1_voxtell_paper_aligned.yaml</code>。文件名可沿用 <code>paper_aligned</code>，但配置字段和启动日志必须显式声明这是 <code>paper_mechanics_aligned</code> / <code>non_replica</code> profile，避免误读为论文 500k step 复刻。</li>
-      <li>集中写入训练机制：<code>iterations_per_epoch: 250</code>（固定每 epoch 的 optimizer update 数）、<code>optimizer: sgd</code>、<code>lr: 1e-4</code>、<code>lr_schedule: poly</code>、<code>deep_supervision: true</code>、<code>deep_supervision_weights: [1, 0.5, 0.25, 0.125, 0.0625]</code>。这些字段定义的是可比较实验口径，不代表单独启用 Task 0 就会改善性能。</li>
-      <li><strong>训练预算字段 2026-05-24 锁定，不写论文 2000 / 500000</strong>。profile 必须直接写入下列具体数字：
-        <ul>
-          <li><code>batch_size: 2</code>（per GPU）</li>
-          <li><code>num_gpus: 2</code></li>
-          <li><code>epochs: 75</code></li>
-          <li><code>iterations_per_epoch: 250</code>（机制对齐保留）</li>
-          <li>派生：<code>global_batch: 4</code>、<code>total_updates: 18750</code>、<code>paper_step_ratio: 0.0375</code></li>
-        </ul>
-        必须以独立字段 <code>compute_budget</code> 块写入这些值（不要散落在 dataloader / optimizer 子段），便于日志和 W&amp;B 一次性打印。<strong>不允许把 <code>epochs</code> 或 <code>total_updates</code> 隐式从其他字段倒推</strong>——值就是 75 和 18,750，写死即可；实现侧仍必须 assert <code>epochs * iterations_per_epoch == total_updates</code>，防止配置漂移。详见父文档 <a href="bodytell_voxtell_paper_discrepancy_report_2026-05-24.html">总控计划</a> 中 2026-05-24 决议。
-      </li>
-      <li>模型字段应引用 SP-A aligned 架构：<code>architecture: voxtell_v1_1</code>、<code>num_maskformer_stages: 5</code>。SP-A P0-P6-lite 已完成；该 profile 可以直接引用 aligned 架构，但默认训练入口仍应等 smoke / resume 验收后再切换。</li>
-      <li>训练启动日志和 W&amp;B config 中打印 <code>paper_mechanics profile</code>、<code>compute_budget</code> 全字段（含 <code>total_updates=18750</code> 与 <code>paper_step_ratio=0.0375</code>）、optimizer/scheduler、deep supervision 权重。日志一行 banner 显式提示："训练预算 18,750 step（bz=2×2, ep=75），约论文 500k 的 3.75%，非论文复刻"。</li>
-    </ol>
-    <p>验收：读取配置时能区分当前 baseline profile 与 paper-mechanics profile；<code>compute_budget</code> 字段值与父文档锁定一致（<code>epochs=75</code>、<code>total_updates=18750</code>），且一致性 assert 通过；未启用 SP-A aligned 架构时，长训入口不能静默落回旧轻量模型。Task 0 只验收配置与日志控制面，不以 Dice 变化作为通过条件。</p>
-
-    <h3 id="task-1">Task 1. 固定 update-count 训练 loop（global_step 是训练进度）</h3>
-    <ol>
-      <li>新增 <code>iterations_per_epoch</code> 支持；当该字段存在时，一个 epoch 固定执行指定数量的 optimizer updates，不再等价于完整遍历 DataLoader。训练长度由 <code>global_step / total_updates</code> 定义，epoch 只作为 sampler seed、日志、评估周期和 checkpoint 周期单位。</li>
-      <li>实现可复用的无限 dataloader iterator；迭代耗尽后重建 iterator，但 <code>epoch</code>、<code>iteration_in_epoch</code> 和 <code>global_step</code> 语义保持连续。</li>
-      <li>日志同时记录 <code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、<code>samples_seen</code>。</li>
-      <li>每个 epoch 调用 <code>DistributedSampler.set_epoch(epoch)</code>；如果 dataset 提供 <code>set_epoch(epoch)</code>，同步调用它，保证 SP-B 动态 prompt RNG 能随 epoch 更新。</li>
-      <li><strong>（2026-05-24 修订）smoke 模式语义修正</strong>：当前 <code>train.py:365</code> 是 <code>epochs = 200 if smoke else 50</code>（反直觉，smoke 反而跑更多）。重写为 <code>epochs = 2 if smoke else profile.epochs</code>，并允许 <code>--iterations-per-epoch</code> CLI 覆盖；smoke 走同一 fixed-update 代码路径。</li>
-    </ol>
-    <p>验收：2-epoch smoke 的 optimizer step 数严格等于 <code>epochs * iterations_per_epoch</code>；日志中的 <code>global_step</code> 单调递增且无跳号；smoke 默认 epoch 数 ≤ 2（修复反直觉默认）。Task 1 只保证训练长度和采样时钟可控，不直接承诺性能提升。</p>
-
-    <h3 id="task-2">Task 2. 配置驱动 optimizer profile</h3>
-    <ol>
-      <li>把 optimizer 构造从硬编码 <code>torch.optim.AdamW(... weight_decay=1e-5)</code> 改为配置驱动 factory。</li>
-      <li>paper-mechanics profile 使用 <code>torch.optim.SGD</code>，初始 LR 为 <code>1e-4</code>。SGD 的 <code>momentum</code>、<code>weight_decay</code> 必须来自配置并写入日志；如果无论文/官方依据，不应把 AdamW 的 weight decay 直接迁移过来。</li>
-      <li>baseline profile 保留 AdamW，避免无法回退或无法做 ablation。</li>
-      <li>checkpoint 中写入 optimizer 名称、param group 数、各 group 的初始 LR 与当前 LR。</li>
-    </ol>
-    <p>验收：同一训练脚本能通过配置切换 AdamW 与 SGD；paper-mechanics profile 启动日志中明确显示 <code>optimizer=sgd</code>、<code>lr=1e-4</code>。短预算下 SGD 不预设优于 AdamW，必须保留同预算 ablation。</p>
-
-    <h3 id="task-3">Task 3. Polynomial LR schedule</h3>
-    <ol>
-      <li>新增 poly scheduler，按 optimizer update 数计算进度：<code>progress = global_step / total_updates</code>。</li>
-      <li>LR 在每次 optimizer step 后更新，而不是每个 epoch 后更新。</li>
-      <li><code>poly_power</code> 进入配置并写入日志；若采用 nnU-Net 惯例值，应在配置中显式声明，避免隐藏默认。</li>
-      <li>scheduler state 必须能从 checkpoint 恢复；恢复后同一 <code>global_step</code> 的 LR 应与不中断训练完全一致。</li>
-    </ol>
-    <p>验收：scheduler 数值单测覆盖 step 0、半程、末程和 resume 后一步；LR 不应在 epoch 边界出现额外跳变。18,750 step 短预算下，poly decay 是否优于 constant LR 仍属于实验问题。</p>
-
-    <h3 id="task-4">Task 4. Checkpoint 与精确恢复</h3>
-    <div class="note warn"><strong>（2026-05-24 修订）当前现状交底，避免误读：</strong>
-      <ul>
-        <li>当前 <code>best.pt</code> 只写 <code>{epoch, model_state_dict, optimizer_state_dict, metrics, config}</code>；最终 <code>last.pt</code> 也只覆盖训练结束状态。两者都<strong>不包含</strong> scheduler state（因为根本没有 scheduler）、<strong>不包含</strong> AMP scaler state（虽然 <code>train.py:25, 438</code> 已使用 <code>GradScaler</code>，但 scaler.state_dict() 未持久化）、<strong>不包含</strong> <code>global_step</code> / <code>iteration_in_epoch</code> / <code>architecture</code> tag。</li>
-        <li>当前没有任何周期性、resume-safe 的 <code>latest.pt</code>。训练中断后不能从任意中断点续训；从 <code>best.pt</code> 或最终 <code>last.pt</code> 重新开始都会导致 LR、epoch counter、scaler 和 sampler 时钟错位。</li>
-      </ul>
-    </div>
-    <ol>
-      <li>checkpoint 写入 <code>model_state_dict</code>、<code>optimizer_state_dict</code>、<code>scheduler_state_dict</code>、<code>epoch</code>、<code>iteration_in_epoch</code>、<code>global_step</code>、<code>total_updates</code>、<strong><code>scaler.state_dict()</code>（新增，对应已存在但未持久化的 <code>GradScaler</code>）</strong>、配置 hash、<code>architecture</code> 字段。</li>
-      <li><strong>每 N 次 update（默认 N = <code>iterations_per_epoch</code>）写入 <code>latest.pt</code></strong>；<code>best.pt</code> 保留现有"Dice 提升时写入"语义。两者共存，不互相覆盖。</li>
-      <li>恢复入口必须在 dataloader / sampler / dataset epoch state / scheduler state / scaler state 全部恢复后继续训练；如果验收要声称 interrupted 与 uninterrupted 在 batch 序列上严格等价，还必须持久化 Python / NumPy / Torch / CUDA RNG state，否则只能称为 step/LR/scaler 连续恢复。</li>
-      <li>恢复日志打印 checkpoint 中的 <code>global_step</code>、下一个 <code>epoch</code> / <code>iteration_in_epoch</code>、当前 LR、配置 hash 是否匹配。</li>
-    </ol>
-    <p>验收：构造 interrupted run 与 uninterrupted run，在同一 <code>global_step</code> 比较 LR、scheduler state、scaler scale 值，必须完全一致；若保存 RNG state，则同一 step 的下一批次也应一致。<code>latest.pt</code> 能在任意中断点恢复并继续单调 <code>global_step</code>，且不覆盖 <code>best.pt</code> / <code>last.pt</code> 的现有语义。</p>
-
-    <h3 id="task-5">Task 5. 启用 5-scale deep supervision loss + BCE/Dice 公式 audit（含 #12）</h3>
-    <ol>
-      <li>SP-A P3 前置已满足：模型必须返回 5 个尺度输出，且最高分辨率输出仍与 target mask 的轴语义一致。</li>
-      <li>paper-mechanics profile 设置 <code>deep_supervision: true</code> 与权重 <code>[1, 1/2, 1/4, 1/8, 1/16]</code>。</li>
-      <li>loss 层保存原始权重，并在日志中同时报告归一化后的有效权重；避免“论文权重”和“实现归一化”混淆。</li>
-      <li>每个 scale 的 target 使用统一 resize 策略；occupancy grid 小目标在低分辨率 target 中可能被 nearest resize 消掉，日志至少记录总 loss、BCE、Dice、per-scale loss，以及每个 scale 的 positive/empty target 计数。</li>
-      <li>补充反传测试：5 个尺度输出都参与 loss，且每个可训练输出分支都有梯度。</li>
-      <li><strong>（2026-05-24 新增，覆盖 #12，域差异豁免）BCE+Dice 公式 audit（不强制对齐）</strong>：对照 nnU-Net <code>DC_and_BCE_loss</code>（或 VoxTell 引用的等价实现）的关键字段——BCE 与 Dice 权重比、<code>smooth</code> 常数、<code>batch_dice</code>、<code>do_bg</code>、<code>ignore_label</code> 处理、reduce 策略——在 <code>PromptSegmentationLoss</code> 内逐项 audit 并列出偏差表。<strong>对齐不是强制目标</strong>：nnU-Net 默认值是为医学影像（强度分布、噪声、稀疏前景）调过的；occupancy grid 任务下，Body-Tell 当前公式可能已经更合适。<strong>处理策略</strong>：(a) audit 后偏差小且对齐成本低 → 对齐；(b) 偏差大或对齐后 smoke 指标下降 → 保留 Body-Tell 现公式并把偏差表写入 audit 记录；(c) 不能仅因"和论文不一样"就改公式。</li>
-    </ol>
-    <p>验收：1-batch backward 通过；deep supervision 打开时返回 5-scale loss，关闭时仍能跑 baseline；paper-mechanics 长训仍必须等待 SP-C Task 4、已验收的 SP-B patch/concept sampler 口径和端到端 smoke，而不是仅凭 SP-A 完成即标记通过；BCE+Dice 公式 audit 报告（即使结论是"保留现状"）写入 SP-C 子目录，所有偏差项均有显式记录与处理判断（对齐 / 保留 / 待定）。</p>
-
-    <h3 id="task-6">Task 6. 评估协议扩展（含 baseline 回归闸门）</h3>
-    <ol>
-      <li>保留现有 S2I val foreground mean Dice 与 negative FP，作为本地域内基线。</li>
-      <li>新增 prompt variants 评估：同一 class 用 canonical 与 variant prompt 分组统计 Dice。</li>
-      <li>新增 negative empty-mask 评估：对 patch/case absent prompt 统计 FP voxel、FP rate、empty-mask success rate。</li>
-      <li>新增 held-out class/concept 分组评估；如果当前 split 没有正式 held-out concept，先用配置化列表声明，不在报告中伪造论文级 zero-shot 结论。</li>
-      <li>临床 report-derived prompts 与 ReXGroundingCT fine-tuning 只登记为论文协议缺口；在 Body-Tell 缺少对应数据前，不作为本轮强制验收。</li>
-      <li><strong>（2026-05-24 新增）Baseline 回归闸门</strong>：aligned random / aligned full 任一变体在 2 epoch smoke + quick val 后，<code>val_foreground_mean_dice</code> 必须 ≥ 当前轻量 baseline 的 70%（约 <code>0.3257 × 0.7 = 0.228</code>），否则触发回退并复盘 SP-A / SP-B 已落地改动。当前 <code>--smoke</code> 语义会跳过 val，因此该闸门必须显式启用 quick val 或使用单独 smoke-eval 命令；该阈值仅用于"明显回归"识别，不是性能目标。</li>
-    </ol>
-    <p>验收：评估报告能按 known concepts、prompt variants、negative prompts、held-out classes/concepts 分组输出 Dice/FP，并记录使用的 prompt records / vocab hash；baseline 回归闸门必须在 paper-mechanics 长训启动前完成评估。</p>
-
-    <h3 id="task-7">Task 7. Paper-alignment 测试矩阵</h3>
+    <h2>验收矩阵</h2>
     <table>
       <thead>
         <tr>
           <th>测试</th>
-          <th>覆盖风险</th>
-          <th>验收口径</th>
+          <th>覆盖任务</th>
+          <th>必须证明什么</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>CPU shape test</td>
-          <td>fixed-update loop、5-scale 输出、非立方输入轴语义。</td>
-          <td>forward 输出 shape 与 target mask 一致；deep supervision 返回 5 个尺度。</td>
+          <td><code>test_train_one_epoch_accepts_deep_supervision_outputs</code></td>
+          <td>T1</td>
+          <td><code>deep_supervision=True</code> 时真实 <code>train_one_epoch()</code> 不在 metrics 处崩溃，loss 使用多尺度，metrics 使用主尺度。</td>
         </tr>
         <tr>
-          <td>1-batch backward</td>
-          <td>SGD、deep supervision、AMP off 的基础反传。</td>
-          <td>loss finite；optimizer step 后至少一个参数变化。</td>
+          <td><code>test_evaluate_accepts_deep_supervision_outputs</code></td>
+          <td>T1</td>
+          <td>验证路径和训练路径一致，不再假设 logits 一定是 Tensor。</td>
         </tr>
         <tr>
-          <td>2-epoch smoke + quick val</td>
-          <td>iterations_per_epoch、日志、checkpoint 写入。</td>
-          <td>step 数等于 <code>epochs * iterations_per_epoch</code>，latest checkpoint 可读取；如要执行 baseline 闸门，quick val 指标也必须产出。</td>
+          <td><code>test_prompt_metrics_nan_safe_foreground_dice_aggregation</code></td>
+          <td>T2</td>
+          <td>negative-only batch 不会把 epoch foreground Dice 变成 <code>nan</code>；这些 batch 仍参与 negative FP 统计。</td>
         </tr>
         <tr>
-          <td>scheduler 数值测试</td>
-          <td>poly decay 按 update 而非 epoch 更新。</td>
-          <td>指定 step 的 LR 与公式一致。</td>
+          <td><code>test_train_and_inference_build_model_match_aligned_config</code></td>
+          <td>T3</td>
+          <td>训练和推理对 aligned config 构建出一致的 backbone、encoder policy 和 deep supervision 设置。</td>
         </tr>
         <tr>
-          <td>resume 等价测试</td>
-          <td>checkpoint/scheduler/iteration 恢复。</td>
-          <td>interrupted run 与 uninterrupted run 在同一 step 的 LR 完全一致。</td>
-        </tr>
-        <tr>
-          <td>prompt 采样分布测试</td>
-          <td>SP-B 动态 RNG 与 25/75 采样是否被 train loop 正确驱动。</td>
-          <td>同一 case 跨 epoch prompt 可变化；positive canonical 比例接近配置。</td>
-        </tr>
-        <tr>
-          <td>deep supervision 反传测试</td>
-          <td>5 个尺度是否都参与优化。</td>
-          <td>每个输出分支产生非空梯度或等价可观测信号。</td>
+          <td><code>test_ddp_metric_reduce_helper</code></td>
+          <td>T4</td>
+          <td>rank-local 指标能按总和/计数聚合成全局指标，best 判断不再只看 rank0 shard。</td>
         </tr>
       </tbody>
     </table>
+    <p class="note">验收命令应优先跑针对性测试，再跑真实训练 smoke。不得用“全量 pytest 通过”替代任务级断言，也不得用单元测试替代 <code>h20b-sh-scripts/test-train.sh</code>。</p>
+    <pre><code>pytest Body-Tell/tests/test_train_loop.py Body-Tell/tests/test_prompt_loss_backward.py Body-Tell/tests/test_inference_paths.py -q</code></pre>
+    <pre><code>bash h20b-sh-scripts/test-train.sh</code></pre>
   </section>
 
   <section>
-    <h2>落地顺序</h2>
-    <ol>
-      <li>先做 Task 0，让 paper-mechanics profile 有显式配置入口和非复刻预算声明，但不改变默认训练。</li>
-      <li>随后做 Task 1、Task 2、Task 3，形成 fixed-update + SGD + poly 的最小训练闭环。</li>
-      <li>再做 Task 4，确保中断恢复不会破坏 poly schedule。</li>
-      <li>SP-A P3 与 SP-B Step 1/2/4/5/6 已完成；Task 5 等 SP-C Task 4 后执行。Task 6 可基于 patch-level sampler、aggregate metadata 与已验收的 vocabulary/cache metadata 验证 prompt/negative 口径，但仍需等 SP-C Task 5。</li>
-      <li>Task 7 贯穿每个阶段：每完成一项机制，就补对应测试，避免把长训当成唯一验收。</li>
-    </ol>
-    <p class="note">SP-C 的关键路径是 <strong>Task 0 → Task 1/2/3 → Task 4 → Task 5</strong>。Task 6 可基于已验收的 SP-B patch-level sampler、aggregate concept sampler、vocabulary expansion 与 rebuilt cache metadata 做 prompt/negative 评估框架，但最终指标仍需等 SP-C Task 5。</p>
-  </section>
-
-  <section>
-    <h2>建议验收命令</h2>
-    <pre><code># 1. 训练 loop / scheduler / resume 单元测试
-pytest Body-Tell/tests/test_train_loop.py -q
-
-# 2. paper-mechanics profile smoke + quick val，示例参数以实现后的 CLI 为准
-python Body-Tell/train.py \
-  --config Body-Tell/configs/phase1_voxtell_paper_aligned.yaml \
-  --smoke \
-  --epochs 2 \
-  --iterations-per-epoch 2 \
-  --batch-size 1 \
-  --quick-val
-
-# 3. deep supervision 反传测试，SP-A P3 前置已满足
-pytest Body-Tell/tests/test_deep_supervision.py -q</code></pre>
-    <p class="small">命令名称和参数会随实现落地调整；本节定义的是验收意图，不是当前可立即运行的承诺。</p>
-  </section>
-
-  <section>
-    <h2>最终判定</h2>
-    <p>SP-C 已接管父报告中所有训练控制面与评估协议缺口。SP-A 已提供 aligned model 与 P6-lite 权重加载入口，SP-B Step 1/2/4/5/6 已提供动态采样 RNG、patch-level 2+1 prompt 口径、aggregate concept sampler、expanded vocabulary 与 rebuilt embedding cache。SP-C 现在要补齐 optimizer/scheduler、deep supervision、checkpoint resume 与评估协议，形成可验证的 paper-mechanics 训练闭环。</p>
-    <p class="small">本文件同步 SP-A 前置完成状态，未修改训练代码。</p>
+    <h2>完成定义</h2>
+    <p>本计划完成后，<code>deep_supervision: true</code> 能进入真实短训 smoke；正式 aligned checkpoint 能通过 <code>Body-Tell/inference.py</code> 加载并推理；train/val 日志与 best checkpoint 判断基于全局 DDP 指标。未覆盖的训练策略和评估扩展不作为本计划完成条件。</p>
   </section>
 </main>
 </body>
